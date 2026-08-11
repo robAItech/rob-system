@@ -58,8 +58,7 @@
         "match_route"
       ],
       "imports": [
-        "httpx",
-        "re"
+        "httpx"
       ]
     },
     "actions/enterprise_api_gateway/main.py": {
@@ -328,6 +327,43 @@
       "functions": [],
       "imports": []
     },
+    "actions/enterprise_mailer/enterprise_mailer.py": {
+      "classes": [
+        "EnterpriseMailer"
+      ],
+      "functions": [
+        "__init__"
+      ],
+      "imports": [
+        "asyncio",
+        "uuid"
+      ]
+    },
+    "actions/enterprise_mailer/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_mailer/schemas.py": {
+      "classes": [
+        "EmailRequest",
+        "EmailResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_mailer/test_enterprise_mailer.py": {
+      "classes": [],
+      "functions": [],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_mailer/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
     "actions/enterprise_observability_metrics/enterprise_observability_metrics.py": {
       "classes": [
         "EnterpriseMetricsRegistry"
@@ -559,7 +595,9 @@
         "time",
         "os",
         "sqlite3",
-        "json"
+        "json",
+        "subprocess",
+        "sys"
       ]
     },
     "core/flowchart_inspector.py": {
