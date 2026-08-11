@@ -1,0 +1,13 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Environment Variables (Varnost!)
+.env
+
+# Baze podatkov in lokalno stanje
+.rob_ai/memory.db
+.DS_Store

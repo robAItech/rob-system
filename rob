@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -e
+PROJECT_DIR="/mnt/c/Rob AI Studio"
+
+if [ "$1" == "up" ]; then
+    cd "$PROJECT_DIR" && docker-compose up -d --build
+elif [ "$1" == "down" ]; then
+    cd "$PROJECT_DIR" && docker-compose down
+elif [ "$1" == "test" ]; then
+    cd "$PROJECT_DIR" && source venv/bin/activate && pytest -v tests/
+elif [ "$1" == "dashboard" ]; then
+    cd "$PROJECT_DIR" && source venv/bin/activate && python3 core/dashboard_tui.py
+elif [ "$1" == "review" ]; then
+    cd "$PROJECT_DIR" && source venv/bin/activate && python3 core/system_self_check.py
+elif [ "$1" == "build" ]; then
+    if [ -z "$2" ] || [ -z "$3" ]; then
+        echo "Uporaba: ./rob build <target> \"<directive>\""
+        exit 1
+    fi
+    cd "$PROJECT_DIR" && source venv/bin/activate && python3 run_swarm.py --target "$2" --directive "$3"
+else
+    echo "🤖 ROB AI STUDIO CLI"
+    echo "Uporaba:"
+    echo "  ./rob test        - Požene vse master teste"
+    echo "  ./rob dashboard   - Odpre Live TUI Dashboard"
+    echo "  ./rob review      - Požene LLM arhitekturno revizijo"
+    echo "  ./rob up          - Zažene celoten ekosistem v Dockerju"
+    echo "  ./rob down        - Zaustavi Docker ekosistem"
+    echo "  ./rob build <mod> \"<navodilo>\" - Avtonomno zgradi nov modul"
+fi
