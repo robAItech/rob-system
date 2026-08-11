@@ -364,6 +364,50 @@
       "functions": [],
       "imports": []
     },
+    "actions/enterprise_nexus_command_deck/enterprise_nexus_command_deck.py": {
+      "classes": [
+        "MultiLLMOrchestrator"
+      ],
+      "functions": [
+        "__init__",
+        "_route_request"
+      ],
+      "imports": [
+        "time",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_nexus_command_deck/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": [
+        "json"
+      ]
+    },
+    "actions/enterprise_nexus_command_deck/schemas.py": {
+      "classes": [
+        "OrchestratorRequest",
+        "OrchestratorResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_nexus_command_deck/test_enterprise_nexus_command_deck.py": {
+      "classes": [],
+      "functions": [
+        "test_frontend_renders",
+        "test_websocket_orchestration_text",
+        "test_websocket_orchestration_failover"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_nexus_command_deck/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
     "actions/enterprise_observability_metrics/enterprise_observability_metrics.py": {
       "classes": [
         "EnterpriseMetricsRegistry"
