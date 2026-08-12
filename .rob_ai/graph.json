@@ -11,6 +11,13 @@
         "time"
       ]
     },
+    "evaluate_rsi.py": {
+      "classes": [],
+      "functions": [
+        "main"
+      ],
+      "imports": []
+    },
     "fix_manifests.py": {
       "classes": [],
       "functions": [],
