@@ -1,4 +1,6 @@
 import json
+import asyncio
+import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from actions.enterprise_nexus_command_deck.schemas import OrchestratorRequest
@@ -7,7 +9,6 @@ from actions.enterprise_nexus_command_deck.enterprise_nexus_command_deck import 
 app = FastAPI(title="Rob AI Studio - NEXUS Command Deck")
 orchestrator = MultiLLMOrchestrator()
 
-# Deep Tech UI: Pitch black, Neon poudarki, Monospace
 NEXUS_HTML = """
 <!DOCTYPE html>
 <html lang="sl">
@@ -22,115 +23,76 @@ NEXUS_HTML = """
         .neon-border { border: 1px solid #39ff14; box-shadow: 0 0 10px rgba(57, 255, 20, 0.3); }
         .neon-text { text-shadow: 0 0 5px rgba(57, 255, 20, 0.5); }
         .neon-cyan { color: #00ffff; text-shadow: 0 0 5px rgba(0, 255, 255, 0.5); }
-        /* Scrollbar */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #0a0a0a; }
         ::-webkit-scrollbar-thumb { background: #39ff14; }
-        #dropzone.dragover { background-color: rgba(57, 255, 20, 0.1); border-color: #00ffff; }
     </style>
 </head>
-<body class="h-screen w-screen flex flex-col p-4 overflow-hidden" id="dropzone">
-    
-    <!-- HEADER -->
+<body class="h-screen w-screen flex flex-col p-4 overflow-hidden">
     <header class="flex justify-between items-center mb-4 border-b border-[#39ff14] pb-2">
         <h1 class="text-2xl font-bold neon-text tracking-widest">NEXUS // COMMAND DECK</h1>
         <div id="status" class="text-sm neon-cyan">WS: CONNECTING...</div>
     </header>
-
-    <!-- TERMINAL OUTPUT -->
-    <main id="terminal-output" class="flex-grow overflow-y-auto mb-4 neon-border p-4 bg-[#0a0a0a] flex flex-col gap-2">
+    <main id="terminal-output" class="flex-grow overflow-y-auto mb-4 neon-border p-4 bg-[#0a0a0a] flex flex-col gap-2 whitespace-pre-wrap font-mono text-sm">
         <div class="text-[#00ffff]">> Sistemski boot zaključen. Rob AI Studio pripravljen.</div>
-        <div class="text-gray-400">> Vnesite ukaz, povlecite datoteko v to okno ali aktivirajte zvočni uplink.</div>
     </main>
-
-    <!-- INPUT AREA -->
     <footer class="flex gap-2">
-        <button id="btn-voice" class="neon-border px-4 py-2 hover:bg-[#39ff14] hover:text-black transition-colors font-bold" title="Voice Uplink">
-            🎤 [MIC_OFF]
-        </button>
-        <input type="text" id="cli-input" class="flex-grow bg-[#0a0a0a] neon-border p-2 outline-none text-[#39ff14] placeholder-gray-600 focus:border-[#00ffff] focus:shadow-[0_0_10px_rgba(0,255,255,0.3)]" placeholder="> Vnesite direktivo tukaj..." autocomplete="off">
+        <input type="text" id="cli-input" class="flex-grow bg-[#0a0a0a] neon-border p-2 outline-none text-[#39ff14]" placeholder="> Vnesite direktivo (npr. ./rob review)..." autocomplete="off" autofocus>
     </footer>
 
     <script>
-        const ws = new WebSocket(`ws://${window.location.host}/ws/nexus`);
         const output = document.getElementById('terminal-output');
         const input = document.getElementById('cli-input');
         const status = document.getElementById('status');
-        const btnVoice = document.getElementById('btn-voice');
-        const dropzone = document.getElementById('dropzone');
-
-        let mediaRecorder;
-        let audioChunks = [];
+        let ws;
 
         function appendLog(text, isUser = false, meta = null) {
+            if (!isUser && text.trim() === '') return;
             const div = document.createElement('div');
             if (isUser) {
                 div.innerHTML = `<span class="text-white">USR ></span> ${text}`;
+            } else if (meta && meta.provider === "TERMINAL") {
+                // Surov terminalski izpis (brez prefixa)
+                div.innerHTML = `<span class="text-gray-300">${text}</span>`;
             } else {
-                let metaStr = meta ? `<span class="text-xs text-gray-500 ml-2">[Provider: ${meta.provider} | Latency: ${meta.latency_ms}ms${meta.is_fallback ? ' | FALLBACK' : ''}]</span>` : '';
-                div.innerHTML = `<span class="neon-cyan">SYS ></span> ${text} ${metaStr}`;
+                div.innerHTML = `<span class="neon-cyan">SYS ></span> ${text}`;
             }
             output.appendChild(div);
             output.scrollTop = output.scrollHeight;
         }
 
-        ws.onopen = () => { status.textContent = "WS: SECURE_LINK_ACTIVE"; };
-        ws.onclose = () => { status.textContent = "WS: LINK_SEVERED"; status.classList.replace('neon-cyan', 'text-red-500'); };
-        
-        ws.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                appendLog(data.content, false, data);
-            } catch {
-                appendLog(event.data, false);
-            }
-        };
+        function connectWebSocket() {
+            ws = new WebSocket(`ws://${window.location.host}/ws/nexus`);
+            ws.onopen = () => { 
+                status.textContent = "WS: SECURE_LINK_ACTIVE"; 
+                status.className = "text-sm neon-cyan";
+            };
+            ws.onclose = () => { 
+                status.textContent = "WS: LINK_SEVERED_RECONNECTING..."; 
+                status.className = "text-sm text-yellow-500";
+                setTimeout(connectWebSocket, 2000);
+            };
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    appendLog(data.content, false, data);
+                } catch {
+                    appendLog(event.data, false);
+                }
+            };
+        }
+        connectWebSocket();
 
-        // Text Input
         input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && input.value.trim() !== '') {
-                const text = input.value;
-                appendLog(text, true);
-                ws.send(JSON.stringify({ content: text, content_type: 'text' }));
-                input.value = '';
-            }
-        });
-
-        // Drag & Drop
-        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
-        dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('dragover'); });
-        dropzone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            dropzone.classList.remove('dragover');
-            if (e.dataTransfer.files.length > 0) {
-                const file = e.dataTransfer.files[0];
-                appendLog(`[Nalaganje binarne datoteke: ${file.name}]`, true);
-                ws.send(JSON.stringify({ content: file.name, content_type: 'file' }));
-            }
-        });
-
-        // Web Audio API
-        btnVoice.addEventListener('click', async () => {
-            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
-                    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-                    mediaRecorder.onstop = () => {
-                        appendLog(`[Glasovni paket poslan (dolžina: ${audioChunks.length} chunks)]`, true);
-                        ws.send(JSON.stringify({ content: "Audio stream data", content_type: 'audio' }));
-                        audioChunks = [];
-                    };
-                    mediaRecorder.start();
-                    btnVoice.textContent = '🛑 [RECORDING]';
-                    btnVoice.classList.add('bg-red-500', 'text-white', 'border-red-500');
-                } catch (err) {
-                    appendLog(`[AUDIO ERROR: ${err.message}]`, false);
+                if(ws.readyState === WebSocket.OPEN) {
+                    const text = input.value;
+                    appendLog(text, true);
+                    ws.send(JSON.stringify({ content: text, content_type: 'text' }));
+                    input.value = '';
+                } else {
+                    appendLog("SYS_ERROR: Povezava prekinjena...", false);
                 }
-            } else {
-                mediaRecorder.stop();
-                btnVoice.textContent = '🎤 [MIC_OFF]';
-                btnVoice.classList.remove('bg-red-500', 'text-white', 'border-red-500');
             }
         });
     </script>
@@ -145,22 +107,58 @@ async def get_command_deck():
 @app.websocket("/ws/nexus")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    active_process = None
     try:
         while True:
             data = await websocket.receive_text()
             try:
                 payload = json.loads(data)
                 req = OrchestratorRequest(**payload)
+                command = req.content.strip()
                 
-                # Simuliramo stream delay
-                await websocket.send_text(json.dumps({"content": "[...] Obdelujem poizvedbo...", "provider": "SYS", "latency_ms": 0, "is_fallback": False}))
-                
-                # Orkestracija (usmerjanje in failover)
-                response = await orchestrator.process(req)
-                
-                # Vrnemo polni rezultat
-                await websocket.send_text(response.model_dump_json())
+                if command.startswith("./rob ") or command.startswith("python3 "):
+                    await websocket.send_text(json.dumps({"content": f"🚀 [SYS_EXEC] Zaganjam proces: {command}", "provider": "SYS"}))
+                    
+                    # NASILNO IZKLOPI PYTHON BUFFERING! TO REŠI PROBLEM S TIŠINO.
+                    env = os.environ.copy()
+                    env["PYTHONUNBUFFERED"] = "1"
+                    env["PYTHONIOENCODING"] = "utf-8"
+                    
+                    active_process = await asyncio.create_subprocess_shell(
+                        command,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.STDOUT,
+                        cwd="/mnt/c/Rob AI Studio",
+                        env=env
+                    )
+                    
+                    # ASINHRONO BRANJE, DA NE BLOKIRAMO WEBSOCKET ZANKE
+                    async def stream_output(proc, ws):
+                        while True:
+                            line = await proc.stdout.readline()
+                            if not line:
+                                break
+                            text_line = line.decode('utf-8', errors='replace').rstrip()
+                            if text_line:
+                                await ws.send_text(json.dumps({"content": text_line, "provider": "TERMINAL"}))
+                        
+                        await proc.wait()
+                        await ws.send_text(json.dumps({"content": f"✅ [SYS_DONE] Ukaz zaključen (Izhod: {proc.returncode})", "provider": "SYS"}))
+                        
+                    asyncio.create_task(stream_output(active_process, websocket))
+                    
+                else:
+                    await websocket.send_text(json.dumps({"content": "[...] Obdelujem...", "provider": "SYS"}))
+                    response = await orchestrator.process(req)
+                    await websocket.send_text(response.model_dump_json())
+                    
             except Exception as e:
-                await websocket.send_text(json.dumps({"content": f"SYS_ERROR: {str(e)}", "provider": "SYS", "latency_ms": 0, "is_fallback": False}))
+                await websocket.send_text(json.dumps({"content": f"SYS_ERROR: {str(e)}", "provider": "SYS"}))
+                
     except WebSocketDisconnect:
-        pass
+        # Če zaprete brskalnik, v ozadju varno ugasnemo skripto, da ne porablja LLM ključev
+        if active_process and active_process.returncode is None:
+            try:
+                active_process.terminate()
+            except:
+                pass
