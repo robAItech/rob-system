@@ -1,5 +1,14 @@
 {
   "nodes": {
+    "demo_rsi.py": {
+      "classes": [],
+      "functions": [
+        "run_demo"
+      ],
+      "imports": [
+        "json"
+      ]
+    },
     "e2e_mesh_tester.py": {
       "classes": [],
       "functions": [],
@@ -24,6 +33,26 @@
       "imports": [
         "os",
         "sys"
+      ]
+    },
+    "live_scanner_demo.py": {
+      "classes": [],
+      "functions": [
+        "run_scanner"
+      ],
+      "imports": [
+        "json"
+      ]
+    },
+    "rsi_runner.py": {
+      "classes": [],
+      "functions": [
+        "run_rsi_loop"
+      ],
+      "imports": [
+        "os",
+        "sys",
+        "subprocess"
       ]
     },
     "run_swarm.py": {
@@ -55,6 +84,17 @@
         "argparse",
         "time",
         "traceback"
+      ]
+    },
+    "test_rsi_live.py": {
+      "classes": [],
+      "functions": [
+        "run_verification"
+      ],
+      "imports": [
+        "os",
+        "shutil",
+        "json"
       ]
     },
     "actions/enterprise_api_versioning/enterprise_api_versioning.py": {
@@ -954,6 +994,63 @@
       "functions": [],
       "imports": []
     },
+    "actions/enterprise_rsi_engine/enterprise_rsi_engine.py": {
+      "classes": [
+        "RSIAnalyzer",
+        "RSISelfHealingEngine"
+      ],
+      "functions": [
+        "analyze_code",
+        "execute_loop"
+      ],
+      "imports": [
+        "ast",
+        "os"
+      ]
+    },
+    "actions/enterprise_rsi_engine/main.py": {
+      "classes": [],
+      "functions": [
+        "analyze",
+        "run_loop"
+      ],
+      "imports": [
+        "os"
+      ]
+    },
+    "actions/enterprise_rsi_engine/schemas.py": {
+      "classes": [
+        "AnalyzeRequest",
+        "FunctionInfo",
+        "ClassInfo",
+        "AnalyzeResponse",
+        "RunLoopRequest",
+        "RunLoopResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_rsi_engine/test_enterprise_rsi_engine.py": {
+      "classes": [],
+      "functions": [
+        "test_analyzer_get_functions",
+        "test_analyzer_get_classes",
+        "test_analyzer_complexity_score",
+        "test_analyze_endpoint_with_code",
+        "test_analyze_endpoint_with_file",
+        "test_analyze_missing_input",
+        "test_run_loop_endpoint_success",
+        "test_run_loop_endpoint_not_found"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_rsi_engine/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
     "actions/enterprise_saga_orchestrator/enterprise_saga_orchestrator.py": {
       "classes": [
         "SagaStatus",
@@ -1219,6 +1316,53 @@
       ]
     },
     "actions/enterprise_unified_gateway/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_warehouse_inventory/enterprise_warehouse_inventory.py": {
+      "classes": [
+        "InventoryManager"
+      ],
+      "functions": [
+        "__init__",
+        "scan_item",
+        "deduct_stock"
+      ],
+      "imports": []
+    },
+    "actions/enterprise_warehouse_inventory/main.py": {
+      "classes": [],
+      "functions": [
+        "scan_item",
+        "deduct_stock"
+      ],
+      "imports": []
+    },
+    "actions/enterprise_warehouse_inventory/schemas.py": {
+      "classes": [
+        "Item",
+        "ScanRequest",
+        "DeductRequest"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_warehouse_inventory/test_enterprise_warehouse_inventory.py": {
+      "classes": [],
+      "functions": [
+        "test_uspesno_skeniranje",
+        "test_uspesno_odstevanje_zaloge",
+        "test_skeniranje_neobstojece_kode",
+        "test_odstevanje_prevelike_kolicine",
+        "test_odstevanje_neobstojecega_artikla",
+        "test_odstevanje_negativne_kolicine"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_warehouse_inventory/__init__.py": {
       "classes": [],
       "functions": [],
       "imports": []
