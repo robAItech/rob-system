@@ -1,0 +1,23 @@
+# Odvisnosti
+node_modules/
+
+# Lokalna baza teka (hermes) in njeni WAL/SHM sopotniki.
+# Osnovno ime nastavlja .env.example (LEDGER_DB); privzeto je .gstack-run.sqlite.
+.gstack-run.sqlite
+.gstack-run.sqlite-shm
+.gstack-run.sqlite-wal
+
+# Producirani artefakti teka (npr. out/RESULT.md, out/PLAN.md, app/, demo/).
+# Na novo jih generira tek; v repot ne spadajo.
+out/*
+app/
+demo/
+diagrams/
+
+# Dashboard je NAMEREN izdelek (ročno napisana aplikacija), ne produciran
+# artefakt teka — zato ga z izjemo vključimo izven out/* ignoriranja.
+!out/Dashboard.html
+
+# Razvojni grader in helper
+*.tsbuildinfo
+.gstack/

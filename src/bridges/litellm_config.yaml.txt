@@ -1,0 +1,39 @@
+# ====================================================================
+# MODUL: bridges/ (Hermes Komunikacijski Vmesnik)
+# FUNKCIJA: Dinamično Anthropic -> DeepSeek usmerjanje
+# ====================================================================
+
+model_list:
+  # 1. OPUS ROUTE (Ujame "Opus 5", "claude-5-opus-...", itd.)
+  - model_name: "*opus*"
+    litellm_params:
+      model: deepseek/deepseek-v4
+      api_key: os.environ/DEEPSEEK_API_KEY
+      
+  # 2. SONNET ROUTE (Ujame "Sonnet 5")
+  - model_name: "*sonnet*"
+    litellm_params:
+      model: deepseek/deepseek-v4
+      api_key: os.environ/DEEPSEEK_API_KEY
+      
+  # 3. FABLE ROUTE (Ujame "Fable 5")
+  - model_name: "*fable*"
+    litellm_params:
+      model: deepseek/deepseek-v4
+      api_key: os.environ/DEEPSEEK_API_KEY
+      
+  # 4. HAIKU ROUTE (Ujame "Haiku 4.5")
+  - model_name: "*haiku*"
+    litellm_params:
+      model: deepseek/deepseek-v4
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # 5. CATCH-ALL VAROVALKA (Če gstack pošlje neznan format, ne pade, ampak uporabi default)
+  - model_name: "*" 
+    litellm_params:
+      model: deepseek/deepseek-v4
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+general_settings:
+  master_key: sk-hermes-master-key # Interni ključ za gstack
+  drop_params: true                # Avtomatsko odstrani parametre, ki jih Anthropic pošlje, a jih DeepSeek ne podpira

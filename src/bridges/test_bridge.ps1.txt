@@ -1,0 +1,37 @@
+# ====================================================================
+# TEST: bridges/test_bridge.ps1
+# FUNKCIJA: Potrditev Anthropic -> DeepSeek prevajalnika
+# ====================================================================
+
+$URL = "http://127.0.0.1:4000/v1/messages"
+$KEY = "sk-hermes-master-key"
+
+$Headers = @{
+    "x-api-key" = $KEY
+    "anthropic-version" = "2023-06-01"
+    "Content-Type" = "application/json"
+}
+
+# Simuliramo, da gstack zahteva "Opus 5" v Anthropic standardu
+$Body = @{
+    model = "claude-5-opus-latest" 
+    max_tokens = 1024
+    messages = @(
+        @{
+            role = "user"
+            content = "Odgovori samo z eno besedo: 'SISTEM_ONLINE'."
+        }
+    )
+} | ConvertTo-Json -Depth 10
+
+Write-Host ">>> Pošiljam testno zahtevo v Hermes Bridge..." -ForegroundColor Cyan
+
+try {
+    $Response = Invoke-RestMethod -Uri $URL -Method Post -Headers $Headers -Body $Body
+    Write-Host "`n[USPEH] Most deluje! DeepSeek je odgovoril v Anthropic formatu:" -ForegroundColor Green
+    Write-Host "Odgovor: $($Response.content[0].text)" -ForegroundColor Yellow
+}
+catch {
+    Write-Host "`n[NAPAKA] Povezava je padla. Preveri, če LiteLLM teče in če je DEEPSEEK_API_KEY nastavljen." -ForegroundColor Red
+    Write-Host $_.Exception.Message
+}

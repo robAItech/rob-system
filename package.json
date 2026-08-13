@@ -1,0 +1,17 @@
+{
+  "name": "rob-system",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "module": "src/index.ts",
+  "description": "Avtonomno AI podjetje na ledger-first podlagi. Mejnik 1: skelet.",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "demo": "bun run src/index.ts \"Izdelaj demo dashboard\" --kind full --dry-run",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  }
+}

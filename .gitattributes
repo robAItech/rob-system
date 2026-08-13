@@ -1,0 +1,7 @@
+# Determinizem zahteva enotne konce vrstic. Zgoscene vrednosti artefaktov se racunajo
+# nad medpomnilnikom z LF; ce bi git ob checkoutu vrinil CRLF, bi se replay razsel.
+* text eol=lf
+
+# Binarne datoteke pusti pri miru.
+*.sqlite binary
+*.png    binary

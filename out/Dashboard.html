@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rob AI Studio · Command Center</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { hud: ['ui-monospace', 'Cascadia Code', 'Source Code Pro', 'Menlo', 'monospace'] },
+          colors: {
+            void: '#030507',      // skoraj absolutno crno
+            panel: 'rgba(8,15,26,0.6)',
+            edge: 'rgba(0,229,255,0.18)',
+            cyan: '#00e5ff',
+            orange: '#ff9500',
+            red: '#ff3355',
+            dim: '#6b7c94',
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    /* ===== Holograf osnova ===== */
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+      background: #030507;
+      color: #cfe6ff;
+      overflow-x: hidden;
+    }
+    .hud { font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, monospace; }
+
+    /* Mreža ozadja */
+    .grid-bg {
+      background-image:
+        linear-gradient(rgba(0,229,255,0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,0.045) 1px, transparent 1px);
+      background-size: 46px 46px;
+    }
+
+    /* Glassmorphism panel */
+    .glass {
+      background: linear-gradient(180deg, rgba(10,20,34,0.7), rgba(5,10,18,0.55));
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(0,229,255,0.16);
+      box-shadow:
+        0 0 0 1px rgba(0,229,255,0.05),
+        0 0 24px rgba(0,229,255,0.06),
+        inset 0 0 22px rgba(0,229,255,0.04);
+    }
+    /* Neon stranski robovi (HUD kutice) */
+    .hud-corners { position: relative; }
+    .hud-corners::before, .hud-corners::after {
+      content: ''; position: absolute; width: 18px; height: 18px;
+      border: 1px solid #00e5ff; opacity: .7; filter: drop-shadow(0 0 4px #00e5ff);
+    }
+    .hud-corners::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+    .hud-corners::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+    /* Neon tekst */
+    .neon-cyan   { color: #00e5ff; text-shadow: 0 0 6px rgba(0,229,255,.9), 0 0 18px rgba(0,229,255,.5); }
+    .neon-orange { color: #ff9500; text-shadow: 0 0 6px rgba(255,149,0,.9), 0 0 16px rgba(255,149,0,.5); }
+    .neon-red    { color: #ff3355; text-shadow: 0 0 6px rgba(255,51,85,.9), 0 0 16px rgba(255,51,85,.5); }
+
+    /* Brutno utripajoce pike agentov */
+    .agent-dot { width: 9px; height: 9px; border-radius: 999px; display: inline-block; }
+    .dot-cyan   { background: #00e5ff; box-shadow: 0 0 8px #00e5ff, 0 0 16px #00e5ff; animation: pulse 1.4s infinite; }
+    .dot-orange { background: #ff9500; box-shadow: 0 0 8px #ff9500, 0 0 16px #ff9500; animation: pulse 1.9s infinite; }
+    .dot-red    { background: #ff3355; box-shadow: 0 0 8px #ff3355, 0 0 16px #ff3355; animation: pulse 2.4s infinite; }
+    .dot-idle   { background: #2a3a52; box-shadow: none; animation: none; }
+    .dot-burst  { animation: burst .5s ease-out 2; }
+    @keyframes pulse { 0%,100%{opacity:1; transform:scale(1)} 50%{opacity:.35; transform:scale(1.45)} }
+    @keyframes burst { 0%{box-shadow:0 0 24px 8px currentColor} 100%{box-shadow:0 0 8px 2px currentColor} }
+
+    /* Scanline premik po ekranu */
+    .scanline {
+      height: 2px; width: 100%; position: fixed; top: 0; left: 0; z-index: 40;
+      background: linear-gradient(90deg, transparent, rgba(0,229,255,.25), transparent);
+      box-shadow: 0 0 12px rgba(0,229,255,.4);
+      animation: scan 7s linear infinite; pointer-events: none;
+    }
+    @keyframes scan { 0%{top:0; opacity:0} 6%{opacity:1} 94%{opacity:1} 100%{top:100vh; opacity:0} }
+
+    /* Neonski gumb */
+    .btn-neon {
+      background: rgba(0,229,255,0.08);
+      border: 1px solid #00e5ff;
+      color: #00e5ff;
+      box-shadow: 0 0 14px rgba(0,229,255,0.35), inset 0 0 10px rgba(0,229,255,0.12);
+      transition: all .18s ease;
+    }
+    .btn-neon:hover { background: rgba(0,229,255,0.2); box-shadow: 0 0 22px rgba(0,229,255,0.6); transform: translateY(-1px); }
+    .btn-neon:active { transform: translateY(0); }
+
+    /* Vnosno polje */
+    .input-glow {
+      background: rgba(0,229,255,0.05);
+      border: 1px solid rgba(0,229,255,0.28);
+      color: #dffbff;
+      caret-color: #00e5ff;
+      box-shadow: inset 0 0 12px rgba(0,229,255,0.08);
+    }
+    .input-glow:focus { outline: none; border-color: #00e5ff; box-shadow: 0 0 16px rgba(0,229,255,0.3), inset 0 0 14px rgba(0,229,255,0.1); }
+
+    /* Flicker branding */
+    .brand-flicker { animation: flicker 8s infinite; }
+    @keyframes flicker {
+      0%,18%,22%,25%,53%,57%,100%{opacity:1}
+      20%,24%,55%{opacity:.5}
+    }
+
+    /* Live-vrstica v tabeli */
+    .ledger-row { transition: background .15s; }
+    .ledger-row:hover { background: rgba(0,229,255,0.06); }
+    .row-new { animation: rowIn .4s ease; }
+    @keyframes rowIn { from{opacity:0; transform:translateX(-8px)} to{opacity:1; transform:none} }
+
+    /* Majhna oznaka tipa */
+    .kind-pill { font-size: 11px; padding: 2px 7px; border-radius: 4px; border:1px solid; white-space: nowrap; }
+  </style>
+</head>
+
+<body class="grid-bg font-hud min-h-screen" lang="sl">
+  <!-- scanline prelet -->
+  <div class="scanline"></div>
+
+  <!-- ======================= NAVBAR ======================= -->
+  <header class="glass sticky top-0 z-30 mx-3 mt-3 rounded-lg hud-corners">
+    <div class="flex items-center justify-between px-5 py-3">
+      <div class="flex items-center gap-3">
+        <div class="flex h-9 w-9 items-center justify-center rounded-md border border-cyan text-lg font-black text-cyan neon-cyan" style="box-shadow:0 0 18px rgba(0,229,255,.4)">R</div>
+        <div>
+          <div class="text-sm font-bold tracking-widest text-cyan neon-cyan">COMMAND CENTER</div>
+          <div class="text-[11px] text-dim tracking-wider">KIBERNETIČNI NADZOR</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-4">
+        <!-- Online indikator -->
+        <span class="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-1.5 text-[11px] font-semibold tracking-widest text-emerald-300">
+          <span class="agent-dot dot-cyan" style="background:#34d399;box-shadow:0 0 8px #34d399"></span> SYS.ONLINE
+        </span>
+        <!-- Uradna znamka: Rob AI Studio -->
+        <span
+          class="brand-flicker select-none text-lg font-black uppercase tracking-[0.3em] neon-cyan"
+          aria-label="Rob AI Studio"
+          title="Rob AI Studio"
+        >Rob&thinsp;AI&thinsp;Studio</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl space-y-4 px-3 py-4">
+
+    <!-- ======= VNOSNA POSTAJA ======= -->
+    <section class="glass rounded-lg hud-corners p-4">
+      <div class="mb-2 flex items-center gap-2">
+        <span class="h-1.5 w-1.5 rounded-full bg-cyan" style="box-shadow:0 0 8px #00e5ff"></span>
+        <span class="text-[11px] font-bold tracking-[0.25em] text-cyan neon-cyan">KOMANDNA VNOSNA POSTAJA</span>
+      </div>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <input
+          id="taskInput"
+          type="text"
+          placeholder="Vnesi nalogo za orkestratorja … npr. izdelaj specifikacijo, dashboard, poslovni nacrt"
+          class="input-glow flex-1 rounded-md px-4 py-3 text-sm"
+        />
+        <button id="runBtn" class="btn-neon rounded-md px-6 py-3 text-sm font-black uppercase tracking-widest">
+          ⧉ Zaženi nalogo
+        </button>
+      </div>
+    </section>
+
+    <!-- ======= AGENTI / LIVE STATUS ======= -->
+    <section class="glass rounded-lg hud-corners p-4">
+      <div class="mb-3 flex items-center gap-2">
+        <span class="h-1.5 w-1.5 rounded-full bg-orange" style="box-shadow:0 0 8px #ff9500"></span>
+        <span class="text-[11px] font-bold tracking-[0.25em] text-orange neon-orange">LIVE STATUS AGENTOV</span>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div class="flex items-center gap-3 rounded-md border border-edge bg-panel px-3 py-2.5">
+          <span id="dotArchitect" class="agent-dot dot-cyan"></span>
+          <div>
+            <div class="text-xs font-bold tracking-wider text-white">ARCHITECT</div>
+            <div class="hud text-[10px] text-dim">ARHITEKT</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 rounded-md border border-edge bg-panel px-3 py-2.5">
+          <span id="dotEngineer" class="agent-dot dot-orange"></span>
+          <div>
+            <div class="text-xs font-bold tracking-wider text-white">ENGINEER</div>
+            <div class="hud text-[10px] text-dim">INŽENIR</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 rounded-md border border-edge bg-panel px-3 py-2.5">
+          <span id="dotQa" class="agent-dot dot-red"></span>
+          <div>
+            <div class="text-xs font-bold tracking-wider text-white">QA</div>
+            <div class="hud text-[10px] text-dim">TESTER</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======= PANELI: Levi (obremenitev + spekter), Desni (line + KPI) ======= -->
+    <section class="grid gap-4 lg:grid-cols-2">
+
+      <!-- Levi: obremenitev sistema -->
+      <div class="glass rounded-lg hud-corners p-5">
+        <div class="mb-1 flex items-center justify-between">
+          <span class="text-[11px] font-bold tracking-[0.25em] text-cyan neon-cyan">SISTEMSKA OBREMENITEV</span>
+          <span id="loadPct" class="hud text-2xl font-black neon-cyan">47%</span>
+        </div>
+        <div class="relative mx-auto mt-2 h-64 w-64">
+          <canvas id="loadChart"></canvas>
+          <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+            <span id="loadCore" class="hud text-4xl font-black neon-cyan">47</span>
+            <span class="hud text-[10px] tracking-widest text-dim">CORES ACTIVE</span>
+          </div>
+        </div>
+        <div class="mt-1 text-center hud text-[11px] text-dim tracking-widest">NEON CORE · ANIMIRANI SPEKTER</div>
+        <div class="mt-3 h-16">
+          <canvas id="spectrumChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Desni: line graf + merica -->
+      <div class="glass rounded-lg hud-corners p-5">
+        <div class="mb-1 flex items-center justify-between">
+          <span class="text-[11px] font-bold tracking-[0.25em] text-cyan neon-cyan">ŽIVI PRETOK · PORABA</span>
+          <span class="hud text-[11px] text-dim tracking-widest">µ$ PRORAČUN</span>
+        </div>
+        <!-- KPI metriki -->
+        <div class="mb-3 grid grid-cols-2 gap-3">
+          <div class="rounded-md border border-edge bg-panel px-3 py-2">
+            <div class="hud text-[10px] tracking-widest text-dim">UPTIME</div>
+            <div class="hud text-xl font-black neon-cyan" id="kpiUptime">99.98%</div>
+          </div>
+          <div class="rounded-md border border-edge bg-panel px-3 py-2">
+            <div class="hud text-[10px] tracking-widest text-dim">PORABLJEN PRORAČUN</div>
+            <div class="hud text-xl font-black neon-orange" id="kpiBudget">$0.0124</div>
+          </div>
+        </div>
+        <div class="h-48">
+          <canvas id="flowChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======= LEDGER TABELA ======= -->
+    <section class="glass rounded-lg hud-corners overflow-hidden">
+      <div class="flex items-center justify-between border-b border-edge px-5 py-3">
+        <div class="flex items-center gap-2">
+          <span class="h-1.5 w-1.5 rounded-full bg-red" style="box-shadow:0 0 8px #ff3355"></span>
+          <span class="text-[11px] font-bold tracking-[0.25em] text-red neon-red">LEDGER · ZADNJI DOGODKI</span>
+        </div>
+        <span id="ledgerCount" class="hud text-[11px] text-dim">37 DOGODKOV</span>
+      </div>
+      <div class="max-h-[360px] overflow-auto">
+        <table class="w-full min-w-[720px] text-left text-sm">
+          <thead class="sticky top-0 bg-[#071019]">
+            <tr class="hud text-[10px] uppercase tracking-widest text-dim">
+              <th class="px-4 py-2.5 font-semibold">RUNSEQ</th>
+              <th class="px-4 py-2.5 font-semibold">TIP</th>
+              <th class="px-4 py-2.5 font-semibold">AGENT</th>
+              <th class="px-4 py-2.5 font-semibold">TRAJANJE</th>
+              <th class="px-4 py-2.5 font-semibold">PODROBNOST</th>
+              <th class="px-4 py-2.5 text-right font-semibold">AKCIJA</th>
+            </tr>
+          </thead>
+          <tbody id="ledgerRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="pb-4 text-center hud text-[10px] tracking-widest text-dim">
+      ROB AI STUDIO · KIBERNETIČNI NADZORNI VMESNIK · PODATKI SO SIMULIRANI (MOCK)
+    </footer>
+  </main>
+
+  <!-- ======================= JAVASCRIPT ======================= -->
+  <script>
+    'use strict';
+
+    // =====================================================================
+    //  0. API sloj — dashboard je povezan na živi Hermes ledger prek serverja.
+    //  Ko dashboard odpremo prek http://localhost:8787 (bun run src/server.ts)
+    //  so vsi podatki DEJANSKI. Če API ni dosegljiv (odprto kot file:// ali
+    //  server ne teče) pademo v offline mock fallback z jasnim bannerjem.
+    // =====================================================================
+
+    const API = {
+      health: '/api/health',
+      ledger: '/api/ledger',
+      runs: '/api/runs',
+    };
+
+    let offline = false;        // true, ko API ni dosegljiv
+    let ledgerData = [];        // podatkovna tabela (live ali mock)
+    let apiRuns = [];           // teki iz API-ja (ali mock)
+    let healthData = null;      // KPI iz health endpointa
+
+    async function api(path, opts) {
+      const res = await fetch(path, opts);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }
+
+    // =====================================================================
+    //  0b. MOCK fallback (če API ni dosegljiv / offline)
+    // =====================================================================
+
+    const SEED = [
+      { k:'task.submitted',  a:'USER',    n:'Izvedi diagnostiko reaktorja', gone:'mock' },
+      { k:'decision.made',   a:'PLANNER', n:'pot: zagon diagnostičnega toka' },
+      { k:'llm.responded',   a:'RUNNER',  n:'ollama · 1 240 žetonov' },
+      { k:'artifact.written',a:'BUILDER', n:'out/diagnostics-v1.md' },
+      { k:'run.completed',   a:'RUNNER',  n:'vsi koraki doseženi' },
+      { k:'task.submitted',  a:'USER',    n:'Izdelaj vmesnik API' },
+      { k:'llm.failed',      a:'RUNNER',  n:'ENETWORK · timeout' },
+      { k:'run.stuck',       a:'RUNNER',  n:'preverjanje ni uspelo' },
+      { k:'task.submitted',  a:'USER',    n:'Izdelaj kiber pomnilnik' },
+      { k:'artifact.written',a:'BUILDER', n:'src/server.ts' },
+      { k:'run.completed',   a:'RUNNER',  n:'vsi koraki doseženi' },
+    ];
+    const mockRuns = [
+      { id:'m-run-1', status:'completed', spendMicros: 1840 },
+      { id:'m-run-2', status:'failed',    spendMicros: 2560 },
+      { id:'m-run-3', status:'completed', spendMicros: 1320 },
+      { id:'m-run-4', status:'running',   spendMicros: 405 },
+    ];
+
+    // =====================================================================
+    //  1. Nalaganje podatkov (live → mock fallback)
+    // =====================================================================
+
+    async function loadAll() {
+      try {
+        const [h, l, r] = await Promise.all([
+          api(API.health),
+          api(API.ledger),
+          api(API.runs),
+        ]);
+        healthData = h;
+        ledgerData = l.events || [];
+        apiRuns = r.runs || [];
+        offline = false;
+      } catch {
+        offline = true;
+        ledgerData = SEED.map((e, i) => ({
+          runId: 'mock', runSeq: i + 1, kind: e.k, actor: e.a,
+          causedByRunSeq: i, ts: null, payload: { note: e.n },
+        }));
+        apiRuns = mockRuns;
+        healthData = { llmOnline: false, provider: '—', eventCount: ledgerData.length, runCount: apiRuns.length, budgetMicros: 0, uptimePct: 99.98 };
+      }
+      applyHealth();
+      renderLedger();
+      refreshCharts();
+      document.body.dataset.connected = offline ? 'offline' : 'live';
+    }
+
+    /** Kratka oznaka trajanja: iz delte ts med zaporednima dogodkoma, drugače poštena vrednost. */
+    function durationMs(a, b) {
+      if (a && b && a.ts && b.ts) {
+        const d = new Date(a.ts) - new Date(b.ts);
+        if (Number.isFinite(d) && d >= 0 && d < 600000) return d;
+      }
+      return null; // ni zanesljivega ts → prikaži '—'
+    }
+
+    // =====================================================================
+    //  2. Vizualna ovojnica (KPI, status, banner)
+    // =====================================================================
+
+    function applyHealth() {
+      const h = healthData || {};
+      // Uptime
+      const up = document.getElementById('kpiUptime');
+      if (up) up.textContent = (h.uptimePct ?? 99.98).toFixed(2) + '%';
+      // Budget — v mikrodolarjih.
+      const bg = document.getElementById('kpiBudget');
+      if (bg) bg.textContent = '$' + ((h.budgetMicros ?? 0) / 1_000_000).toFixed(4);
+      // LLM most / dogodki (le navidezno prikažeš v KPI, ki se sedaj legit.)
+      const llmEl = document.getElementById('llmState');
+      const evEl = document.getElementById('evState');
+      if (llmEl) {
+        llmEl.querySelector('b').textContent = h.llmOnline ? 'ONLINE' : 'OFFLINE';
+        llmEl.style.color = h.llmOnline ? '#00e5ff' : '#ff3355';
+      }
+      if (evEl) evEl.querySelector('b').textContent = h.eventCount ?? 0;
+    }
+
+    function showBanner() {
+      let b = document.getElementById('offlineBanner');
+      if (!b) {
+        b = document.createElement('div');
+        b.id = 'offlineBanner';
+        b.className = 'mb-4 rounded-lg border border-red/40 bg-red/10 px-4 py-2 text-sm text-red';
+        b.style.boxShadow = '0 0 16px rgba(255,51,85,.25)';
+        const main = document.querySelector('main');
+        main && main.prepend(b);
+      }
+      b.innerHTML = offline
+        ? '⚠ REŽIM OFFLINE — server ni dosegljiv. Za resnične (live) podatke zaženi <b>bun run src/server.ts</b> in odpri http://localhost:8787. Prikazujem mock podatke.'
+        : '';
+      b.style.display = offline ? '' : 'none';
+    }
+
+    // =====================================================================
+    //  3. Tabela: Ledger (clickable → modal)
+    // =====================================================================
+
+    function pillFor(kind) {
+      const map = { cyan:'#00e5ff', orange:'#ff9500', red:'#ff3355', dim:'#6b7c94' };
+      const group = ['task.submitted','decision.made','artifact.written','run.completed','plan.submitted','step.completed'].includes(kind) ? 'cyan'
+        : ['llm.requested','llm.responded','qa.decision','exec.ran'].includes(kind) ? 'orange'
+        : ['llm.failed','run.stuck'].includes(kind) ? 'red' : 'dim';
+      const c = map[group];
+      return `<span class="kind-pill" style="border-color:${c}55;color:${c}">${kind}</span>`;
+    }
+
+    function rowHtml(e, seq, i, duration) {
+      const payload = e.payload || {};
+      const note = (typeof payload === 'object' && payload) ? (payload.task || payload.path || payload.reason || payload.choice || '') : '';
+      const ts = e.ts || '—';
+      return `
+        <tr class="ledger-row border-b border-edge/40" data-seq="${seq}" data-idx="${i}">
+          <td class="hud px-4 py-2.5 text-[11px] text-dim">#${String(seq).padStart(3, '0')}</td>
+          <td class="px-4 py-2.5">${pillFor(e.kind)}</td>
+          <td class="hud px-4 py-2.5 text-[11px] tracking-wider text-slate-300">${e.actor || '—'}</td>
+          <td class="hud px-4 py-2.5 text-[11px] text-slate-300">${duration !== null ? duration + ' ms' : '—'}</td>
+          <td class="px-4 py-2.5 text-[12px] text-dim">${note || ts}</td>
+          <td class="px-4 py-2.5 text-right">
+            <button data-action="download" class="btn-neon rounded px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">Prenesi</button>
+            <button data-action="cancel" class="ml-1 rounded border border-red/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red" style="box-shadow:0 0 10px rgba(255,51,85,.25)">Prekliči</button>
+          </td>
+        </tr>`;
+    }
+
+    function renderLedger() {
+      const tb = document.getElementById('ledgerRows');
+      if (!tb) return;
+      const data = ledgerData.slice(); // najnovejši zgoraj
+      const rows = data
+        .map((e, i) => rowHtml(e, e.runSeq, i, durationMs(data[i + 1], e))) // trajanje od naslednjega (prejšnjemu runSeq) do tega
+        .join('');
+      tb.innerHTML = rows;
+      document.getElementById('ledgerCount').textContent = ledgerData.length + ' DOGODKOV';
+    }
+
+    // =====================================================================
+    //  4. Grafi (iz živih tekov)
+    // =====================================================================
+
+    let loadChart, spectrumChart, flowChart;
+    const CYAN = '#00e5ff', ORANGE = '#ff9500', RED = '#ff3355';
+
+    function buildLoadChart() {
+      const counts = { completed: 0, failed: 0, running: 0 };
+      apiRuns.forEach((r) => { counts[r.status] += 1; });
+      const total = apiRuns.length || 1;
+      const pct = Math.round((counts.completed / total) * 100);
+      document.getElementById('loadPct').textContent = pct + '%';
+      document.getElementById('loadCore').textContent = pct;
+
+      loadChart = new Chart(document.getElementById('loadChart'), {
+        type: 'doughnut',
+        data: {
+          labels: ['Completed', 'Failed', 'Running'],
+          datasets: [{ data: [counts.completed, counts.failed, counts.running], backgroundColor: [CYAN, RED, ORANGE], borderWidth: 0, borderRadius: 6 }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '78%',
+          plugins: { legend: { display: false }, tooltip: { displayColors: false } },
+        },
+      });
+    }
+
+    function buildFlow() {
+      if (!apiRuns.length) { apiRuns = mockRuns; }
+      const labels = apiRuns.map((_, i) => 'T' + (i + 1));
+      flowChart = new Chart(document.getElementById('flowChart'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Poraba (µ$)',
+            data: apiRuns.map((r) => r.spendMicros),
+            borderColor: CYAN, backgroundColor: 'rgba(0,229,255,0.08)', fill: true, tension: 0.45,
+            pointBackgroundColor: CYAN, pointRadius: 4, pointShadowColor: CYAN, pointShadowBlur: 8,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#6b7c94' }, grid: { color: 'rgba(0,229,255,0.06)' } },
+            y: { ticks: { color: '#6b7c94' }, grid: { color: 'rgba(0,229,255,0.06)' } },
+          },
+        },
+      });
+    }
+
+    function buildSpectrum() {
+      spectrumChart = new Chart(document.getElementById('spectrumChart'), {
+        type: 'bar',
+        data: {
+          labels: Array.from({ length: 24 }, (_, i) => 'f' + i),
+          datasets: [{
+            data: genSpectrum(),
+            backgroundColor: ctx => { const v = ctx.parsed?.y ?? 0; return v > 60 ? RED : v > 30 ? ORANGE : CYAN; },
+            borderRadius: 2,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+          plugins: { legend: { display: false }, tooltip: { enabled: false } },
+          scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
+        },
+      });
+    }
+
+    function genSpectrum() { return Array.from({ length: 24 }, () => Math.floor(12 + Math.random() * 88)); }
+
+    function refreshCharts() {
+      if (loadChart) loadChart.destroy();
+      if (spectrumChart) spectrumChart.destroy();
+      if (flowChart) flowChart.destroy();
+      buildLoadChart(); buildSpectrum(); buildFlow();
+    }
+
+    // =====================================================================
+    //  5. Akcije: Zaženi nalogo (→ živi Hermes), Prenesi, Prekliči
+    // =====================================================================
+
+    function burstDot(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.add('dot-burst');
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.background = 'currentColor';
+      el.style.boxShadow = '0 0 20px 6px currentColor';
+      setTimeout(() => { el.style.background = ''; el.style.boxShadow = ''; el.classList.remove('dot-burst'); }, 600);
+    }
+
+    async function runTask() {
+      const input = document.getElementById('taskInput');
+      const task = (input.value || '').trim();
+      if (!task) return;
+
+      // Vizualno utripanje agentov (architect→engineer→qa).
+      burstDot('dotArchitect'); setTimeout(() => burstDot('dotEngineer'), 220); setTimeout(() => burstDot('dotQa'), 440);
+
+      const btn = document.getElementById('runBtn');
+      const prev = btn.textContent;
+      btn.disabled = true; btn.textContent = 'PRETEKA …';
+
+      try {
+        if (offline) {
+          // Mock različica: dodamo dogodek + tek lokalno.
+          pushMock(task);
+          // osveži
+          await new Promise((r) => setTimeout(r, 560));
+          renderLedger(); refreshCharts();
+        } else {
+          // LIVE: pošljemo nalogo v Hermes (pravi tek, pravi LLM).
+          const res = await api('/api/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task, kind: 'dashboard' }),
+          });
+          // Po teku osvežimo vse žive podatke.
+          await loadAll();
+          // Pokaži rezultat.
+          if (!res.ok) throw new Error(res.error || 'tek ni uspel');
+        }
+      } catch (err) {
+        console.error('[command-center] napaka pri zagonu:', err);
+        alert('Napaka pri zagonu naloge: ' + err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = prev;
+        input.value = '';
+      }
+    }
+
+    function pushMock(task) {
+      const seq = ledgerData.length + 1;
+      ledgerData.push({ runId: 'mock', runSeq: seq, kind: 'task.submitted', actor: 'USER', causedByRunSeq: seq - 1, ts: null, payload: { task } });
+      apiRuns.push({ id: 'm-run-' + (apiRuns.length + 1), status: 'completed', spendMicros: 900 + Math.floor(Math.random() * 2000) });
+    }
+
+    function downloadLedger() {
+      const blob = new Blob([ 'ROB AI STUDIO — LEDGER IZVOZ\n'
+        + ledgerData.map(e => `#${e.runSeq} ${e.kind} ${e.actor} ${e.ts || ''}`).join('\n') ],
+        { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'ledger-' + Date.now() + '.log';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function cancelLatest() {
+      burstDot('dotQa');
+      // v live načinu prekličemo zadnji running tek simuliramo; mock dodamo stuck.
+      if (offline) {
+        const seq = ledgerData.length + 1;
+        ledgerData.push({ runId: 'mock', runSeq: seq, kind: 'run.stuck', actor: 'RUNNER', causedByRunSeq: seq - 1, ts: null, payload: { reason: 'ukaz preklican' } });
+        renderLedger(); refreshCharts();
+      }
+    }
+
+    // =====================================================================
+    //  6. Clickable: modal s podrobnostmi dogodka
+    // =====================================================================
+
+    function openModal(seqIndex) {
+      const e = ledgerData[seqIndex];
+      if (!e) return;
+      const payload = JSON.stringify(e.payload || {}, null, 2);
+      const overlay = document.getElementById('modal');
+      if (overlay) {
+        overlay.innerHTML = `
+          <div class="mx-auto max-w-lg rounded-lg border border-cyan/40 bg-[#08121c] p-5" style="box-shadow:0 0 30px rgba(0,229,255,.2)">
+            <div class="flex items-center justify-between">
+              <h3 class="tracking-widest text-cyan neon-cyan">DOGODEK #${e.runSeq}</h3>
+              <button class="text-slate-400 hover:text-white" data-close="modal">✕</button>
+            </div>
+            <div class="mt-3 space-y-2 text-sm">
+              <div class="flex justify-between border-b border-edge/50 pb-1"><span class="text-dim">Tip</span><span>${e.kind}</span></div>
+              <div class="flex justify-between border-b border-edge/50 pb-1"><span class="text-dim">Agent</span><span>${e.actor || '—'}</span></div>
+              <div class="flex justify-between border-b border-edge/50 pb-1"><span class="text-dim">RunId</span><span class="hud text-[11px]">${e.runId || '—'}</span></div>
+              <div class="flex justify-between border-b border-edge/50 pb-1"><span class="text-dim">CausedBy</span><span>${e.causedByRunSeq ?? '—'}</span></div>
+              <div class="flex justify-between border-b border-edge/50 pb-1"><span class="text-dim">Čas</span><span class="hud text-[11px]">${e.ts || '—'}</span></div>
+              <div class="pt-2">
+                <div class="mb-1 text-dim">Payload</div>
+                <pre class="hud overflow-auto rounded bg-black/40 p-2 text-[11px] text-emerald-200">${payload}</pre>
+              </div>
+            </div>
+          </div>`;
+        overlay.style.display = 'flex';
+      }
+    }
+
+    function closeModal() {
+      const m = document.getElementById('modal');
+      if (m) m.style.display = 'none';
+    }
+
+    // =====================================================================
+    //  7. Listenerji + zagon
+    // =====================================================================
+
+    function bind() {
+      document.getElementById('ledgerRows').addEventListener('click', (ev) => {
+        const btn = ev.target.closest('[data-action]');
+        if (btn) {
+          const act = btn.dataset.action;
+          if (act === 'download') downloadLedger();
+          else if (act === 'cancel') cancelLatest();
+          return;
+        }
+        // klik kjer koli drugje v vrstici → modal (clickable)
+        const tr = ev.target.closest('tr[data-idx]');
+        if (tr) openModal(Number(tr.dataset.idx));
+      });
+      document.getElementById('runBtn').addEventListener('click', runTask);
+      document.getElementById('taskInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') runTask(); });
+      // klik na agenta → poudarimo (clickable status)
+      ['dotArchitect', 'dotEngineer', 'dotQa'].forEach((id, i) => {
+        const names = ['ARCHITECT', 'ENGINEER', 'QA'];
+        const el = document.getElementById(id);
+        el.addEventListener('click', () => {
+          alert('Agent ' + names[i] + ' je aktiven.\nKlik naznanja izbor agenta — v tej različici poudari njegov indikator.');
+          burstDot(id);
+        });
+      });
+      // modal overlay
+      const overlay = document.createElement('div');
+      overlay.id = 'modal';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px)';
+      overlay.addEventListener('click', (ev) => { if (ev.target === overlay || ev.target.closest('[data-close]')) closeModal(); });
+      document.body.appendChild(overlay);
+    }
+
+    // Init: najprej poskušamo live API, če ne uspe → mock + offline banner.
+    (async () => {
+      bind();
+      showBanner();
+      await loadAll();
+      showBanner();
+    })();
+  </script>
+</body>
+</html>

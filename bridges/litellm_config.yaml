@@ -1,0 +1,16 @@
+model_list:
+  - model_name: "*opus*"
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+  - model_name: "*sonnet*"
+    litellm_params:
+      model: deepseek/deepseek-coder
+      api_key: os.environ/DEEPSEEK_API_KEY
+  - model_name: "*"
+    litellm_params:
+      model: deepseek/deepseek-chat
+      api_key: os.environ/DEEPSEEK_API_KEY
+general_settings:
+  master_key: sk-hermes-master-key
+  drop_params: true
