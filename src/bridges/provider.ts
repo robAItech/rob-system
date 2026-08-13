@@ -23,7 +23,7 @@ export const PROVIDERS = {
   ollama: {
     baseUrl: 'http://127.0.0.1:11434/v1',
     apiKeyEnv: null,
-    defaultModel: 'llama3.2:3b',
+    defaultModel: 'gemma4:latest',
     baseUrlEnv: 'OLLAMA_BASE_URL',
   },
   openai: {

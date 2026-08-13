@@ -48,22 +48,27 @@ export const builder: Agent = {
     if (state.artifacts.length > 0) return [];
 
     const text = state.lastLLM?.text ?? '';
-    const artifacts = parseArtifacts(text);
+    let artifacts = parseArtifacts(text);
+    const decisionRunSeq = state.decisions.at(-1)?.runSeq ?? event.runSeq;
+
+    // Obstojc: model ni uporabil strukture @file (npr. se za poslovni predlog vrne
+    // navadan Markdown). Namesto da bi sistem zavrel na "ni @file bloka", zapakiramo
+    // celoten odgovor v eno datoteko — za besedilne artefakte je to pravilno, ne zguba.
+    if (artifacts.length === 0 && text.trim().length > 0) {
+      artifacts = [{ path: 'out/RESULT.md', content: text }];
+    }
     if (artifacts.length === 0) {
-      // Model ni vrnil strukture @file: nekorektna naloga — ne moremo graditi.
       return [
         {
           type: 'run.declareStuck',
           idemKey: idemKeyFor('builder', event.runSeq, 0),
           becauseOf: event.runSeq,
-          reason: 'LLM ni vrnil nobenega @file bloka',
+          reason: 'LLM je vrnil prazen odgovor',
         },
       ];
     }
 
     // Pripis verigi: vsak zapis iz vira odlocitev (zadnja decision.made).
-    const decisionRunSeq = state.decisions.at(-1)?.runSeq ?? event.runSeq;
-
     const cmds: Command[] = artifacts.map((a, i) => ({
       type: 'fs.write',
       idemKey: idemKeyFor('builder', event.runSeq, i + 1),

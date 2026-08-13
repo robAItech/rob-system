@@ -17,14 +17,25 @@ import type { Agent, Command, Event, RunState } from '../hermes/types.ts';
 import { idemKeyFor } from '../hermes/types.ts';
 
 const SYSTEM_PROMPT = [
-  'Si orkestrator programerskega podjetja.',
-  'Izpolni nalogo s konkretnimi datotekami.',
-  'Vsako izhodno datoteko podaj v natancnem formatu:',
+  'Si orkestrator programerskega podjetja. Izpolni nalogo s konkretnimi, dejanskimi datotekami.',
+  '',
+  'Najprej izberi ARTEFAKTE, ki ustrezajo TIPU naloge:',
+  '  - dokumenti, predlogi, porocila, analize -> .md',
+  '  - programi, skripte, avtomatizacija      -> .py ali .ts/.js',
+  '  - spletne strani, prezentacije, UI       -> .html skupaj s .css/.js po potrebi',
+  '  - podatki, konfig               -> .json',
+  '  - drugo                       -> naraven format (pdf ni mozno, uporabi .md)',
+  '',
+  'Pri poslovnem predlogu izdelaj VEC datotek: glavni dokument (.md), primerjalno tabelo, ',
+  'in pogosto tudi python skripto (.py), ki iz podatkov generira HTML prezentacijo.',
+  '',
+  'Vsako datoteko podaj v NATANCNEM formatu:',
   '@file <relativna_posix_pot>',
   '```<jezik>',
   '<vsebina>',
   '```',
-  'Prvi blok naj bo @file out/PLAN.md s kratkim nacrtom, nadaljnji pojljubni artefakti.',
+  '',
+  'Uporabi smiselne relativne poti, npr. out/analiza.md, out/skripta.py, out/predstavitev.html.',
   'Brez uvoda, brez komentarja zunaj blokov.',
 ].join(' ');
 

@@ -259,6 +259,18 @@
       </div>
     </section>
 
+    <!-- ======= IZVEDENE NALOGE (klikni → artefakti) ======= -->
+    <section class="glass rounded-lg hud-corners overflow-hidden">
+      <div class="flex items-center justify-between border-b border-edge px-5 py-3">
+        <div class="flex items-center gap-2">
+          <span class="h-1.5 w-1.5 rounded-full bg-cyan" style="box-shadow:0 0 8px #00e5ff"></span>
+          <span class="text-[11px] font-bold tracking-[0.25em] text-cyan neon-cyan">IZVEDENE NALOGE · KLIKNI ZA ARTEFAKTE</span>
+        </div>
+        <span id="artifactCount" class="hud text-[11px] text-dim">—</span>
+      </div>
+      <div id="runList" class="max-h-[260px] overflow-auto p-4"></div>
+    </section>
+
     <!-- ======= LEDGER TABELA ======= -->
     <section class="glass rounded-lg hud-corners overflow-hidden">
       <div class="flex items-center justify-between border-b border-edge px-5 py-3">
@@ -368,6 +380,7 @@
       }
       applyHealth();
       renderLedger();
+      renderRuns();
       refreshCharts();
       document.body.dataset.connected = offline ? 'offline' : 'live';
     }
@@ -436,6 +449,11 @@
       const payload = e.payload || {};
       const note = (typeof payload === 'object' && payload) ? (payload.task || payload.path || payload.reason || payload.choice || '') : '';
       const ts = e.ts || '—';
+      // Ce dogodek predstavlja dejanski artefakt, dodamo pot za prenos datoteke.
+      const artPath = e.kind === 'artifact.written' && payload && typeof payload === 'object' ? (payload.path || '') : '';
+      const dlBtn = artPath
+        ? `<button data-action="download" data-artifact="${artPath}" class="btn-neon rounded px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider" title="Prenesi ${artPath}">Prenesi ⤓</button>`
+        : `<button data-action="download" class="btn-neon rounded px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">Prenesi</button>`;
       return `
         <tr class="ledger-row border-b border-edge/40" data-seq="${seq}" data-idx="${i}">
           <td class="hud px-4 py-2.5 text-[11px] text-dim">#${String(seq).padStart(3, '0')}</td>
@@ -444,7 +462,7 @@
           <td class="hud px-4 py-2.5 text-[11px] text-slate-300">${duration !== null ? duration + ' ms' : '—'}</td>
           <td class="px-4 py-2.5 text-[12px] text-dim">${note || ts}</td>
           <td class="px-4 py-2.5 text-right">
-            <button data-action="download" class="btn-neon rounded px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider">Prenesi</button>
+            ${dlBtn}
             <button data-action="cancel" class="ml-1 rounded border border-red/40 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red" style="box-shadow:0 0 10px rgba(255,51,85,.25)">Prekliči</button>
           </td>
         </tr>`;
@@ -459,6 +477,117 @@
         .join('');
       tb.innerHTML = rows;
       document.getElementById('ledgerCount').textContent = ledgerData.length + ' DOGODKOV';
+    }
+
+    /** Ikona glede na tip datoteke. */
+    function artifactIcon(path) {
+      const ext = (path.split('.').pop() || '').toLowerCase();
+      return ext === 'html' ? '🌐' : ext === 'py' ? '🐍' : ext === 'md' ? '📝' : ext === 'pdf' ? '📕' : ext === 'json' ? '🧾' : '📦';
+    }
+
+    /**
+     * Seznam IZVEDENIH NALOG (po teku/run). Vsak vnos: kratka naloga, status, št. artefaktov.
+     * Klik na nalogo → openRunRuns(runId) → modal z artefakti tistega teka.
+     */
+    function renderRuns() {
+      const list = document.getElementById('runList');
+      if (!list) return;
+
+      // Grupiraj dogodke po runId + izlušči nalogo in artefakte.
+      const byRun = new Map();
+      ledgerData.forEach((e) => {
+        if (!byRun.has(e.runId)) byRun.set(e.runId, { task: '', artifacts: [], events: 0 });
+        const r = byRun.get(e.runId);
+        r.events += 1;
+        if (e.kind === 'task.submitted' && e.payload && e.payload.task) r.task = e.payload.task;
+        if (e.kind === 'artifact.written' && e.payload && e.payload.path) r.artifacts.push(e.payload.path);
+      });
+
+      // Status iz apiRuns (če obstaja) — vremeni po statusu.
+      const runStatus = {};
+      (apiRuns || []).forEach((r) => { runStatus[r.id] = r.status; });
+
+      const runs = [...byRun.entries()].reverse(); // najnovejši zgoraj
+      document.getElementById('artifactCount').textContent = runs.length + ' NALOG';
+
+      if (runs.length === 0) {
+        list.innerHTML = `<div class="text-[12px] text-dim">Ni še izvedenih nalog.</div>`;
+        return;
+      }
+
+      // Dedup nalog z istim runId (če je večkrat isti run) — ampak run_id je unikaten.
+      list.innerHTML = runs.map(([runId, r]) => {
+        const runIdShort = String(runId).slice(0, 8) || '—';
+        const status = runStatus[runId] || '—';
+        const statusColor = status === 'completed' ? '#34d399' : status === 'stuck' || status === 'failed' ? '#ff3355' : status === 'running' ? '#ff9500' : '#6b7c94';
+        const taskText = r.task || 'Naloga (bez naziva)';
+        return `
+          <button class="run-row mb-2 flex w-full items-center justify-between gap-3 rounded-md border border-edge/50 bg-panel px-4 py-3 text-left transition hover:border-cyan/50"
+                  onclick="openRunRuns('${runId}')" title="Klikni za artefakte te naloge">
+            <div class="min-w-0">
+              <div class="truncate text-[13px] text-slate-200">${taskText}</div>
+              <div class="hud text-[10px] text-dim">#${runIdShort} · ${r.events} dogodkov</div>
+            </div>
+            <div class="flex shrink-0 items-center gap-3">
+              <span class="hud rounded px-2 py-0.5 text-[10px] font-bold" style="color:${statusColor};border:1px solid ${statusColor}55">${status.toUpperCase()}</span>
+              <span class="hud text-[11px]" style="color:#00e5ff">${r.artifacts.length} ▣</span>
+            </div>
+          </button>`;
+      }).join('');
+    }
+
+    /** Odpre modal s seznamom artefaktov izbranega teka (run). */
+    function openRunRuns(runId) {
+      const events = ledgerData.filter((e) => e.runId === runId);
+      const task = events.find((e) => e.kind === 'task.submitted' && e.payload && e.payload.task);
+      const arts = [...new Set(
+        events.filter((e) => e.kind === 'artifact.written' && e.payload && e.payload.path)
+          .map((e) => e.payload.path),
+      )];
+
+      const overlay = document.getElementById('modal');
+      if (!overlay) return;
+
+      const artHtml = arts.length === 0
+        ? `<div class="text-[12px] text-dim">Ta tek ni ustvaril artefaktov.</div>`
+        : arts.map((path) => {
+            const name = path.split('/').pop() || path;
+            return `
+              <div class="flex items-center justify-between gap-2 rounded-md border border-edge/50 bg-panel px-3 py-2">
+                <div class="min-w-0">
+                  <div class="truncate text-[12px] text-cyan neon-cyan" title="${path}">${artifactIcon(path)} ${name}</div>
+                  <div class="hud text-[10px] text-dim truncate">${path}</div>
+                </div>
+                <div class="flex shrink-0 gap-1">
+                  <button class="btn-neon rounded px-2.5 py-1 text-[10px] font-bold uppercase" onclick="viewArtifact('${path}')">Odpri</button>
+                  <button class="rounded border border-cyan/40 px-2 py-1 text-[10px] font-bold text-cyan" title="Prenesi raw datoteko" onclick="downloadArtifactRaw('${path}')">⤓</button>
+                </div>
+              </div>`;
+          }).join('');
+
+      overlay.innerHTML = `
+        <div class="mx-auto w-full max-w-lg rounded-lg border border-cyan/40 bg-[#08121c] p-5" style="box-shadow:0 0 30px rgba(0,229,255,.2)">
+          <div class="flex items-center justify-between">
+            <h3 class="tracking-widest text-cyan neon-cyan">ARTEFAKTI NALOGE</h3>
+            <button class="text-slate-400 hover:text-white" data-close="modal">✕</button>
+          </div>
+          <div class="mt-2 hud text-[10px] text-dim">#${runId}</div>
+          <div class="mt-1 mb-3 rounded-md border border-edge/40 bg-black/30 px-3 py-2 text-[13px] text-slate-200">${task ? task.payload.task : 'Naloga'}</div>
+          <div class="space-y-2">${artHtml}</div>
+          <div class="mt-3 flex gap-2">
+            ${arts.length > 0 ? `<button class="btn-neon rounded px-3 py-1.5 text-[10px] font-bold uppercase" onclick="downloadRunAll('${runId}')">Prenesi vse</button>` : ''}
+            <button class="rounded border border-edge px-3 py-1.5 text-[10px] font-bold uppercase text-dim" onclick="closeModal()">Zapri</button>
+          </div>
+        </div>`;
+      overlay.style.display = 'flex';
+    }
+
+    /** Prenese vse artefakte izbranega teka, vsakega kot raw datoteko. */
+    function downloadRunAll(runId) {
+      const evs = ledgerData.filter((e) => e.runId === runId && e.kind === 'artifact.written' && e.payload && e.payload.path);
+      const paths = [...new Set(evs.map((e) => e.payload.path))];
+      // Dodamo kratek zamik, da se več downloadov ne prekriva.
+      paths.forEach((p, i) => setTimeout(() => downloadArtifactRaw(p), i * 300));
     }
 
     // =====================================================================
@@ -614,6 +743,19 @@
       URL.revokeObjectURL(url);
     }
 
+    /** Odpre dejanski artefakt v novem zavihku, renderiran (view, ne raw download). */
+    function viewArtifact(path) {
+      window.open('/api/artifact?path=' + encodeURIComponent(path) + '&view=1', '_blank');
+    }
+
+    /** Prenese dejanski artefakt kot raw datoteko (npr. za python kodo, pdf, json). */
+    function downloadArtifactRaw(path) {
+      const a = document.createElement('a');
+      a.href = '/api/artifact?path=' + encodeURIComponent(path);
+      a.download = path.split('/').pop() || 'artefakt';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }
+
     function cancelLatest() {
       burstDot('dotQa');
       // v live načinu prekličemo zadnji running tek simuliramo; mock dodamo stuck.
@@ -670,7 +812,11 @@
         const btn = ev.target.closest('[data-action]');
         if (btn) {
           const act = btn.dataset.action;
-          if (act === 'download') downloadLedger();
+          if (act === 'download') {
+            // Ce gumb nosi dejanski artefakt (artifact.written), ga ODPREMO renderiranega.
+            if (btn.dataset.artifact) viewArtifact(btn.dataset.artifact);
+            else downloadLedger();
+          }
           else if (act === 'cancel') cancelLatest();
           return;
         }

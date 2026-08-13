@@ -171,6 +171,25 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
+/** Content-Type glede na koncnico datoteke (za renderiran ogled artefakta). */
+function contentTypeFor(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'html': case 'htm': return 'text/html; charset=utf-8';
+    case 'md': case 'markdown': return 'text/markdown; charset=utf-8';
+    case 'json': return 'application/json; charset=utf-8';
+    case 'css': return 'text/css; charset=utf-8';
+    case 'js': case 'mjs': return 'application/javascript; charset=utf-8';
+    case 'py': return 'text/x-python; charset=utf-8';
+    case 'txt': case 'log': return 'text/plain; charset=utf-8';
+    case 'png': return 'image/png';
+    case 'jpg': case 'jpeg': return 'image/jpeg';
+    case 'svg': return 'image/svg+xml';
+    case 'pdf': return 'application/pdf';
+    default: return 'application/octet-stream';
+  }
+}
+
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
@@ -192,6 +211,31 @@ const server = Bun.serve({
     if (req.method === 'GET' && url.pathname === '/api/health') return json(await health());
     if (req.method === 'GET' && url.pathname === '/api/ledger') return json({ events: readEvents() });
     if (req.method === 'GET' && url.pathname === '/api/runs') return json({ runs: readRuns() });
+
+    // API: prenesi/preglej dejanski artefakt (npr. out/presentation.html).
+    // GET /api/artifact?path=out/presentation.html
+    //    → attach download (raw) za tekst.
+    // GET /api/artifact?path=out/presentation.html&view=1
+    //    → vrne artefakt s PRAVIM Content-Type, da se v brskalniku renderira (odpre).
+    if (req.method === 'GET' && url.pathname === '/api/artifact') {
+      const rel = (url.searchParams.get('path') || '').replace(/^\/+/, '');
+      const view = url.searchParams.get('view') === '1';
+      const abs = `${OUT_ROOT}/${rel}`;
+      const file = Bun.file(abs);
+      const exists = await file.exists();
+      if (!exists) return json({ ok: false, error: 'artefakt ne obstaja: ' + rel }, 404);
+      const name = rel.split('/').pop() || 'artefakt';
+      const buf = await file.arrayBuffer();
+      const headers: Record<string, string> = { 'Access-Control-Allow-Origin': '*' };
+      if (view) {
+        headers['Content-Type'] = contentTypeFor(name);
+        // Onako, da ni attachment → brskalnik pokaže stran renderirano.
+      } else {
+        headers['Content-Type'] = 'application/octet-stream';
+        headers['Content-Disposition'] = `attachment; filename="${name}"`;
+      }
+      return new Response(buf, { headers });
+    }
 
     // API: poženi novo nalogo
     if (req.method === 'POST' && url.pathname === '/api/run') {

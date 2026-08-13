@@ -21,3 +21,8 @@ diagrams/
 # Razvojni grader in helper
 *.tsbuildinfo
 .gstack/
+
+# Skrivnosti / lokalna konfiguracija (nikoli commit-aj API klucev)
+.env
+.env.local
+*.local
