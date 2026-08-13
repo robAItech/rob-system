@@ -26,3 +26,14 @@ diagrams/
 .env
 .env.local
 *.local
+
+# Python (sodelavec / .rob_ai)
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Baze podatkov in lokalno stanje (Rob AI Studio)
+.rob_ai/memory.db
+.DS_Store

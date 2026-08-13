@@ -1,0 +1,1748 @@
+{
+  "nodes": {
+    "demo_rsi.py": {
+      "classes": [],
+      "functions": [
+        "run_demo"
+      ],
+      "imports": [
+        "json"
+      ]
+    },
+    "e2e_mesh_tester.py": {
+      "classes": [],
+      "functions": [],
+      "imports": [
+        "asyncio",
+        "httpx",
+        "sys",
+        "subprocess",
+        "time"
+      ]
+    },
+    "evaluate_rsi.py": {
+      "classes": [],
+      "functions": [
+        "main"
+      ],
+      "imports": []
+    },
+    "fix_manifests.py": {
+      "classes": [],
+      "functions": [],
+      "imports": [
+        "os",
+        "sys"
+      ]
+    },
+    "live_scanner_demo.py": {
+      "classes": [],
+      "functions": [
+        "run_scanner"
+      ],
+      "imports": [
+        "json"
+      ]
+    },
+    "rsi_runner.py": {
+      "classes": [],
+      "functions": [
+        "run_rsi_loop"
+      ],
+      "imports": [
+        "os",
+        "sys",
+        "subprocess"
+      ]
+    },
+    "run_swarm.py": {
+      "classes": [],
+      "functions": [
+        "run_cmd",
+        "extract_code_blocks",
+        "main"
+      ],
+      "imports": [
+        "os",
+        "sys",
+        "time",
+        "re",
+        "subprocess",
+        "argparse"
+      ]
+    },
+    "run_swarm.py.py": {
+      "classes": [],
+      "functions": [
+        "validate_environment",
+        "print_banner",
+        "main"
+      ],
+      "imports": [
+        "sys",
+        "os",
+        "argparse",
+        "time",
+        "traceback"
+      ]
+    },
+    "test_rsi_live.py": {
+      "classes": [],
+      "functions": [
+        "run_verification"
+      ],
+      "imports": [
+        "os",
+        "shutil",
+        "json"
+      ]
+    },
+    "actions/enterprise_api_versioning/enterprise_api_versioning.py": {
+      "classes": [
+        "VersionManager"
+      ],
+      "functions": [
+        "__init__",
+        "is_valid_semver",
+        "is_supported",
+        "is_deprecated",
+        "add_supported_version",
+        "deprecate_version",
+        "get_version_info",
+        "validate_version_header"
+      ],
+      "imports": [
+        "re"
+      ]
+    },
+    "actions/enterprise_api_versioning/main.py": {
+      "classes": [
+        "VersionValidationMiddleware"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_api_versioning/schemas.py": {
+      "classes": [
+        "VersionInfo",
+        "HealthResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_api_versioning/test_enterprise_api_versioning.py": {
+      "classes": [
+        "TestVersionManager",
+        "TestAPIEndpoints"
+      ],
+      "functions": [
+        "test_valid_semver",
+        "test_invalid_semver",
+        "test_version_manager_initialization",
+        "test_invalid_initialization",
+        "test_add_supported_version",
+        "test_deprecate_version",
+        "test_validate_version_header",
+        "test_health_endpoint_success",
+        "test_protected_endpoint_with_valid_version",
+        "test_protected_endpoint_with_another_valid_version",
+        "test_protected_endpoint_missing_version",
+        "test_protected_endpoint_invalid_version_format",
+        "test_protected_endpoint_unsupported_version",
+        "test_version_info_endpoint",
+        "test_health_endpoint_ignores_version",
+        "test_health_endpoint_with_invalid_version"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_api_versioning/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_audit_trail/enterprise_audit_trail.py": {
+      "classes": [
+        "EnterpriseAuditTrail"
+      ],
+      "functions": [
+        "__init__",
+        "_calculate_hash"
+      ],
+      "imports": [
+        "hashlib",
+        "json",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_audit_trail/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_audit_trail/schemas.py": {
+      "classes": [
+        "AuditRecordCreate",
+        "AuditRecord",
+        "AuditVerificationResult"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_audit_trail/test_enterprise_audit_trail.py": {
+      "classes": [],
+      "functions": [
+        "reset_audit_chain",
+        "test_fastapi_audit_endpoints"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_audit_trail/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_auth_vault/enterprise_auth_vault.py": {
+      "classes": [
+        "EnterpriseAuthVault"
+      ],
+      "functions": [
+        "__init__",
+        "_hash_key",
+        "generate_api_key",
+        "verify_api_key",
+        "encrypt_data",
+        "decrypt_data"
+      ],
+      "imports": [
+        "hmac",
+        "hashlib",
+        "secrets",
+        "base64"
+      ]
+    },
+    "actions/enterprise_auth_vault/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_auth_vault/schemas.py": {
+      "classes": [
+        "Role",
+        "ApiKeyCreate",
+        "ApiKeyResponse",
+        "TokenVerifyRequest",
+        "VaultEncryptRequest",
+        "VaultDecryptRequest"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_auth_vault/test_enterprise_auth_vault.py": {
+      "classes": [],
+      "functions": [
+        "reset_vault",
+        "test_auth_vault_logic_and_rbac",
+        "test_encryption_roundtrip",
+        "test_fastapi_auth_vault_endpoints"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_auth_vault/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_cache_layer/enterprise_cache_layer.py": {
+      "classes": [
+        "EnterpriseCacheLayer"
+      ],
+      "functions": [
+        "__init__"
+      ],
+      "imports": [
+        "asyncio",
+        "time"
+      ]
+    },
+    "actions/enterprise_cache_layer/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_cache_layer/schemas.py": {
+      "classes": [
+        "CacheStats",
+        "CacheSetRequest",
+        "CacheResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_cache_layer/test_enterprise_cache_layer.py": {
+      "classes": [],
+      "functions": [
+        "reset_cache",
+        "test_fastapi_cache_endpoints"
+      ],
+      "imports": [
+        "pytest",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_cache_layer/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_circuit_breaker/enterprise_circuit_breaker.py": {
+      "classes": [
+        "CircuitBreakerOpenException",
+        "EnterpriseCircuitBreaker"
+      ],
+      "functions": [
+        "__init__",
+        "_update_state",
+        "can_execute",
+        "on_success",
+        "on_failure",
+        "get_status"
+      ],
+      "imports": [
+        "time"
+      ]
+    },
+    "actions/enterprise_circuit_breaker/main.py": {
+      "classes": [],
+      "functions": [
+        "get_or_create_breaker"
+      ],
+      "imports": []
+    },
+    "actions/enterprise_circuit_breaker/schemas.py": {
+      "classes": [
+        "CircuitState",
+        "CircuitConfig",
+        "ExecutionRequest",
+        "CircuitStatusResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_circuit_breaker/test_enterprise_circuit_breaker.py": {
+      "classes": [],
+      "functions": [
+        "reset_breakers",
+        "test_circuit_breaker_logic",
+        "test_fastapi_api"
+      ],
+      "imports": [
+        "pytest",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_circuit_breaker/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_contract_testing/enterprise_contract_testing.py": {
+      "classes": [
+        "ContractManager"
+      ],
+      "functions": [
+        "__init__",
+        "generate_contract",
+        "verify_contract",
+        "get_contract",
+        "list_contracts",
+        "_compare_field_schemas",
+        "_calculate_checksum"
+      ],
+      "imports": [
+        "hashlib",
+        "json",
+        "uuid"
+      ]
+    },
+    "actions/enterprise_contract_testing/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_contract_testing/schemas.py": {
+      "classes": [
+        "ContractGenerateRequest",
+        "ContractGenerateResponse",
+        "ContractVerifyRequest",
+        "ContractVerifyResponse",
+        "ContractInfo"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_contract_testing/test_enterprise_contract_testing.py": {
+      "classes": [
+        "TestContractManager",
+        "TestContractAPI"
+      ],
+      "functions": [
+        "valid_consumer_schema",
+        "valid_provider_schema",
+        "incompatible_provider_schema",
+        "test_generate_contract_success",
+        "test_generate_contract_empty_service_name",
+        "test_generate_contract_invalid_schema",
+        "test_generate_contract_missing_type",
+        "test_generate_contract_invalid_type",
+        "test_generate_contract_missing_properties",
+        "test_generate_contract_required_not_in_properties",
+        "test_verify_contract_success",
+        "test_verify_contract_missing_required_field",
+        "test_verify_contract_type_mismatch",
+        "test_verify_contract_nested_missing_field",
+        "test_verify_contract_enum_mismatch",
+        "test_verify_contract_array_type_mismatch",
+        "test_verify_contract_invalid_consumer_schema",
+        "test_verify_contract_invalid_provider_schema",
+        "test_get_contract_success",
+        "test_get_contract_not_found",
+        "test_list_contracts",
+        "test_generate_contract_endpoint_success",
+        "test_generate_contract_endpoint_invalid_service_name",
+        "test_generate_contract_endpoint_invalid_schema",
+        "test_verify_contract_endpoint_success",
+        "test_verify_contract_endpoint_incompatible",
+        "test_verify_contract_endpoint_missing_required",
+        "test_verify_contract_endpoint_type_mismatch",
+        "test_verify_contract_endpoint_invalid_consumer",
+        "test_list_contracts_endpoint",
+        "test_health_check_endpoint",
+        "test_verify_contract_endpoint_nested_missing",
+        "test_verify_contract_endpoint_enum_mismatch",
+        "test_verify_contract_endpoint_array_mismatch"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_contract_testing/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_core_contracts/enterprise_core_contracts.py": {
+      "classes": [],
+      "functions": [
+        "create_success_response",
+        "create_error_response",
+        "create_validation_error_response",
+        "create_health_response",
+        "validate_event"
+      ],
+      "imports": []
+    },
+    "actions/enterprise_core_contracts/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_core_contracts/schemas.py": {
+      "classes": [
+        "StatusEnum",
+        "EventTypeEnum",
+        "BaseEvent",
+        "ErrorResponse",
+        "SuccessResponse",
+        "ValidationErrorResponse",
+        "PaginationParams",
+        "PaginatedResponse",
+        "BaseEntity",
+        "HealthResponse"
+      ],
+      "functions": [
+        "validate_event_id",
+        "validate_source",
+        "validate_error_code",
+        "validate_message",
+        "validate_total_pages",
+        "validate_id"
+      ],
+      "imports": []
+    },
+    "actions/enterprise_core_contracts/test_enterprise_core_contracts.py": {
+      "classes": [
+        "TestStatusEnum",
+        "TestEventTypeEnum",
+        "TestBaseEvent",
+        "TestErrorResponse",
+        "TestSuccessResponse",
+        "TestValidationErrorResponse",
+        "TestPaginationParams",
+        "TestPaginatedResponse",
+        "TestBaseEntity",
+        "TestHealthResponse",
+        "TestHelperFunctions",
+        "TestAPI",
+        "TestSerialization"
+      ],
+      "functions": [
+        "client",
+        "test_status_values",
+        "test_status_members",
+        "test_event_type_values",
+        "test_event_type_members",
+        "test_valid_event",
+        "test_event_default_payload",
+        "test_event_empty_event_id",
+        "test_event_whitespace_event_id",
+        "test_event_empty_source",
+        "test_event_whitespace_source",
+        "test_event_invalid_event_type",
+        "test_event_serialization",
+        "test_event_deserialization",
+        "test_valid_error_response",
+        "test_error_response_with_details",
+        "test_error_response_empty_code",
+        "test_error_response_whitespace_code",
+        "test_error_response_empty_message",
+        "test_error_response_whitespace_message",
+        "test_error_response_serialization",
+        "test_valid_success_response",
+        "test_success_response_with_message",
+        "test_success_response_no_data",
+        "test_success_response_serialization",
+        "test_valid_validation_error",
+        "test_validation_error_default_errors",
+        "test_validation_error_custom_message",
+        "test_validation_error_serialization",
+        "test_valid_pagination",
+        "test_pagination_custom_values",
+        "test_pagination_invalid_page",
+        "test_pagination_invalid_page_size",
+        "test_pagination_page_size_too_large",
+        "test_pagination_invalid_sort_order",
+        "test_valid_paginated_response",
+        "test_paginated_response_multiple_pages",
+        "test_paginated_response_invalid_total_pages",
+        "test_paginated_response_empty_items",
+        "test_valid_entity",
+        "test_entity_custom_status",
+        "test_entity_empty_id",
+        "test_entity_whitespace_id",
+        "test_entity_serialization",
+        "test_valid_health_response",
+        "test_health_response_custom_version",
+        "test_health_response_serialization",
+        "test_create_success_response",
+        "test_create_success_response_with_message",
+        "test_create_error_response",
+        "test_create_error_response_with_details",
+        "test_create_validation_error_response",
+        "test_create_validation_error_response_custom_message",
+        "test_create_health_response",
+        "test_create_health_response_custom_version",
+        "test_validate_event_valid",
+        "test_validate_event_invalid",
+        "test_health_endpoint",
+        "test_root_endpoint",
+        "test_health_endpoint_response_model",
+        "test_base_event_roundtrip",
+        "test_error_response_roundtrip",
+        "test_success_response_roundtrip",
+        "test_validation_error_roundtrip",
+        "test_pagination_params_roundtrip",
+        "test_base_entity_roundtrip",
+        "test_health_response_roundtrip"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_core_contracts/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_core_utils/enterprise_core_utils.py": {
+      "classes": [
+        "TimestampNormalizer",
+        "HashUtils"
+      ],
+      "functions": [
+        "normalize",
+        "validate",
+        "_normalize_datetime",
+        "_normalize_string",
+        "_parse_iso_string",
+        "sha256",
+        "verify",
+        "is_valid_hash"
+      ],
+      "imports": [
+        "hashlib",
+        "re"
+      ]
+    },
+    "actions/enterprise_core_utils/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_core_utils/schemas.py": {
+      "classes": [
+        "HealthResponse",
+        "RootResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_core_utils/test_enterprise_core_utils.py": {
+      "classes": [
+        "TestTimestampNormalizer",
+        "TestHashUtils",
+        "TestAPI"
+      ],
+      "functions": [
+        "test_normalize_datetime_utc",
+        "test_normalize_datetime_with_offset",
+        "test_normalize_naive_datetime",
+        "test_normalize_iso_string_z",
+        "test_normalize_iso_string_offset",
+        "test_normalize_iso_string_microseconds",
+        "test_normalize_invalid_type",
+        "test_normalize_invalid_string",
+        "test_validate_valid_z",
+        "test_validate_valid_offset",
+        "test_validate_valid_microseconds",
+        "test_validate_invalid_format",
+        "test_validate_invalid_date",
+        "test_validate_non_string",
+        "test_validate_empty_string",
+        "test_validate_missing_time",
+        "test_sha256_basic",
+        "test_sha256_empty_string",
+        "test_sha256_unicode",
+        "test_sha256_special_characters",
+        "test_sha256_long_string",
+        "test_sha256_invalid_type",
+        "test_sha256_invalid_encoding",
+        "test_verify_correct_hash",
+        "test_verify_incorrect_hash",
+        "test_verify_uppercase_hash",
+        "test_verify_invalid_hash_type",
+        "test_verify_invalid_data_type",
+        "test_is_valid_hash_valid",
+        "test_is_valid_hash_uppercase",
+        "test_is_valid_hash_too_short",
+        "test_is_valid_hash_too_long",
+        "test_is_valid_hash_invalid_chars",
+        "test_is_valid_hash_non_string",
+        "test_is_valid_hash_empty",
+        "client",
+        "test_health_endpoint",
+        "test_root_endpoint",
+        "test_health_timestamp_valid"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_core_utils/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_deployment_manager/enterprise_deployment_manager.py": {
+      "classes": [
+        "DeploymentManager"
+      ],
+      "functions": [
+        "__init__",
+        "get_services",
+        "generate_docker_compose",
+        "update_gateway_routes"
+      ],
+      "imports": [
+        "re",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_deployment_manager/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_deployment_manager/schemas.py": {
+      "classes": [
+        "DeploymentResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_deployment_manager/test_enterprise_deployment_manager.py": {
+      "classes": [
+        "MockProcess"
+      ],
+      "functions": [
+        "mock_env"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_deployment_manager/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_event_bus/enterprise_event_bus.py": {
+      "classes": [
+        "EventBus"
+      ],
+      "functions": [
+        "__init__",
+        "create_topic",
+        "delete_topic",
+        "publish",
+        "subscribe",
+        "unsubscribe",
+        "get_topics",
+        "get_topic_messages",
+        "clear_topic",
+        "get_subscriber_count",
+        "has_topic"
+      ],
+      "imports": [
+        "asyncio",
+        "logging",
+        "threading"
+      ]
+    },
+    "actions/enterprise_event_bus/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_event_bus/schemas.py": {
+      "classes": [
+        "EventMessage",
+        "PublishRequest"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_event_bus/test_enterprise_event_bus.py": {
+      "classes": [],
+      "functions": [
+        "client",
+        "bus",
+        "test_subscribe_and_publish",
+        "test_unsubscribe",
+        "test_unsubscribe_nonexistent",
+        "test_multiple_subscribers",
+        "test_get_topics",
+        "test_get_topic_messages",
+        "test_get_topic_messages_nonexistent",
+        "test_clear_topic",
+        "test_clear_nonexistent_topic",
+        "test_publish_endpoint",
+        "test_publish_endpoint_invalid_payload",
+        "test_get_topics_endpoint",
+        "test_get_topic_messages_endpoint",
+        "test_get_topic_messages_not_found",
+        "test_clear_topic_endpoint",
+        "test_clear_topic_not_found",
+        "test_subscriber_error_handling",
+        "test_concurrent_publish",
+        "callback",
+        "callback",
+        "callback",
+        "callback1",
+        "callback2",
+        "failing_callback",
+        "working_callback",
+        "callback",
+        "publish_messages"
+      ],
+      "imports": [
+        "asyncio",
+        "threading",
+        "pytest"
+      ]
+    },
+    "actions/enterprise_event_bus/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_feature_flag/enterprise_feature_flag.py": {
+      "classes": [
+        "EnterpriseFeatureFlagManager"
+      ],
+      "functions": [
+        "__init__",
+        "_calculate_percentage"
+      ],
+      "imports": [
+        "hashlib",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_feature_flag/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_feature_flag/schemas.py": {
+      "classes": [
+        "FlagStrategy",
+        "FeatureFlagCreate",
+        "FeatureFlagResponse",
+        "EvaluationRequest",
+        "EvaluationResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_feature_flag/test_enterprise_feature_flag.py": {
+      "classes": [],
+      "functions": [
+        "reset_flags",
+        "test_fastapi_feature_flag_endpoints"
+      ],
+      "imports": [
+        "pytest",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_feature_flag/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_mailer/enterprise_mailer.py": {
+      "classes": [
+        "EnterpriseMailer"
+      ],
+      "functions": [
+        "__init__"
+      ],
+      "imports": [
+        "asyncio",
+        "uuid"
+      ]
+    },
+    "actions/enterprise_mailer/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_mailer/schemas.py": {
+      "classes": [
+        "EmailRequest",
+        "EmailResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_mailer/test_enterprise_mailer.py": {
+      "classes": [],
+      "functions": [],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_mailer/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_nexus_command_deck/enterprise_nexus_command_deck.py": {
+      "classes": [
+        "MultiLLMOrchestrator"
+      ],
+      "functions": [
+        "__init__",
+        "_route_request"
+      ],
+      "imports": [
+        "time",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_nexus_command_deck/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": [
+        "json",
+        "asyncio",
+        "os"
+      ]
+    },
+    "actions/enterprise_nexus_command_deck/schemas.py": {
+      "classes": [
+        "OrchestratorRequest",
+        "OrchestratorResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_nexus_command_deck/test_enterprise_nexus_command_deck.py": {
+      "classes": [],
+      "functions": [
+        "test_frontend_renders",
+        "test_websocket_orchestration_text",
+        "test_websocket_orchestration_failover"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_nexus_command_deck/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_observability_metrics/enterprise_observability_metrics.py": {
+      "classes": [
+        "EnterpriseMetricsRegistry"
+      ],
+      "functions": [
+        "__init__"
+      ],
+      "imports": [
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_observability_metrics/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": [
+        "time"
+      ]
+    },
+    "actions/enterprise_observability_metrics/schemas.py": {
+      "classes": [
+        "MetricLabels",
+        "MetricSnapshot"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_observability_metrics/test_enterprise_observability_metrics.py": {
+      "classes": [],
+      "functions": [
+        "reset_registry",
+        "test_metrics_middleware_and_snapshot",
+        "test_prometheus_export_format"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_observability_metrics/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_rate_limiter/enterprise_rate_limiter.py": {
+      "classes": [
+        "EnterpriseRateLimiter"
+      ],
+      "functions": [
+        "__init__",
+        "is_allowed"
+      ],
+      "imports": [
+        "time"
+      ]
+    },
+    "actions/enterprise_rate_limiter/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_rate_limiter/schemas.py": {
+      "classes": [
+        "RateLimitConfig",
+        "RateLimitRequest",
+        "RateLimitResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_rate_limiter/test_enterprise_rate_limiter.py": {
+      "classes": [],
+      "functions": [
+        "reset_limiter_state",
+        "test_sliding_window_rate_limiter_logic",
+        "test_fastapi_rate_limiter_endpoint"
+      ],
+      "imports": [
+        "pytest",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_rate_limiter/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_rsi_engine/enterprise_rsi_engine.py": {
+      "classes": [
+        "RSIAnalyzer",
+        "RSISelfHealingEngine"
+      ],
+      "functions": [
+        "analyze_code",
+        "execute_loop"
+      ],
+      "imports": [
+        "ast",
+        "os"
+      ]
+    },
+    "actions/enterprise_rsi_engine/main.py": {
+      "classes": [],
+      "functions": [
+        "analyze",
+        "run_loop"
+      ],
+      "imports": [
+        "os"
+      ]
+    },
+    "actions/enterprise_rsi_engine/schemas.py": {
+      "classes": [
+        "AnalyzeRequest",
+        "FunctionInfo",
+        "ClassInfo",
+        "AnalyzeResponse",
+        "RunLoopRequest",
+        "RunLoopResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_rsi_engine/test_enterprise_rsi_engine.py": {
+      "classes": [],
+      "functions": [
+        "test_analyzer_get_functions",
+        "test_analyzer_get_classes",
+        "test_analyzer_complexity_score",
+        "test_analyze_endpoint_with_code",
+        "test_analyze_endpoint_with_file",
+        "test_analyze_missing_input",
+        "test_run_loop_endpoint_success",
+        "test_run_loop_endpoint_not_found"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_rsi_engine/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_saga_orchestrator/enterprise_saga_orchestrator.py": {
+      "classes": [
+        "SagaStatus",
+        "StepStatus",
+        "SagaStep",
+        "StepExecutionResult",
+        "SagaExecutionResult",
+        "SagaManager"
+      ],
+      "functions": [
+        "__init__",
+        "__init__",
+        "to_response",
+        "__init__",
+        "to_response",
+        "__init__",
+        "register_step",
+        "unregister_step",
+        "get_step",
+        "get_registered_steps"
+      ],
+      "imports": [
+        "asyncio",
+        "logging",
+        "uuid"
+      ]
+    },
+    "actions/enterprise_saga_orchestrator/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": [
+        "logging"
+      ]
+    },
+    "actions/enterprise_saga_orchestrator/schemas.py": {
+      "classes": [
+        "SagaStepRequest",
+        "SagaRequest",
+        "StepResponse",
+        "SagaResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_saga_orchestrator/test_enterprise_saga_orchestrator.py": {
+      "classes": [
+        "TestSagaManager",
+        "TestAPI",
+        "TestSagaStep",
+        "TestSagaExecutionResult"
+      ],
+      "functions": [
+        "saga_manager_instance",
+        "client",
+        "test_register_duplicate_step",
+        "test_register_empty_name",
+        "test_unregister_step",
+        "test_get_step",
+        "test_to_response",
+        "test_health_check",
+        "test_execute_saga_success",
+        "test_execute_saga_failure_with_rollback",
+        "test_execute_saga_unregistered_step",
+        "test_register_step_endpoint",
+        "test_get_registered_steps",
+        "test_step_initialization",
+        "test_result_initialization",
+        "test_to_response"
+      ],
+      "imports": [
+        "asyncio",
+        "pytest"
+      ]
+    },
+    "actions/enterprise_saga_orchestrator/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_schema_registry/enterprise_schema_registry.py": {
+      "classes": [
+        "SchemaRegistry"
+      ],
+      "functions": [
+        "__init__",
+        "register",
+        "get",
+        "validate",
+        "list_schemas"
+      ],
+      "imports": [
+        "json",
+        "logging"
+      ]
+    },
+    "actions/enterprise_schema_registry/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_schema_registry/schemas.py": {
+      "classes": [
+        "SchemaRegisterRequest",
+        "SchemaRegisterResponse",
+        "SchemaGetResponse",
+        "SchemaValidateRequest",
+        "SchemaValidateResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_schema_registry/test_enterprise_schema_registry.py": {
+      "classes": [
+        "TestSchemaRegistry",
+        "TestSchemaRegistryAPI"
+      ],
+      "functions": [
+        "setup_method",
+        "test_register_and_get",
+        "test_register_duplicate_version_raises",
+        "test_get_nonexistent_returns_none",
+        "test_validate_valid_data",
+        "test_validate_invalid_data",
+        "test_validate_nonexistent_schema_raises",
+        "setup_method",
+        "test_register_schema_endpoint",
+        "test_register_duplicate_schema_endpoint",
+        "test_get_schema_endpoint",
+        "test_get_nonexistent_schema_endpoint",
+        "test_validate_valid_data_endpoint",
+        "test_validate_invalid_data_endpoint",
+        "test_validate_nonexistent_schema_endpoint"
+      ],
+      "imports": [
+        "pytest",
+        "actions.enterprise_schema_registry.main"
+      ]
+    },
+    "actions/enterprise_schema_registry/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_task_queue/enterprise_task_queue.py": {
+      "classes": [
+        "EnterpriseTaskQueue"
+      ],
+      "functions": [
+        "__init__",
+        "register_handler",
+        "enqueue",
+        "get_task"
+      ],
+      "imports": [
+        "asyncio",
+        "uuid"
+      ]
+    },
+    "actions/enterprise_task_queue/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_task_queue/schemas.py": {
+      "classes": [
+        "TaskStatus",
+        "TaskPriority",
+        "TaskEnqueueRequest",
+        "TaskResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_task_queue/test_enterprise_task_queue.py": {
+      "classes": [],
+      "functions": [
+        "reset_queue",
+        "test_fastapi_task_queue_endpoints"
+      ],
+      "imports": [
+        "pytest",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_task_queue/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_unified_gateway/enterprise_unified_gateway.py": {
+      "classes": [
+        "GatewayRouter"
+      ],
+      "functions": [
+        "__init__",
+        "register_service",
+        "unregister_service",
+        "route",
+        "get_registered_services",
+        "is_service_registered"
+      ],
+      "imports": [
+        "logging"
+      ]
+    },
+    "actions/enterprise_unified_gateway/main.py": {
+      "classes": [],
+      "functions": [
+        "default_handler"
+      ],
+      "imports": []
+    },
+    "actions/enterprise_unified_gateway/schemas.py": {
+      "classes": [
+        "RoutePayload",
+        "RouteResponse"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_unified_gateway/test_enterprise_unified_gateway.py": {
+      "classes": [
+        "TestHealthEndpoint",
+        "TestGatewayRouter",
+        "TestRouteEndpoint",
+        "TestServicesEndpoint",
+        "TestRegisterEndpoint",
+        "TestRoutePayloadSchema",
+        "TestRouteResponseSchema"
+      ],
+      "functions": [
+        "client",
+        "clean_registry",
+        "test_health_check",
+        "test_register_service",
+        "test_register_duplicate_service",
+        "test_unregister_service",
+        "test_unregister_nonexistent_service",
+        "test_route_to_registered_service",
+        "test_route_to_unregistered_service",
+        "test_route_with_handler_error",
+        "test_route_to_registered_service",
+        "test_route_to_unregistered_service",
+        "test_route_with_empty_body",
+        "test_route_with_query_params",
+        "test_list_services_empty",
+        "test_list_services_with_registered",
+        "test_register_new_service",
+        "test_register_duplicate_service",
+        "test_route_payload_defaults",
+        "test_route_payload_custom_values",
+        "test_route_payload_required_field",
+        "test_route_response_success",
+        "test_route_response_error",
+        "handler",
+        "handler",
+        "handler",
+        "handler",
+        "failing_handler"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_unified_gateway/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_warehouse_inventory/enterprise_warehouse_inventory.py": {
+      "classes": [
+        "InventoryManager"
+      ],
+      "functions": [
+        "__init__",
+        "scan_item",
+        "deduct_stock"
+      ],
+      "imports": []
+    },
+    "actions/enterprise_warehouse_inventory/main.py": {
+      "classes": [],
+      "functions": [
+        "scan_item",
+        "deduct_stock"
+      ],
+      "imports": []
+    },
+    "actions/enterprise_warehouse_inventory/schemas.py": {
+      "classes": [
+        "Item",
+        "ScanRequest",
+        "DeductRequest"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_warehouse_inventory/test_enterprise_warehouse_inventory.py": {
+      "classes": [],
+      "functions": [
+        "test_uspesno_skeniranje",
+        "test_uspesno_odstevanje_zaloge",
+        "test_skeniranje_neobstojece_kode",
+        "test_odstevanje_prevelike_kolicine",
+        "test_odstevanje_neobstojecega_artikla",
+        "test_odstevanje_negativne_kolicine"
+      ],
+      "imports": [
+        "pytest"
+      ]
+    },
+    "actions/enterprise_warehouse_inventory/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_webhook_dispatcher/enterprise_webhook_dispatcher.py": {
+      "classes": [
+        "EnterpriseWebhookDispatcher"
+      ],
+      "functions": [
+        "__init__",
+        "register_endpoint",
+        "_generate_signature"
+      ],
+      "imports": [
+        "hmac",
+        "hashlib",
+        "json",
+        "asyncio",
+        "httpx",
+        "random"
+      ]
+    },
+    "actions/enterprise_webhook_dispatcher/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_webhook_dispatcher/schemas.py": {
+      "classes": [
+        "WebhookStatus",
+        "WebhookEndpoint",
+        "WebhookEvent",
+        "DeliveryAttempt",
+        "DeliveryResult"
+      ],
+      "functions": [],
+      "imports": []
+    },
+    "actions/enterprise_webhook_dispatcher/test_enterprise_webhook_dispatcher.py": {
+      "classes": [
+        "MockResponse",
+        "MockErrorResponse"
+      ],
+      "functions": [
+        "reset_dispatcher",
+        "test_fastapi_webhook_endpoints"
+      ],
+      "imports": [
+        "pytest",
+        "asyncio"
+      ]
+    },
+    "actions/enterprise_webhook_dispatcher/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/master_test/main.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/master_test/master_test.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/master_test/schemas.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/master_test/test_master_test.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "actions/master_test/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "bridges/llm_bridge.py": {
+      "classes": [
+        "LLMBridge"
+      ],
+      "functions": [
+        "__init__",
+        "complete"
+      ],
+      "imports": [
+        "os",
+        "requests"
+      ]
+    },
+    "core/config.py": {
+      "classes": [
+        "SystemSettings"
+      ],
+      "functions": [
+        "is_real_key_available"
+      ],
+      "imports": [
+        "os"
+      ]
+    },
+    "core/dashboard_tui.py": {
+      "classes": [],
+      "functions": [
+        "clear_screen",
+        "get_metrics",
+        "render_dashboard"
+      ],
+      "imports": [
+        "time",
+        "os",
+        "sqlite3",
+        "json",
+        "subprocess",
+        "sys"
+      ]
+    },
+    "core/flowchart_inspector.py": {
+      "classes": [],
+      "functions": [
+        "inspect_flowchart"
+      ],
+      "imports": [
+        "json",
+        "sqlite3"
+      ]
+    },
+    "core/gbrain_bridge.py": {
+      "classes": [
+        "GBrainBridge"
+      ],
+      "functions": [
+        "__init__",
+        "_get_connection",
+        "_init_db",
+        "record_task",
+        "add_blacklist_pattern",
+        "get_blacklists"
+      ],
+      "imports": [
+        "sqlite3",
+        "json"
+      ]
+    },
+    "core/gbrain_bridge.py.py": {
+      "classes": [
+        "GBrainBridge"
+      ],
+      "functions": [
+        "__init__",
+        "_get_connection",
+        "_init_db",
+        "record_task",
+        "add_blacklist_pattern",
+        "get_blacklists",
+        "store_memory_node"
+      ],
+      "imports": [
+        "sqlite3",
+        "json"
+      ]
+    },
+    "core/graphify_bridge.py": {
+      "classes": [
+        "GraphifyBridge"
+      ],
+      "functions": [
+        "__init__",
+        "build_code_graph"
+      ],
+      "imports": [
+        "ast",
+        "json"
+      ]
+    },
+    "core/graphify_bridge.py.py": {
+      "classes": [
+        "GraphifyBridge"
+      ],
+      "functions": [
+        "__init__",
+        "build_code_graph",
+        "get_impacted_files"
+      ],
+      "imports": [
+        "ast",
+        "json"
+      ]
+    },
+    "core/gstack_bridge.py": {
+      "classes": [
+        "GSTACKArchitectBridge"
+      ],
+      "functions": [
+        "__init__",
+        "generate_manifest"
+      ],
+      "imports": []
+    },
+    "core/gstack_bridge.py.py": {
+      "classes": [
+        "GSTACKArchitectBridge"
+      ],
+      "functions": [
+        "__init__",
+        "generate_manifest"
+      ],
+      "imports": []
+    },
+    "core/hermes_bridge.py": {
+      "classes": [
+        "HermesBuilderBridge"
+      ],
+      "functions": [
+        "__init__",
+        "scaffold",
+        "write_initial_stubs_if_missing"
+      ],
+      "imports": [
+        "asyncio"
+      ]
+    },
+    "core/hermes_bridge.py.py": {
+      "classes": [
+        "HermesBuilderBridge"
+      ],
+      "functions": [
+        "__init__",
+        "scaffold",
+        "write_initial_stubs_if_missing"
+      ],
+      "imports": []
+    },
+    "core/llm_client.py": {
+      "classes": [
+        "DeepSeekLLMClient"
+      ],
+      "functions": [
+        "__init__",
+        "_get_headers",
+        "extract_code_block"
+      ],
+      "imports": [
+        "json",
+        "re",
+        "httpx"
+      ]
+    },
+    "core/loopx_bridge.py": {
+      "classes": [
+        "LoopXEngineBridge"
+      ],
+      "functions": [
+        "__init__",
+        "execute_and_heal"
+      ],
+      "imports": [
+        "subprocess",
+        "sys",
+        "json",
+        "asyncio"
+      ]
+    },
+    "core/loopx_bridge.py.py": {
+      "classes": [
+        "LoopXEngineBridge"
+      ],
+      "functions": [
+        "__init__",
+        "update_loopx_state",
+        "execute_and_heal"
+      ],
+      "imports": [
+        "subprocess",
+        "sys",
+        "json"
+      ]
+    },
+    "core/orchestrator.py": {
+      "classes": [
+        "RobAIOrchestrator"
+      ],
+      "functions": [
+        "run"
+      ],
+      "imports": []
+    },
+    "core/orchestrator.py.py": {
+      "classes": [
+        "RobAIOrchestrator"
+      ],
+      "functions": [
+        "run"
+      ],
+      "imports": []
+    },
+    "core/system_inspector.py": {
+      "classes": [],
+      "functions": [
+        "inspect_system_modules"
+      ],
+      "imports": [
+        "sqlite3",
+        "json",
+        "importlib"
+      ]
+    },
+    "core/system_self_check.py": {
+      "classes": [],
+      "functions": [],
+      "imports": [
+        "sys",
+        "os",
+        "asyncio",
+        "subprocess",
+        "json"
+      ]
+    },
+    "core/__init__.py": {
+      "classes": [],
+      "functions": [],
+      "imports": []
+    },
+    "tests/test_architecture.py": {
+      "classes": [],
+      "functions": [
+        "test_all_six_repos_present",
+        "test_core_bridges_exist",
+        "test_editable_packages_importable"
+      ],
+      "imports": [
+        "pytest",
+        "gbrain",
+        "loopx",
+        "gstack",
+        "gbrain_evals",
+        "hermes_agent",
+        "graphifyy",
+        "graphify"
+      ]
+    },
+    "tests/test_integration.py": {
+      "classes": [],
+      "functions": [
+        "test_gbrain_memory_roundtrip",
+        "test_graphify_ast_indexing",
+        "test_gstack_manifest_generation"
+      ],
+      "imports": []
+    },
+    "tests/test_llm_integration.py": {
+      "classes": [],
+      "functions": [
+        "test_dotenv_loading",
+        "test_llm_code_extraction"
+      ],
+      "imports": [
+        "pytest",
+        "asyncio"
+      ]
+    },
+    "tests/test_master_suite.py": {
+      "classes": [],
+      "functions": [
+        "test_full_repos_integrity",
+        "test_bridges_and_llm_instantiation",
+        "test_all_actions_pytest_coverage"
+      ],
+      "imports": [
+        "pytest",
+        "sqlite3",
+        "subprocess",
+        "sys"
+      ]
+    }
+  },
+  "edges": []
+}

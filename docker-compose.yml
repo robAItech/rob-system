@@ -1,0 +1,75 @@
+version: '3.8'
+
+x-service-defaults: &service-defaults
+  build: .
+  restart: always
+  env_file: .env
+  volumes:
+    - ./.rob_ai:/app/.rob_ai
+
+services:
+  gateway:
+    <<: *service-defaults
+    container_name: rob_gateway
+    command: uvicorn actions.enterprise_api_gateway.main:app --host 0.0.0.0 --port 8000
+    ports: ["8000:8000"]
+
+  auth-vault:
+    <<: *service-defaults
+    container_name: rob_auth_vault
+    command: uvicorn actions.enterprise_auth_vault.main:app --host 0.0.0.0 --port 8001
+    ports: ["8001:8001"]
+
+  audit-trail:
+    <<: *service-defaults
+    container_name: rob_audit_trail
+    command: uvicorn actions.enterprise_audit_trail.main:app --host 0.0.0.0 --port 8002
+    ports: ["8002:8002"]
+
+  event-bus:
+    <<: *service-defaults
+    container_name: rob_event_bus
+    command: uvicorn actions.enterprise_event_bus.main:app --host 0.0.0.0 --port 8003
+    ports: ["8003:8003"]
+
+  task-queue:
+    <<: *service-defaults
+    container_name: rob_task_queue
+    command: uvicorn actions.enterprise_task_queue.main:app --host 0.0.0.0 --port 8004
+    ports: ["8004:8004"]
+
+  cache-layer:
+    <<: *service-defaults
+    container_name: rob_cache_layer
+    command: uvicorn actions.enterprise_cache_layer.main:app --host 0.0.0.0 --port 8005
+    ports: ["8005:8005"]
+
+  rate-limiter:
+    <<: *service-defaults
+    container_name: rob_rate_limiter
+    command: uvicorn actions.enterprise_rate_limiter.main:app --host 0.0.0.0 --port 8006
+    ports: ["8006:8006"]
+
+  circuit-breaker:
+    <<: *service-defaults
+    container_name: rob_circuit_breaker
+    command: uvicorn actions.enterprise_circuit_breaker.main:app --host 0.0.0.0 --port 8007
+    ports: ["8007:8007"]
+
+  webhook-dispatcher:
+    <<: *service-defaults
+    container_name: rob_webhook_dispatcher
+    command: uvicorn actions.enterprise_webhook_dispatcher.main:app --host 0.0.0.0 --port 8008
+    ports: ["8008:8008"]
+
+  feature-flag:
+    <<: *service-defaults
+    container_name: rob_feature_flag
+    command: uvicorn actions.enterprise_feature_flag.main:app --host 0.0.0.0 --port 8009
+    ports: ["8009:8009"]
+
+  metrics:
+    <<: *service-defaults
+    container_name: rob_metrics
+    command: uvicorn actions.enterprise_observability_metrics.main:app --host 0.0.0.0 --port 9090
+    ports: ["9090:9090"]
