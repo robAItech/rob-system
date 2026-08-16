@@ -2,6 +2,13 @@ import sys
 import os
 from pathlib import Path
 
+# [ENCODING FIX] Vsili UTF-8 izhod, da emoji/Slovenščina ne pade na Windows cp1250 terminalih.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass  # reconfigure ni vedno na voljo (npr. nekateri embded/downstream stdout objekti)
+
 # [ABSOLUTE BULLETPROOF PATH RESOLUTION]
 # Ne glede na to, od kod je skripta zagnana, vsili koren projekta v sys.path.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
