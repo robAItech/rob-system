@@ -1,16 +1,19 @@
 model_list:
-  - model_name: "*opus*"
+  # 1. Preslikava primarnega modela (Claude Code zahteva Opus 5)
+  - model_name: claude-opus-5
+    litellm_params:
+      model: deepseek/deepseek-chat  # Ali deepseek-reasoner, odvisno kaj točno uporabljaš
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # 2. Varnostna preslikava (če sistem kdaj preklopi na Sonnet)
+  - model_name: claude-3-5-sonnet-20241022
     litellm_params:
       model: deepseek/deepseek-chat
       api_key: os.environ/DEEPSEEK_API_KEY
-  - model_name: "*sonnet*"
-    litellm_params:
-      model: deepseek/deepseek-coder
-      api_key: os.environ/DEEPSEEK_API_KEY
-  - model_name: "*"
-    litellm_params:
-      model: deepseek/deepseek-chat
-      api_key: os.environ/DEEPSEEK_API_KEY
+
 general_settings:
+  # 3. Nastavitev krovnega ključa (To reši 401 Authentication Fails napako)
   master_key: sk-hermes-master-key
+
+  # 4. Kritično: Odstranjevanje parametrov, ki jih DeepSeek ne razume (prepreči zlom proxyja)
   drop_params: true
