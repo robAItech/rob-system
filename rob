@@ -25,6 +25,9 @@ elif [ "$1" == "dev" ]; then
     # P4 orkestracija (proxy :4010 + dashboard :8787 + claude). Brez venv,
     # telefonira core/dev_cli.py direktno s sistemskim python.
     cd "$PROJECT_DIR" && python core/dev_cli.py "${@:2}"
+elif [ "$1" == "eval" ]; then
+    # P5 — SWE-bench stila samo-eval za avtonomnost RSI-GStack.
+    cd "$PROJECT_DIR" && python evaluate_autonomy.py "${@:2}"
 elif [ "$1" == "deploy" ]; then
     # Zagon python skripte, ki naredi POST request na naš novi manager
     cd "$PROJECT_DIR" && source venv/bin/activate && python3 -c "
@@ -59,4 +62,5 @@ else
     echo "  ./rob build <mod> \"<navodilo>\" - Avtonomno zgradi nov modul"
     echo "  ./rob deploy      - Avtomatsko popravi docker-compose, Gateway in dvigne kontejnerje"
     echo "  ./rob dev         - Proxy :4010 + dashboard :8787 + claude (P4 orkestracija; glej dev.bat za Windows)"
+    echo "  ./rob eval        - SWE-bench stila samo-eval avtonomnosti (P5; --dry-run za brez LLM preverbo)"
 fi

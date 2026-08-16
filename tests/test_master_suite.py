@@ -45,11 +45,30 @@ def test_all_actions_pytest_coverage():
             return False
         return True
 
-    actions = [d for d in actions_dir.iterdir() if _is_valid_module(d)]
+    all_modules = [d for d in actions_dir.iterdir() if _is_valid_module(d)]
+
+    # Preveri samo GIT-TRACKED module. Runtime untracked artefakte (npr.
+    # P5 eval module actions/fizzbuzz/ — ki jih ustvari evaluate_autonomy.py)
+    # NE spadajo v producijsko testno mrežo. `git ls-files actions/*/`
+    # razreši, katere mape so dejansko v repozitoriju.
+    tracked = None
+    try:
+        r = subprocess.run(
+            ["git", "ls-files", "actions/*/"],
+            capture_output=True, text=True, check=False, cwd=str(actions_dir.parent),
+        )
+        if r.returncode == 0:
+            tracked = {Path(line).parts[1] for line in r.stdout.splitlines()
+                       if len(Path(line).parts) > 1}
+    except Exception:
+        tracked = None  # git ni na voljo → fallback: vsi (brez skritih)
+
+    if tracked is not None:
+        all_modules = [d for d in all_modules if d.name in tracked]
 
     # Zberemo napake vseh modulov, da en padec ne prekine obdelave ostalih.
     failures = []
-    for act in actions:
+    for act in all_modules:
         env = {"PYTHONPATH": "."}
         res = subprocess.run(
             [sys.executable, "-m", "pytest", "-v", str(act)],

@@ -176,6 +176,8 @@ python run_swarm.py --target <modul> --directive "<navodilo>"        # RSI build
 python run_swarm.py --autonomous --target <m> --directive "<cikel>"  # F2: spec + implement
 python run_swarm.py --process-agenda                                 # F3: obdela čakalno vrsto naročil
 python run_swarm.py --business "<poslovna ideja>"                    # F6: predlog → glavna knjiga
+python evaluate_autonomy.py --dry-run                               # P5: strukturna preverba eval-a (brez LLM)
+python evaluate_autonomy.py                                         # P5: SWE-bench stila samo-eval avtonomnosti
 ```
 
 Dosežene faze (roadmap je v dashboardu na `/roadmap`):
@@ -189,6 +191,7 @@ Dosežene faze (roadmap je v dashboardu na `/roadmap`):
 | **F4** | Trajni RSI spomin (samorazvoj / RDI) — LLM se uči iz napak |
 | **F5** | Revizijski dnevnik + števec LLM-klicov (nadzor stroškov) |
 | **F6** | Poslovni avtomat: ideja → predlog → glavna knjiga (prilivi/stranke) |
+| **P5** | SWE-bench stila samo-eval avtonomnosti — `evaluate_autonomy.py` meri prehod rate (`rob eval`), ne blokira CI |
 
 Dashboard poleg modulov in zgodovine izvedb ponuja še **Agenda** (dodaj
 čakajoče naloge) in **Poslovanje** (glavna knjiga podjetja) v plošči

@@ -120,11 +120,13 @@ class LoopXEngineBridge:
         written = 0
         # F1: dovoljene končnice poleg .py — Markdown in HTML (dokumentni izdelki).
         ALLOWED_EXT = (".py", ".md", ".html", ".htm")
-        # P1 — Test-Locking: LLM nikoli ne sme pisati v verifikacijske datoteke.
-        # Vsak test (test_*.py, *_test.py) ali pytest konfiguracija (conftest.py)
-        # je NESPRENEMLJIV — če bi LLM-med samozdravljenjem popravil assert,
-        # bi dosegel lažno "100% zeleno" (Test Tampering). Zato se tu vse
-        # spremembame testnih datotek tiho zavrnejo (written ni povečan).
+        # P1 — Test-Locking (niansirano): LLM ne sme spreminjati ŽE OBSTOJEČE
+        # verifikacijske datoteke (test_*.py, *_test.py, conftest.py) — s tem bi
+        # med samozdravljenjem ponaredil assert → lažno "100% zeleno" (Test
+        # Tampering). AMPAK pri PRVOTNI gradnji novega modula LLM legitimno
+        # USTVARI test (test ne obstaja) — to je dovoljeno, ker ni tamper.
+        # Odločitev: test datoteka se zavrne le, če ŽE OBSTAJA na disku; če
+        # ne obstaja (nova) → dovolimo pisanje, da RSI build lahko napiše test.
         TEST_PREFIXES = ("test_", "tests_")
         TEST_SUFFIX_E = ("_test",)   # za basenames (po odstranitvi .py)
         TEST_HARDNAME = {"conftest.py"}
@@ -142,10 +144,21 @@ class LoopXEngineBridge:
             # da nikoli ne pišemo izven target_dir (3.4).
             if "/" in rel or "\\" in rel or rel in (".", "..", "") or not rel.endswith(ALLOWED_EXT):
                 continue
-            # P1 — Test-Locking: zavrni spremembo testne/kofig datoteke.
-            if _is_test_file(rel):
-                continue
             cand = (allowed / rel).resolve()
+            # P1 — Test-Locking: tamper z OBSTOJEČO, VREDNO test datoteko zavrni.
+            # Glej tudi: HERMES `write_initial_stubs_if_missing` ustvari prazen
+            # stub (npr. "def test_():\n    pass…"), ki je zgolj ogrodje —
+            # LLM ob gradnji legitimno DOPOLNI ta stub, kar ni tamper. Zato
+            # test datoteka se zavrne LE, če obstaja Z VSEBINO (> STUB_PRAH_BAJTOV);
+            # prazen/nov stub se pusti dokončati.
+            STUB_PRAH_BAJTOV = 30
+            if _is_test_file(rel) and cand.exists():
+                try:
+                    _existing_ok = len(cand.read_text(encoding="utf-8")) > STUB_PRAH_BAJTOV
+                except OSError:
+                    _existing_ok = True
+                if _existing_ok:
+                    continue
             if cand.parent != allowed:
                 continue
             cand.write_text(content, encoding="utf-8")

@@ -47,3 +47,9 @@ __pycache__/
 .rob_ai/graph.json
 .loopx/
 .DS_Store
+
+# P5 eval izzivi — runtime artefakti, ki jih ustvari evaluate_autonomy.py
+# (niso producijski moduli; izvedbeni eval se izvrši v actions/ na novo)
+actions/fizzbuzz/
+actions/divide_safe/
+actions/count_words/

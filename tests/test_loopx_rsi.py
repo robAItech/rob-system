@@ -88,6 +88,32 @@ def test_apply_patch_samo_basename_v_modulu(tmp_path, monkeypatch):
     assert sorted(p.name for p in modul.iterdir()) == ["main.py", "schemas.py"]
 
 
+def test_apply_patch_test_lock_tamper_zavrne_obstojeci_test(tmp_path, monkeypatch):
+    """P1 — LLM ne sme SPREMENITI ŽE OBSTOJEČE test datoteke (test tamper)."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    modul = tmp_path / "actions" / "demo_service"
+    (modul / "test_foo.py").write_text("def test_orig():\n    assert True\n", encoding="utf-8")
+    original = (modul / "test_foo.py").read_text(encoding="utf-8")
+
+    # LLM poskusi POPRAVITI assert (sprejet X) → mora biti zavrnjen.
+    patched = {"test_foo.py": "def test_orig():\n    assert False\n"}
+    written = engine._apply_patch(patched)
+    assert written == 0
+    # Test razširitve ostaja nespremenjen.
+    assert (modul / "test_foo.py").read_text(encoding="utf-8") == original
+
+
+def test_apply_patch_test_lock_dovoli_kreiranje_novega_testa(tmp_path, monkeypatch):
+    """P1 — ob PRVOTNI gradnji LLM lahko USTVARI nov test (ni tamper)."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    modul = tmp_path / "actions" / "demo_service"
+    # test_foo.py še NE obstaja → nova ustvaritev legitimno dovoljena.
+    patched = {"test_bar.py": "def test_bar():\n    assert 1 + 1 == 2\n"}
+    written = engine._apply_patch(patched)
+    assert written == 1
+    assert (modul / "test_bar.py").exists()
+
+
 def test_read_module_sources_prebere_py(tmp_path, monkeypatch):
     """Bere .py datoteke modula za posredovanje LLM-ju."""
     engine = _navidezni_engine(tmp_path, monkeypatch)
