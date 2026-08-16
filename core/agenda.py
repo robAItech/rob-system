@@ -68,6 +68,23 @@ def all_() -> list:
     return _load()
 
 
+def rearm_repeat() -> int:
+    """F3 — ponavljajoča naročila (polje `repeat`) po obdelavi znova postavi v
+    pending, da ob naslednjem --process-agenda zopet izvedejo (enostaven
+    schedule: ponavljaj se ob vsakem procesiranju). Vrne število ponovno
+    aktiviranih."""
+    items = _load()
+    n = 0
+    for it in items:
+        if it.get("repeat") and it.get("status") in ("done", "failed"):
+            it["status"] = "pending"
+            it["updated_at"] = int(time.time())
+            n += 1
+    if n:
+        _save(items)
+    return n
+
+
 def _slug(goal: str) -> str:
     from re import sub as _sub
     return _sub(r"[^a-zA-Z0-9_-]", "_", goal.strip().split()[0].lower()) if goal.strip() else "naloga"

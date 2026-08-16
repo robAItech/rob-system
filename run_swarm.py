@@ -61,13 +61,11 @@ def main() -> None:
     )
     
     parser.add_argument(
-        "--target", 
-        required=True, 
+        "--target",
         help="Ime ciljnega modula (ustvari se v actions/{target}/)"
     )
     parser.add_argument(
-        "--directive", 
-        required=True, 
+        "--directive",
         help="Celotna navodila in zahteve za avtonomno izvedbo ('Boil the ocean')"
     )
     parser.add_argument(
@@ -102,6 +100,12 @@ def main() -> None:
 
     # 1. Preverjanje in priprava okolja
     validate_environment()
+
+    # Ročna validacija: --target/--directive sta potrebna le za redni/autonomous build
+    # (ne za --process-agenda ali --business).
+    if not (args.process_agenda or args.business):
+        if not args.target or not args.directive:
+            parser.error("--target in --directive sta obvezna (ali uporabi --process-agenda / --business)")
 
     # Faza 6 — poslovni delovnik (Sales): ideja → predlog → presodba → glavna knjiga.
     if args.business:
@@ -149,8 +153,10 @@ def main() -> None:
                 print(f"  ❌ napaka: {e}")
                 mark(it["id"], "failed")
             results.append((it["id"], ok))
-        # Če repeat — ponastavimo v pending (enostaven schedule: enkrat oddane ponovljive).
-        print("🤖 [F3] Agenda obdelana.")
+        # F3 repeat — ponavljajoča naročila znova postavimo v pending (schedule).
+        from core.agenda import rearm_repeat
+        rearmed = rearm_repeat()
+        print(f"🤖 [F3] Agenda obdelana. Ponovno aktiviranih (repeat): {rearmed}.")
         sys.exit(0 if all(r[1] for r in results) else 1)
 
     # 2. Prikaz sistemskega statusa
