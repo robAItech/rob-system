@@ -1,7 +1,7 @@
 import sqlite3
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 class GBrainBridge:
     def __init__(self, db_path: Path = Path(".rob_ai/memory.db")):
@@ -36,6 +36,15 @@ class GBrainBridge:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS agent_memory_nodes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    key TEXT UNIQUE NOT NULL,
+                    value TEXT NOT NULL,
+                    tags TEXT NOT NULL,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
             conn.commit()
 
     def record_task(self, project: str, prompt: str, status: str, traceback: str = "", verified_code: str = "") -> int:
@@ -60,3 +69,11 @@ class GBrainBridge:
         with self._get_connection() as conn:
             rows = conn.execute("SELECT * FROM blacklist_patterns WHERE project = ?", (project,)).fetchall()
             return [dict(r) for r in rows]
+
+    def store_memory_node(self, key: str, data: Dict[str, Any], tags: List[str]) -> None:
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO agent_memory_nodes (key, value, tags) VALUES (?, ?, ?)",
+                (key, json.dumps(data), ",".join(tags))
+            )
+            conn.commit()
