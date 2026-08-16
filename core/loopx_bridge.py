@@ -245,17 +245,25 @@ class LoopXEngineBridge:
 
         # Sandbox: slika 'rob-sandbox' naj bo zgrajena prek Dockerfile.sandbox
         # (python:3.11-slim + pytest). Runtime: brez omrežja, read-only, samo ./actions.
+        # mount ./actions → /work (V work JE actions koren, ne celoten projekt).
+        # Uporabi `sh -c "cd /work && pytest ..."` namesto `-w /work`, ker -w /work
+        # v nekaterih okoljih (Git Bash / MSYS) pretvori /work v Windows path.
         cwd = Path.cwd()
         actions_abs = (cwd / "actions").resolve()
-        target_rel = self.target_dir.relative_to(cwd)  # e.g. actions/foo
+        target_name = self.target_dir.name  # e.g. 'sbtest' (zadnji segment)
         vol = f"{actions_abs}:/work"
+        shell_cmd = f"cd /work && python -m pytest -v /work/{target_name}"
+        # --tmpfs /tmp:noexec,nosuid,size=64m → pytest lahko piše temp v RAM,
+        # ampak tam ne izvaja kode (noexec) in ni persistent (tmpfs). Koren OS
+        # ostane --read-only. (name izpustimo --user, ker na Windows-host volume
+        # uid 1000 ne bi prebral datotek → 'collected 0 items'.)
         cmd = [
             "docker", "run", "--rm", "--network", "none", "--read-only",
             "--security-opt", "no-new-privileges",
-            "--user", "1000:1000",            # ne-root v kontejnerju
-            "-v", vol, "-w", "/work",
+            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+            "-v", vol,
             "rob-sandbox:latest",
-            "python", "-m", "pytest", "-v", f"/work/{target_rel}",
+            "sh", "-c", shell_cmd,
         ]
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
