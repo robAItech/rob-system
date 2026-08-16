@@ -37,6 +37,11 @@ __pycache__/
 *$py.class
 .pytest_cache/
 
+# Runtime stanje podjetja (generirano, izven gita)
+.rob_ai/agenda.json
+.rob_ai/business_ledger.json
+.rob_ai/audit.jsonl
+
 # Baze podatkov in lokalno stanje (Rob AI Studio)
 .rob_ai/memory.db
 .rob_ai/graph.json
