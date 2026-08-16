@@ -142,11 +142,26 @@ class LoopXEngineBridge:
             out_note = "Vrni POPOLNO HTML stran v formatu ### FILE: ime.html\\n```html\\n<vsebina z </html>>\\n``` (veljavna, brez placeholdoj)."
         else:
             out_note = "Vrni POPOLNE, delujoča Python datoteko v formatu ### FILE: ime.py\\n```python\\n<koda>\\n``` (vse datoteke popolne, brez placeholdoj, dejanska implementacija)."
+        # F4 — trajni RSI spomin: naučene napake (blacklists) iz preteklih tekov.
+        try:
+            learned = self.gbrain.get_blacklists(self.project)
+        except Exception:
+            learned = []
+        learned_note = ""
+        if learned:
+            pats = "; ".join(
+                f"{b.get('error_pattern','?')} → {b.get('mitigation','')[:60]}" for b in learned[:10]
+            )
+            learned_note = (
+                "Naučeno iz prejšnjih poskusov (izogni se tem napakam):\n"
+                f"{pats}\n\n"
+            )
         prompt = (
             f"Izvirna vsebina modula `{self.project}` (trenutno ogrodje/stubs):\n"
             f"{json.dumps(sources, ensure_ascii=False, indent=2)}\n\n"
             "DIREKTIVA (kaj naj izdelek dejansko vsebuje):\n"
             f"{directive[:3000]}\n\n"
+            f"{learned_note}"
             "Razlog verifikacije (doseči je treba zelen):\n"
             f"{traceback[:8000]}\n\n"
             f"{out_note}"
