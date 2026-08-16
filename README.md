@@ -125,6 +125,27 @@ OPENAI_API_KEY=vaš_openai_api_ključ
 ENVIRONMENT=production
 ```
 
+### 3. Zagon Claude Code prek LiteLLM + DeepSeek (`dev.ps1`)
+
+`Claude Code` privzeto kliče Anthropic API. Da ne kurimo dragih Anthropic
+tokenov, projekt uporablja [LiteLLM](https://www.litellm.ai/) kot lokalni
+proxy, ki zahtevke preslika na **cenejši DeepSeek API** z vašim
+`DEEPSEEK_API_KEY`. Vse v enem ukaz:
+
+```powershell
+.\dev.ps1                       # požene LiteLLM v ozadju, počaka na pripravo,
+                                # postavi ANTHROPIC_* env spremenljivke in
+                                # požene `claude`; po izhodu sam ugasne proxy.
+.\dev.ps1 -Init                 # dry-run: preveri konfiguracijo in okolje (ne zažene nič).
+.\dev.ps1 -ProxyOnly            # samo LiteLLM v ospredju (za ročno uporabo).
+.\dev.ps1 -ClaudeOnly           # samo claude ob že obstoječem proxyju.
+```
+
+Konfiguracija proxyja živi v `bridges/litellm_config.yaml` — modeli so
+preslikani na `deepseek/deepseek-chat`, krovni ključ (`master_key`) in
+`drop_params: true` (odstranjuje parametre, ki jih DeepSeek ne razume)
+pa preprečujejo 401-avtentikacijske napake in zlom proxyja.
+
 ## 💻 Navodila za uporabo CLI (`./rob`)
 
 Swarm motor `./rob` omogoča popolno upravljanje sistema preko kratkih ukazov:
