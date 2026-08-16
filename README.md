@@ -169,6 +169,43 @@ vse dvigne **izolirano**, brez da bi se kdaj dotaknil porta 4000:
 uporabnikov obstoječi proxy in ni vpleten v nobeno preverjanje ali
 čiščenje.
 
+## 🤖 Avtonomna orkestracija (RSI/GStack) — delovanje in roadmap F0–F6
+
+Jedro avtonomije je **Python RSI/GStack orkestrator** (`./rob build` →
+`core/orchestrator.py` → gbrain → graphify → gstack → hermes → **LoopX
+self-heal**). LoopX poganja verifikacijsko in samoozdravitveno zanko:
+pytest → DeepSeek popravi kodo → **100 % zelen** (do 5 poskusov).
+
+Dashboard na **:8787** delegira avtonomni build na isto RSI zanko prek
+`POST /api/build`, zato je izvedbeno jedro **eno** (ne dve).
+
+Vsa avtonomna orkestracija prek CLI:
+
+```bash
+python run_swarm.py --target <modul> --directive "<navodilo>"        # RSI build (Python/Markdown/HTML)
+python run_swarm.py --autonomous --target <m> --directive "<cikel>"  # F2: spec + implement
+python run_swarm.py --process-agenda                                 # F3: obdela čakalno vrsto naročil
+python run_swarm.py --business "<poslovna ideja>"                    # F6: predlog → glavna knjiga
+```
+
+Dosežene faze (roadmap je v dashboardu na `/roadmap`):
+
+| Faza | Zmogljivost |
+|---|---|
+| **F0** | Enotno izvedbeno jedro — `/api/build` delegira na RSI/GStack |
+| **F1** | RSI za vse tipe izdelkov (Python → pytest, Markdown, HTML) |
+| **F2** | Avtonomni delovnik — nalogo razdeli na spec + implement |
+| **F3** | Agenda / čakalna vrsta naročil + med-run obdelava |
+| **F4** | Trajni RSI spomin (samorazvoj / RDI) — LLM se uči iz napak |
+| **F5** | Revizijski dnevnik + števec LLM-klicov (nadzor stroškov) |
+| **F6** | Poslovni avtomat: ideja → predlog → glavna knjiga (prilivi/stranke) |
+
+Dashboard poleg modulov in zgodovine izvedb ponuja še **Agenda** (dodaj
+čakajoče naloge) in **Poslovanje** (glavna knjiga podjetja) v plošči
+**Moduli / Naloge**, ter Google integracije (Drive/Email/Calendar) — ti
+zahtevajo autorizacijo (`client_secret.json`, redirect
+`http://localhost:8787/api/google/oauth2callback`).
+
 ## 💻 Navodila za uporabo CLI (`./rob`)
 
 Swarm motor `./rob` omogoča popolno upravljanje sistema preko kratkih ukazov:
