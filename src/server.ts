@@ -721,6 +721,32 @@ const server = Bun.serve({
       return json({ ok: code === 0, item });
     }
 
+    // Faza 6: poslovna knjiga (glavna knjiga podjetja) — branje in nov delovnik.
+    if (req.method === 'GET' && url.pathname === '/api/business') {
+      const f = Bun.file(`${OUT_ROOT}/.rob_ai/business_ledger.json`);
+      let items: Record<string, unknown>[] = [];
+      let revenue = 0;
+      if (await f.exists()) { try { items = JSON.parse(await f.text()) as Record<string, unknown>[]; revenue = items.reduce((s, i) => s + Number(i.revenue || 0), 0); } catch { /* */ } }
+      return json({ ok: true, items, revenue });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/business') {
+      const raw = await req.text().catch(() => '');
+      let body: { idea?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const idea = String(body.idea || '').trim();
+      if (!idea) return json({ ok: false, error: 'ideja je prazna' }, 400);
+      // Poslovni delovnik: izvede RSI predlog in zapiše v knjigo (kot CLI --business).
+      const proc = Bun.spawn({
+        cmd: ['python', 'run_swarm.py', '--business', idea],
+        cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+      });
+      const out = await new Response(proc.stdout).text();
+      const err = await new Response(proc.stderr).text();
+      const code = await proc.exited;
+      return json({ ok: code === 0, exit: code, log: (out + err).slice(0, 3000) });
+    }
+
     // ================================================================
     // Google integracije: Drive / Gmail / Calendar (OAuth)
     // ================================================================

@@ -91,11 +91,40 @@ def main() -> None:
         action="store_true",
         help="Faza 3: obdela vso čakalno vrsto naročil (agenda) skozi RSI zanko"
     )
+    parser.add_argument(
+        "--business",
+        metavar="IDEJA",
+        help="Faza 6: iz poslovne ideje izdela predlog (RSI Sales delovnik), ga presodi"
+             " in vnese v glavno knjigo podjetja"
+    )
 
     args = parser.parse_args()
 
     # 1. Preverjanje in priprava okolja
     validate_environment()
+
+    # Faza 6 — poslovni delovnik (Sales): ideja → predlog → presodba → glavna knjiga.
+    if args.business:
+        from core.business import create_proposal, update
+        idea = args.business
+        target = _business_slug(idea)
+        print(f"🤝 [F6] Poslovni delovnik za idejo: '{idea[:80]}'")
+        # 1) Zabeleži idejo v knjigo.
+        prop = create_proposal(idea, target=target)
+        # 2) Izdelaj predlog (RSI markdown) skozi avtonomno zanko.
+        builder_directive = (
+            f"Izdelaj Markdown poslovni predlog v actions/{target}/ imenovan predlog.md. "
+            f"Vsebuj naslov #, kratek opis ideje in glave tocke. Ideja: {idea}. Vsebina polna, ne stub."
+        )
+        ok = RobAIOrchestrator.run(target, builder_directive)
+        # 3) Menedžer presoja (deterministično: predlog velja, če narobe RSI zelen).
+        if ok:
+            update(prop["id"], status="sent")
+            print(f"✅ [F6] Predlog izdelan in poslan → stranka. Menedžer: ODOBREN.")
+        else:
+            update(prop["id"], status="proposal")
+            print(f"❌ [F6] Predlog ni zelen — ostaja v stanju proposal.")
+        sys.exit(0 if ok else 1)
 
     # Faza 3 — obdelaj čakalno vrsto (agenda) skozi RSI.
     if args.process_agenda:
@@ -170,6 +199,14 @@ def main() -> None:
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
+
+def _business_slug(idea: str) -> str:
+    from re import sub as _sub
+    words = idea.strip().split()
+    s = _sub(r"[^a-zA-Z0-9_-]", "_", words[0].lower()) if words else "predlog"
+    return s
+
 
 if __name__ == "__main__":
     main()

@@ -403,6 +403,12 @@ body{
     <button class="mini-btn gold" onclick="addAgenda()">Dodaj</button>
   </div>
   <div class="modules-list tl" id="agendaList"><div class="mod-empty">Agenda je prazna.</div></div>
+  <div class="modules-subhead">Poslovanje · prilivi <b id="revTotal" style="color:var(--gold)"></b></div>
+  <div class="agenda-row">
+    <input id="bizInput" class="prompt-input" style="flex:1;padding:9px 12px;font-size:12.5px" placeholder="Poslovna ideja → izdelaj predlog…" />
+    <button class="mini-btn gold" onclick="addBusiness()">Izdelaj</button>
+  </div>
+  <div class="modules-list tl" id="bizList"><div class="mod-empty">Brez poslovnih vnosov.</div></div>
 </div>
 
 <!-- modal artefaktov -->
@@ -827,6 +833,7 @@ async function loadModules(){
   renderModules();
   renderTimeline();
   loadAgenda();
+  loadBusiness();
 }
 /* ---- Faza 3: Agenda (čakalna vrsta naročil) ---- */
 let agendaCache=[];
@@ -854,6 +861,41 @@ async function addAgenda(){
   input.value='';
   try{ await api('/api/agenda',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal,kind:'python'})}); toast('➕ Dodano na agenda.'); loadAgenda(); }
   catch(err){ toast('Napaka: '+String(err.message||err)); }
+}
+/* ---- Faza 6: poslovanje (glavna knjiga) ---- */
+let bizCache=[];
+async function loadBusiness(){
+  try{ const r=await api('/api/business'); bizCache=r.items||[]; renderBusiness(r.revenue||0); return r.revenue||0; }catch{ bizCache=[]; renderBusiness(0); return 0; }
+}
+function renderBusiness(revenue){
+  const elTot=document.getElementById('revTotal');
+  if(elTot) elTot.textContent='$'+revenue;
+  const list=document.getElementById('bizList');
+  if(!list) return;
+  if(!bizCache.length){ list.innerHTML='<div class="mod-empty">Brez poslovnih vnosov.</div>'; return; }
+  list.innerHTML=bizCache.slice().reverse().map(b=>`
+    <div class="tl-item">
+      <div class="tl-dot ${(b.status==='won')?'ok':(b.status==='sent')?'run':'warn'}"></div>
+      <div class="tl-body">
+        <div class="tl-task">${esc((b.idea||'').slice(0,44))}</div>
+        <div class="agendameta"><span class="ag-st ${esc(b.status||'proposal')}">${esc(b.status||'proposal')}</span><span>${(b.revenue||0)?'$'+b.revenue:''}</span>${b.customer?`<span>${esc(b.customer)}</span>`:''}</div>
+      </div>
+    </div>`).join('');
+}
+async function addBusiness(){
+  const input=document.getElementById('bizInput');
+  const idea=(input.value||'').trim();
+  if(!idea){ toast('Napiši poslovno idejo.'); return; }
+  input.value='';
+  const btn=(document.querySelector('.agenda-row button:last-child'));
+  const prev=btn&&btn.innerHTML; if(btn){btn.disabled=true;btn.innerHTML='…izdelujem';}
+  try{
+    toast('🤝 Izdelujem poslovni predlog (RSI)…');
+    await api('/api/business',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({idea})});
+    await loadBusiness();
+    toast('✅ Predlog izdelan. Oglej si ga v Moduli.');
+  }catch(err){ toast('Napaka: '+String(err.message||err)); }
+  finally{ if(btn){btn.disabled=false;btn.innerHTML=prev;} }
 }
 function renderModules(){
   document.getElementById('modsCount').textContent=moduleCache.length;
