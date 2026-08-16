@@ -27,6 +27,12 @@ Prejel si traceback neuspelega testa in izvirno kodo modula. Tvoja naloga:
 CILJ: ko spremembe zapišem in znova poženem pytest, mora biti izhod 100% zelen.
 Nekateri deli sistema imajo številne `actions/<module>/` datoteke. Vrni samo tiste,
 ki jih je treba spremeniti. Ne izmišljaj novih datotek razen če so nujno potrebne.
+
+ZAŠČITA (Test-Locking, P1): NIKOLI ne vračaj sprememb testnih datotek —
+nobena »test_*.py«, »*_test.py«, »conftest.py« ali datoteka v »tests/« se ne sme
+pojaviti v tvojem odzivu z ### FILE:. Verifikacijo (pytest) šteješ za nedotakljivo
+merilo napake; če test ne gre skozi, je napaka v KODI, ne v testu. Sprememba testov
+za dosego zelene barve je prepovedana manipulacija.
 """
 
 
@@ -113,11 +119,30 @@ class LoopXEngineBridge:
         written = 0
         # F1: dovoljene končnice poleg .py — Markdown in HTML (dokumentni izdelki).
         ALLOWED_EXT = (".py", ".md", ".html", ".htm")
+        # P1 — Test-Locking: LLM nikoli ne sme pisati v verifikacijske datoteke.
+        # Vsak test (test_*.py, *_test.py) ali pytest konfiguracija (conftest.py)
+        # je NESPRENEMLJIV — če bi LLM-med samozdravljenjem popravil assert,
+        # bi dosegel lažno "100% zeleno" (Test Tampering). Zato se tu vse
+        # spremembame testnih datotek tiho zavrnejo (written ni povečan).
+        TEST_PREFIXES = ("test_", "tests_")
+        TEST_SUFFIX_E = ("_test",)   # za basenames (po odstranitvi .py)
+        TEST_HARDNAME = {"conftest.py"}
+        def _is_test_file(name: str) -> bool:
+            if name.endswith(".py"):
+                base = name[:-3]  # odstrani končnico .py
+                if base.startswith(TEST_PREFIXES) or base.endswith(TEST_SUFFIX_E):
+                    return True
+                if name in TEST_HARDNAME:
+                    return True
+            return False
         for rel, content in files.items():
             # Veljavni ključi so goli basename (brez separatorja/traversal).
             # Vsak separator ali traversal ('.', '..', '/', '\') -> zavrni,
             # da nikoli ne pišemo izven target_dir (3.4).
             if "/" in rel or "\\" in rel or rel in (".", "..", "") or not rel.endswith(ALLOWED_EXT):
+                continue
+            # P1 — Test-Locking: zavrni spremembo testne/kofig datoteke.
+            if _is_test_file(rel):
                 continue
             cand = (allowed / rel).resolve()
             if cand.parent != allowed:
@@ -257,16 +282,25 @@ class LoopXEngineBridge:
         # ampak tam ne izvaja kode (noexec) in ni persistent (tmpfs). Koren OS
         # ostane --read-only. (name izpustimo --user, ker na Windows-host volume
         # uid 1000 ne bi prebral datotek → 'collected 0 items'.)
+        # P2 — Sandbox hardening: omeji porabo vira, da LLM-generirana koda ne
+        # more povzročiti resource-exhaustion. 512 MB RAM, 1 CPU, nofile=256
+        # (omejitev odprtih datotek), /tmp tmpfs še vedno noexec (nobene kode
+        # iz RAM). GNU timeout podvojimo na 180 s za večje testne module, ampak
+        # cgroups (--memory/--cpus) so glavni ščit pred divjo porabo.
         cmd = [
             "docker", "run", "--rm", "--network", "none", "--read-only",
             "--security-opt", "no-new-privileges",
+            "--memory", "512m",
+            "--memory-swap", "512m",          # brez swap -> cgroups mora delovati v RAM
+            "--cpus", "1",
+            "--ulimit", "nofile=256:256",
             "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
             "-v", vol,
             "rob-sandbox:latest",
             "sh", "-c", shell_cmd,
         ]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         except Exception as e:
             return False, f"[Docker sandbox napaka] {e}"
         msg = result.stderr or result.stdout or "pytest ni zelen"

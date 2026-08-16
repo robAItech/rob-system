@@ -18,7 +18,13 @@ from core.loopx_bridge import LoopXEngineBridge
 # --------------------------------------------------------------------------- #
 
 def test_parse_patched_files_izloci_bloke(tmp_path, monkeypatch):
-    """3.2 — parser pretvori '### FILE:' bloke v dict datotek."""
+    """3.2 — parser pretvori '### FILE:' bloke v dict datotek.
+
+    Obnašanje od Tier-1: parser iz vsake poti izvleče le **goli basename**
+    (poslednji segment po '/'), ker `_apply_patch` (3.4) sprejme zgolj
+    basename — pot s separatorjem bi bila varnostno zavrnjena. Test zato
+    pričakuje basename ključe, ne polnih poti.
+    """
     monkeypatch.chdir(tmp_path)
     llm_odgovor = (
         "Odpravil napako.\n"
@@ -27,10 +33,11 @@ def test_parse_patched_files_izloci_bloke(tmp_path, monkeypatch):
     )
     files = LoopXEngineBridge._parse_patched_files(llm_odgovor)
     assert set(files.keys()) == {
-        "actions/demo/main.py",
-        "actions/demo/schemas.py",
+        "main.py",
+        "schemas.py",
     }
-    assert files["actions/demo/main.py"] == "print(1)"
+    assert files["main.py"] == "print(1)"
+    assert files["schemas.py"] == "class X: pass"
 
 
 def test_classify_error_povzame_tip(tmp_path, monkeypatch):
@@ -100,8 +107,14 @@ def test_execute_and_heal_vrne_true_ob_zelenem_testu(tmp_path, monkeypatch):
     """3.5 — zelen cikel vrne True in zabeleži GREEN."""
     engine = _navidezni_engine(tmp_path, monkeypatch)
 
-    # pytest zmeraj zelen (returncode 0)
-    with mock.patch.object(subprocess, "run", return_value=mock.Mock(returncode=0)):
+    # Docker šunemo na »ni na voljo«, da verifikacija teče v HOST fallback
+    # (determinističen unit test zanke; prvi mock subprocess.run gre torej
+    # direktno na pytest, ne na `docker info`).
+    with mock.patch.object(engine, "_docker_available", return_value=False), \
+         mock.patch.object(
+             subprocess, "run",
+             return_value=mock.Mock(returncode=0, stderr="", stdout="ok"),
+         ):
         result = engine.execute_and_heal("build demo")
 
     assert result is True
@@ -135,12 +148,17 @@ def test_execute_and_heal_uspeh_po_healingu(tmp_path, monkeypatch):
     engine = _navidezni_engine(tmp_path, monkeypatch)
 
     # returncodes: [1 (rdeč), 0 (zelen)]. _heal_once uspešno popravi (vrača True).
+    # `_docker_available` silimo na False, da gre verifikacija v HOST fallback:
+    # sicer bi prvi vnos iteratorja (returncode=1) porabil `docker info` namesto
+    # pytest-a in zanka bi ostala na attempt=1. S False prv1 in drugi vnos gresta
+    # izključno na pytest klica (rdeč → heal → zelen), kar potrdi attempt=2.
     run_results = iter([
         mock.Mock(returncode=1, stderr="ImportError: no module named x", stdout=""),
         mock.Mock(returncode=0, stderr="", stdout="ok"),
     ])
 
-    with mock.patch.object(subprocess, "run", side_effect=lambda *a, **k: next(run_results)), \
+    with mock.patch.object(engine, "_docker_available", return_value=False), \
+         mock.patch.object(subprocess, "run", side_effect=lambda *a, **k: next(run_results)), \
          mock.patch.object(engine, "_heal_once", return_value=(True, "popravil main.py")):
         result = engine.execute_and_heal("build demo")
 

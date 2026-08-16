@@ -31,11 +31,25 @@ def test_bridges_and_llm_instantiation():
 
 def test_all_actions_pytest_coverage():
     actions_dir = Path("actions")
-    actions = [d for d in actions_dir.iterdir() if d.is_dir() and not d.name.startswith("__")]
+    # Ground-filtriraj mape: preskoči skrite run-time mape (npr. `.pytest_cache`),
+    # Python meta-mape (`__pycache__`) in posebne (`master_test`). Navadne
+    # runtime artefakte (pytest_cache/__pycache__) master suite USTVARI sam na
+    # actions/ ob teku — če bi jih iteriral, bi poganjal pytest na prazni mapi
+    # (exit code 5 "no tests collected") in padel. Zato so izključene.
+    def _is_valid_module(d) -> bool:
+        if not d.is_dir():
+            return False
+        if d.name.startswith(".") or d.name.startswith("__"):
+            return False
+        if d.name == "master_test":
+            return False
+        return True
 
+    actions = [d for d in actions_dir.iterdir() if _is_valid_module(d)]
+
+    # Zberemo napake vseh modulov, da en padec ne prekine obdelave ostalih.
+    failures = []
     for act in actions:
-        if act.name == "master_test":
-            continue
         env = {"PYTHONPATH": "."}
         res = subprocess.run(
             [sys.executable, "-m", "pytest", "-v", str(act)],
@@ -43,4 +57,11 @@ def test_all_actions_pytest_coverage():
             text=True,
             env=dict(subprocess.os.environ, **env)
         )
-        assert res.returncode == 0, f"Modul v actions/{act.name} ni opravil Pytest verifikacije:\n{res.stdout}\n{res.stderr}"
+        if res.returncode != 0:
+            failures.append(f"actions/{act.name}:\n{res.stdout}\n{res.stderr}")
+
+    if failures:
+        raise AssertionError(
+            "Oviralo: naslednji moduli niso opravili Pytest verifikacije:\n\n"
+            + "\n\n".join(failures)
+        )
