@@ -3,6 +3,7 @@ import sys
 import json
 import re
 import asyncio
+import shutil
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -306,9 +307,46 @@ class LoopXEngineBridge:
         msg = result.stderr or result.stdout or "pytest ni zelen"
         return result.returncode == 0, f"[sandbox] {msg[:400]}"
 
+    # ------------------------------------------------------------------ #
+    #  P3 — Ruff v verigo (F821 pre-gate pred pytest).
+    # ------------------------------------------------------------------ #
+    def _verify_ruff(self) -> Tuple[bool, str]:
+        """P3 — Ruff pre-gate za F821 (undefined name → NameError).
+
+        Požene se PRED pytest om, da ulovi kategorične pyflakes napake
+        (npr. neobstoječ uvoz → ``Name ... is not defined``) ceneje in hitreje,
+        brez ogrevanja Docker sandboxa. Omejeno na F821 (ne stilski E/W), zato
+        ni preagresivno do LLM-generirane kode.
+
+        VARNO NADOMESTILO: če Ruff ni na PATH, vrne ``(True, "")`` — t.j.
+        veriga se NADALJUJE (pytest odloči), ne blokira. To je ključno, da P3
+        nikoli ne zruši zelenega build-a samo zato, ker Ruff manjka.
+        """
+        ruff = shutil.which("ruff")
+        if ruff is None:
+            # Ne install-iraj zahtev — preskoči pre-gate; pytest je glavni ščit.
+            return True, ""
+        try:
+            result = subprocess.run(
+                [ruff, "check", str(self.target_dir), "--select", "F821", "--quiet"],
+                capture_output=True, text=True, timeout=60,
+            )
+        except Exception as e:
+            # Če Ruff odpove tehnično, ne blokiraj — prevzame pytest.
+            return True, f"[ruff] pre-gate opozorilo: {e}"
+        if result.returncode == 0:
+            return True, ""
+        msg = (result.stdout or result.stderr or "F821 offline").strip()
+        return False, f"[ruff:F821] nedefiniran(i) symbol(i) pred pytest: {msg[:500]}"
+
     # F1 — verifikacija glede na vrsto izdelka. Vrne (pass, napis).
     def _verify(self, kind: str) -> Tuple[bool, str]:
         if kind == "python":
+            # P3 — Ruff pre-gate (F821) najprej; če pade, LLM dobi razlog brez
+            # da bi se kuril Docker. Sicer gremo na pytest sandbox.
+            ok, ruff_msg = self._verify_ruff()
+            if not ok:
+                return False, ruff_msg
             return self._verify_python_sandbox()
         if kind == "markdown":
             # Zelen = obstaja vsaj ena .md datoteka z naslovom (ni prazen stub).

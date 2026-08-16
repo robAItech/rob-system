@@ -110,7 +110,9 @@ def test_execute_and_heal_vrne_true_ob_zelenem_testu(tmp_path, monkeypatch):
     # Docker šunemo na »ni na voljo«, da verifikacija teče v HOST fallback
     # (determinističen unit test zanke; prvi mock subprocess.run gre torej
     # direktno na pytest, ne na `docker info`).
-    with mock.patch.object(engine, "_docker_available", return_value=False), \
+    # P3 pre-gate izključimo (mock zelen): preverjamo pytest zanko, ne Ruff-a.
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(engine, "_docker_available", return_value=False), \
          mock.patch.object(
              subprocess, "run",
              return_value=mock.Mock(returncode=0, stderr="", stdout="ok"),
@@ -128,7 +130,8 @@ def test_execute_and_heal_brez_healinga_vrne_false(tmp_path, monkeypatch):
     engine = _navidezni_engine(tmp_path, monkeypatch)
 
     # pytest zmeraj rdeč (returncode 1); _heal_once ne najde popravka
-    with mock.patch.object(
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(
         subprocess, "run", return_value=mock.Mock(returncode=1, stderr="X\nValueError: n", stdout="")
     ), mock.patch.object(engine, "_heal_once", return_value=(False, "ni sprememb")):
         result = engine.execute_and_heal("build demo")
@@ -157,7 +160,9 @@ def test_execute_and_heal_uspeh_po_healingu(tmp_path, monkeypatch):
         mock.Mock(returncode=0, stderr="", stdout="ok"),
     ])
 
-    with mock.patch.object(engine, "_docker_available", return_value=False), \
+    # P3 pre-gate izključimo (Ruff zelen), da ne porabi mock-anih vnosov.
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(engine, "_docker_available", return_value=False), \
          mock.patch.object(subprocess, "run", side_effect=lambda *a, **k: next(run_results)), \
          mock.patch.object(engine, "_heal_once", return_value=(True, "popravil main.py")):
         result = engine.execute_and_heal("build demo")
@@ -170,3 +175,50 @@ def test_execute_and_heal_uspeh_po_healingu(tmp_path, monkeypatch):
     # Po prvem neuspehu je healing deloval in nato GREEN
     assert state["status"] == "VERIFIED_GREEN"
     assert state["current_attempt"] == 2
+
+
+# --------------------------------------------------------------------------- #
+#  P3 — Ruff pre-gate (F821)
+# --------------------------------------------------------------------------- #
+
+def test_verify_ruff_ne_blokira_ker_manjka(tmp_path, monkeypatch):
+    """Ruff ni na PATH → pre-gate vrne (True,"") — veriga se NADALJUJE."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    monkeypatch.setattr("core.loopx_bridge.shutil.which", lambda _: None)
+    ok, msg = engine._verify_ruff()
+    assert ok is True
+    assert msg == ""
+
+
+def test_verify_ruff_zelen(tmp_path, monkeypatch):
+    """Ruff čist (returncode 0) → (True,"")."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    monkeypatch.setattr("core.loopx_bridge.shutil.which", lambda _: "/x/ruff")
+    with mock.patch.object(subprocess, "run",
+                           return_value=mock.Mock(returncode=0, stdout="", stderr="")):
+        ok, msg = engine._verify_ruff()
+    assert ok is True
+
+
+def test_verify_ruff_ujame_f821(tmp_path, monkeypatch):
+    """Ruff najde F821 (undefined name) → (False, portinfo z razlogom)."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    monkeypatch.setattr("core.loopx_bridge.shutil.which", lambda _: "/x/ruff")
+    with mock.patch.object(subprocess, "run", return_value=mock.Mock(
+            returncode=1, stdout="F821 undefined name 'foo'", stderr="")):
+        ok, msg = engine._verify_ruff()
+    assert ok is False
+    assert "F821" in msg
+
+
+def test_verify_ruff_ob_izjemi_ne_blokira(tmp_path, monkeypatch):
+    """Če Ruff klic sproži izjemo (timeout/napaka) → ne blokira, vzame pytest."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    monkeypatch.setattr("core.loopx_bridge.shutil.which", lambda _: "/x/ruff")
+    with mock.patch.object(subprocess, "run", side_effect=TimeoutExpiredStub()):
+        ok, _msg = engine._verify_ruff()
+    assert ok is True
+
+
+class TimeoutExpiredStub(Exception):
+    pass

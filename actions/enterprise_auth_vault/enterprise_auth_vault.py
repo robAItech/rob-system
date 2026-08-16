@@ -2,7 +2,7 @@ import hmac
 import hashlib
 import secrets
 import base64
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Any
 from datetime import datetime, timedelta
 from actions.enterprise_auth_vault.schemas import Role, ApiKeyCreate, ApiKeyResponse
 
