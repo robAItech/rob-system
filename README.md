@@ -146,6 +146,29 @@ preslikani na `deepseek/deepseek-chat`, krovni ključ (`master_key`) in
 `drop_params: true` (odstranjuje parametre, ki jih DeepSeek ne razume)
 pa preprečujejo 401-avtentikacijske napake in zlom proxyja.
 
+### 4. Izoliran zagon prek `zagon.ps1` (proxy :4010 + Command-Center)
+
+Če imaš na portu **4000** svoj delujoči LiteLLM proxy (npr. v lastnem
+terminalu) in ga ne želiš upravljati s skripte, uporabi `zagon.ps1`, ki
+vse dvigne **izolirano**, brez da bi se kdaj dotaknil porta 4000:
+
+- **Proxy LiteLLM na **:4010** (lasten, izoliran)**
+- **Command-Center dashboard** na **:8787** via `bun run src/server.ts`
+  (`/api/health` · `/api/ledger` · `/api/runs` · `POST /api/run`)
+
+```powershell
+.\zagon.ps1                 # proxy :4010 + dashboard :8787 v ozadju, poveže claude;
+                            # po izhodu sam ugasne oboje. Port 4000 se ne dotakne.
+.\zagon.ps1 -Init           # dry-run: preveri config, ključ, porta 4010/8787 in okolje.
+.\zagon.ps1 -ProxyOnly      # samo LiteLLM na 4010 v ospredju.
+.\zagon.ps1 -DashboardOnly  # samo Command-Center (bun run src/server.ts) na 8787.
+.\zagon.ps1 -ClaudeOnly     # samo claude ob že obstoječem proxyju na 4010.
+```
+
+`zagon.ps1` **nikoli** ne upravlja porta 4000 — ta ostane rezerviran za
+uporabnikov obstoječi proxy in ni vpleten v nobeno preverjanje ali
+čiščenje.
+
 ## 💻 Navodila za uporabo CLI (`./rob`)
 
 Swarm motor `./rob` omogoča popolno upravljanje sistema preko kratkih ukazov:
