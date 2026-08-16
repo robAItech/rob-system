@@ -693,6 +693,34 @@ const server = Bun.serve({
       }
     }
 
+    // Faza 3: agenda (čakalna vrsta naročil) — branje in dodajanje.
+    // Datoteka je .rob_ai/agenda.json, jo ureja core/agenda.py (Python).
+    if (req.method === 'GET' && url.pathname === '/api/agenda') {
+      const f = Bun.file(`${OUT_ROOT}/.rob_ai/agenda.json`);
+      let items: Record<string, unknown>[] = [];
+      if (await f.exists()) { try { items = JSON.parse(await f.text()) as Record<string, unknown>[]; } catch { /* */ } }
+      return json({ ok: true, items });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/agenda') {
+      const raw = await req.text().catch(() => '');
+      let body: { goal?: unknown; kind?: unknown; repeat?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const goal = String(body.goal || '').trim();
+      if (!goal) return json({ ok: false, error: 'goal je prazen' }, 400);
+      const kind = ['python', 'markdown', 'html', 'autonomous'].includes(String(body.kind)) ? String(body.kind) : 'python';
+      // Dodamo prek Python agenda (poohranja isti format kot CLI).
+      const proc = Bun.spawn({
+        cmd: ['python', '-c', `from core.agenda import add; import json; print(json.dumps(add(${JSON.stringify(goal)}, kind=${JSON.stringify(kind)})))`],
+        cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+      });
+      const out = await new Response(proc.stdout).text();
+      const code = await proc.exited;
+      let item: Record<string, unknown> = {};
+      if (code === 0) { try { item = JSON.parse(out); } catch { /* */ } }
+      return json({ ok: code === 0, item });
+    }
+
     // ================================================================
     // Google integracije: Drive / Gmail / Calendar (OAuth)
     // ================================================================

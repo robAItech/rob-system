@@ -86,11 +86,43 @@ def main() -> None:
         action="store_true",
         help="Faza 2: avtonomni delovnik — nalogo razdeli na spec + implement (več RSI faz)"
     )
+    parser.add_argument(
+        "--process-agenda",
+        action="store_true",
+        help="Faza 3: obdela vso čakalno vrsto naročil (agenda) skozi RSI zanko"
+    )
 
     args = parser.parse_args()
 
     # 1. Preverjanje in priprava okolja
     validate_environment()
+
+    # Faza 3 — obdelaj čakalno vrsto (agenda) skozi RSI.
+    if args.process_agenda:
+        from core.agenda import pending, mark
+        print("🤖 [F3] Začenjam obdelavo čakalne vrste (agenda):")
+        items = pending()
+        if not items:
+            print("  Agenda je prazna. Dodaj naloge (npr. prek dashboarda).")
+            sys.exit(0)
+        results = []
+        for it in items:
+            ok = False
+            print(f"  ▶ obdelujem: {it['id']} · {it['goal'][:60]}")
+            mark(it["id"], "running")
+            try:
+                if it.get("kind") == "autonomous":
+                    ok = RobAIOrchestrator.run_autonomous(it["target"], it["goal"])
+                else:
+                    ok = RobAIOrchestrator.run(it["target"], it["goal"])
+                mark(it["id"], "done" if ok else "failed")
+            except Exception as e:
+                print(f"  ❌ napaka: {e}")
+                mark(it["id"], "failed")
+            results.append((it["id"], ok))
+        # Če repeat — ponastavimo v pending (enostaven schedule: enkrat oddane ponovljive).
+        print("🤖 [F3] Agenda obdelana.")
+        sys.exit(0 if all(r[1] for r in results) else 1)
 
     # 2. Prikaz sistemskega statusa
     print_banner(target=args.target, directive=args.directive, agent=args.agent)
