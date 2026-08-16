@@ -91,7 +91,11 @@ class LoopXEngineBridge:
             re.DOTALL,
         )
         for m in pattern.finditer(text):
-            files[m.group(1).strip()] = m.group(2).strip()
+            # Path iz LLM lahko pride kot `actions/<proj>/<file>.py` ali `<file>.py`.
+            # _apply_patch razrešuje samo goli basename (varnost path traversal),
+            # zato tu izvlečemo zadnji segment (basename).
+            base = m.group(1).strip().replace("\\", "/").split("/")[-1]
+            files[base] = m.group(2).strip()
         return files
 
     def _apply_patch(self, files: Dict[str, str]) -> int:
@@ -148,13 +152,17 @@ class LoopXEngineBridge:
                 )
             )
         except Exception as e:
+            print(f"[LOOPX] LLM napaka pri healingu: {e}", flush=True)
             return False, f"LLM napaka pri healingu: {e}"
 
+        print(f"[LOOPX] LLM odziv ({len(response)} znakov): {response[:200]!r}", flush=True)
         files = self._parse_patched_files(response)
+        print(f"[LOOPX] razčlenjeno datotek: {list(files.keys())}", flush=True)
         if not files:
             return False, "LLM ni vrnil datotek v formatu ### FILE: ..."
 
         written = self._apply_patch(files)
+        print(f"[LOOPX] zapisanih datotek: {written}", flush=True)
         if written == 0:
             return False, "Uporabljene datoteke niso bile zapisane (omejitev 3.4)."
 
