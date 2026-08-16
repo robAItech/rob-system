@@ -30,6 +30,14 @@ import { resolveProvider } from './bridges/provider.ts';
 import { SqliteMemoryStore } from './memory/sqlite-store.ts';
 import { BunExec } from './bridges/exec.ts';
 
+// Pretvorba in prikaz artefaktov (Word / PDF / Markdown-ogled)
+import {
+  Document as DocxDocument, Packer, Paragraph, TextRun, HeadingLevel,
+  AlignmentType, convertInchesToTwip,
+} from 'docx';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { marked } from 'marked';
+
 const DB_PATH = process.env.LEDGER_DB ?? '.gstack-run.sqlite';
 const PORT = Number(process.env.PORT ?? 8787);
 const OUT_ROOT = process.env.OUT_ROOT ?? '.';
@@ -124,6 +132,184 @@ async function health(): Promise<Record<string, unknown>> {
   };
 }
 
+/** Live tehnične novice (poberemo iz interneta). Vrne največ ~5 naslovov. */
+async function getNews(): Promise<{ title: string; source: string }[]> {
+  const fallback: { title: string; source: string }[] = [
+    { title: 'AI agenti prevzemajo avtomatizacijo razvojnih tokov', source: 'tech' },
+    { title: 'Novi modeli pospešujejo generativno kodiranje', source: 'tech' },
+  ];
+  // Google News RSS s tehnično iskalno poizvedbo — odprt vir, brez ključa.
+  const url =
+    'https://news.google.com/rss/search?q=technology+AI&hl=en-US&gl=US&ceid=US:en';
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return fallback;
+    const xml = await res.text();
+    const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 5);
+    const out: { title: string; source: string }[] = [];
+    for (const [, block] of items) {
+      const t = block.match(/<title>(.*?)<\/title>/)?.[1] ?? '';
+      if (!t) continue;
+      const s = block.match(/<source[^>]*>(.*?)<\/source>/)?.[1] ?? 'tech';
+      out.push({ title: t.replace(/<!\[CDATA\[|\]\]>/g, '').trim(), source: s.trim() });
+    }
+    return out.length ? out : fallback;
+  } catch {
+    return fallback;  // offline → rezervni statični naslovi
+  }
+}
+
+// =====================================================================
+//  Produkcirani moduli → seznam + ogled + prenos (Word/PDF/Markdown)
+// =====================================================================
+
+/** Prevede relativno arhivsko pot v absolutno, varno znotraj korena. */
+function resolveArtefact(rel: string): string {
+  const safe = rel.replace(/^\/+/, '').replace(/\.\./g, '');
+  return `${OUT_ROOT}/${safe}`;
+}
+
+/** Seznam datotek iz `out/` (le prepoznane oblike izdelkov). */
+async function listModules(): Promise<Record<string, unknown>[]> {
+  const dir = `${OUT_ROOT}/out`;
+  const out: Record<string, unknown>[] = [];
+  try {
+    const glob = new Bun.Glob('*.{md,html,htm,py,json,css,js,pdf,txt,csv}');
+    for await (const entry of glob.scan({ cwd: dir, onlyFiles: true })) {
+      if (entry.toLowerCase() === 'dashboard.html') continue;
+      const abs = `${dir}/${entry}`;
+      const f = Bun.file(abs);
+      const sizeBytes = (await f.exists()) ? f.size : 0;
+      out.push({
+        name: entry, path: `out/${entry}`,
+        ext: (entry.split('.').pop() || '').toLowerCase(),
+        sizeBytes,
+      });
+    }
+  } catch { /* out/ morda ne obstaja */ }
+  return out.sort((a, b) => String(b.name).localeCompare(String(a.name)));
+}
+
+/** Skromen razčlenjevalnik Markdown → odstavki Worda (naslovi, kulice, navaden tekst). */
+async function toDocxBuffer(md: string): Promise<Uint8Array> {
+  const lines = md.replace(/\r/g, '').split('\n');
+  const children = [];
+  let inList = false;
+  const flushList = () => { if (inList) { /* potrošimo z zadnjo kulico spodaj */ inList = false; } };
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    if (!line.trim()) { if (inList) inList = false; continue; }
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      flushList();
+      const lvl = Math.min(h[1].length, 6) as HeadingLevel;
+      children.push(new Paragraph({ text: h[2], heading: lvl }));
+      continue;
+    }
+    const bullet = line.match(/^\s*[-*+]\s+(.*)$/);
+    if (bullet) {
+      children.push(new Paragraph({ text: bullet[1].replace(/\*\*(.+?)\*\*/g, '$1'), bullet: { level: 0 } }));
+      inList = true; continue;
+    }
+    const num = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (num) {
+      children.push(new Paragraph({ text: num[1].replace(/\*\*(.+?)\*\*/g, '$1'), bullet: { level: 0 } }));
+      inList = true; continue;
+    }
+    flushList();
+    // poudarjeno besedilo: **x** in *x* z minimaliziranjem (pustimo kot tekst)
+    const b = line.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*([^*]+)\*/g, '$1');
+    children.push(new Paragraph({ children: [new TextRun(b)] }));
+  }
+  const doc = new DocxDocument({
+    sections: [{ properties: { page: { margin: { top: convertInchesToTwip(1), bottom: convertInchesToTwip(1), left: convertInchesToTwip(1), right: convertInchesToTwip(1) } } }, children }],
+  });
+  return new Uint8Array(await Packer.toBuffer(doc));
+}
+
+/**
+ * Normalizira slovenske šumnike in druge diakritike v WinAnsi-kompatibilno
+ * (Helvetica v pdf-lib podpira le WinAnsi; č in š bi vrgla napako).
+ */
+function toWinAnsi(s: string): string {
+  return s
+    .replace(/č|ć|Č|Ć/g, 'c')
+    .replace(/š|Š/g, 's')
+    .replace(/ž|Ž/g, 'z')
+    .replace(/đ|Đ/g, 'd')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+/** Preprosta pretvorba Markdown → PDF (Helvetica, brez zunanjih fontov). */
+async function toPdfBuffer(md: string): Promise<Uint8Array> {
+  const pdf = await PDFDocument.create();
+  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const page = pdf.addPage([595, 842]); // A4
+  const { width } = page.getSize();
+  const ml = 46; const sizeW = width - ml * 2;
+  let y = 820;
+  const lines = md.replace(/\r/g, '').split('\n');
+  for (const raw of lines) {
+    const line = raw.replace(/\s+$/, '');
+    if (!line.trim()) { y -= 10; if (y < 40) { y = 820; page.drawText('', { x: ml, y }); pdf.addPage([595, 842]); }  continue; }
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    let content = line; let f = font; let sz = 11; let lead = 16;
+    if (h) {
+      content = h[2];
+      const lvl = h[1].length;
+      if (lvl <= 1) { f = bold; sz = 20; lead = 26; }
+      else if (lvl === 2) { f = bold; sz = 16; lead = 22; }
+      else { f = bold; sz = 13; lead = 19; }
+    } else if (/^\s*>/.test(line)) { content = line.replace(/^\s*>/, ''); f = font; sz = 10; lead = 15; }
+    else { content = line.replace(/^\s*[-*+]\s+/, '• ').replace(/^\s*\d+[.)]\s+/,''); }
+    content = content.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\[(.+?)\]\((.+?)\)/g, '$1');
+    content = toWinAnsi(content);   // Helvetica ne zmore č/š → prenormalizacija
+    // Wrap na sirino (byte-based; helvetica close enough)
+    const words = content.split(' ');
+    let cur = '';
+    for (const w of words) {
+      const test = (cur ? cur + ' ' : '') + w;
+      if (f.widthOfTextAtSize(test, sz) <= sizeW) { cur = test; }
+      else {
+        page.drawText(cur, { x: ml, y, size: sz, font: f, color: rgb(0.08, 0.08, 0.1) });
+        y -= lead; cur = w;
+        if (y < 40) { y = 820 - lead; pdf.addPage([595, 842]); }
+      }
+    }
+    if (cur) {
+      page.drawText(cur, { x: ml, y, size: sz, font: f, color: rgb(0.08, 0.08, 0.1) });
+      y -= lead;
+      if (y < 40) { y = 820 - lead; pdf.addPage([595, 842]); }
+    }
+  }
+  return new Uint8Array(await pdf.save());
+}
+
+/** Markdown → HTML (spremeni vsebino v okrašeno HTML, za ogled). */
+async function mdToHtml(rel: string): Promise<{ html: string; isHtml: boolean } | null> {
+  const abs = resolveArtefact(rel);
+  const f = Bun.file(abs);
+  if (!(await f.exists())) return null;
+  const ext = (rel.split('.').pop() || '').toLowerCase();
+  if (ext === 'html' || ext === 'htm') {
+    return { html: await f.text(), isHtml: true };
+  }
+  const md = await f.text();
+  const body = marked.parse(md) as string;
+  const html = `<!DOCTYPE html><html lang="sl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Artefakt</title>
+<style>body{font:15px/1.6 system-ui,sans-serif;margin:0 auto;max-width:760px;padding:28px;color:#0d1420}
+h1,h2,h3{margin:1.2em 0 .4em;line-height:1.25;color:#061020}code{background:#eef2f7;border-radius:4px;padding:1px 5px}
+pre{background:#0a1628;color:#eaf3ff;padding:14px;border-radius:10px;overflow:auto}
+blockquote{border-left:3px solid #4fc3ff;margin:.6em 0;padding:.2em 1em;color:#406a96}
+table{border-collapse:collapse;width:100%}td,th{border:1px solid #d4dee8;padding:6px 10px}th{background:#eef2f7}
+a{color:#1e6fd0}</style></head><body>${body}</body></html>`;
+  return { html, isHtml: false };
+}
+
 // =====================================================================
 //  Izvedba nove naloge
 // =====================================================================
@@ -207,10 +393,55 @@ const server = Bun.serve({
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
-    // API: health / ledger / runs
+    // API: health / ledger / runs / news
     if (req.method === 'GET' && url.pathname === '/api/health') return json(await health());
     if (req.method === 'GET' && url.pathname === '/api/ledger') return json({ events: readEvents() });
     if (req.method === 'GET' && url.pathname === '/api/runs') return json({ runs: readRuns() });
+    if (req.method === 'GET' && url.pathname === '/api/news') return json({ news: await getNews() });
+
+    // API: seznam produciranih modulov (iz out/)
+    if (req.method === 'GET' && url.pathname === '/api/modules') {
+      return json({ modules: await listModules() });
+    }
+
+    // API: ogled vsebine modula (Markdown → HTML ali surov HTML)
+    if (req.method === 'GET' && url.pathname === '/api/view') {
+      const rel = url.searchParams.get('path') || '';
+      const v = await mdToHtml(rel);
+      if (!v) return json({ ok: false, error: 'modul ne obstaja: ' + rel }, 404);
+      return new Response(v.html, {
+        headers: {
+          'Content-Type': v.isHtml ? 'text/html; charset=utf-8' : 'text/html; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+
+    // API: prenos-na-zahtevo v Word (.docx) ali PDF (.pdf) iz Markdown
+    if (req.method === 'GET' && url.pathname === '/api/export') {
+      const rel = url.searchParams.get('path') || '';
+      const format = (url.searchParams.get('format') || 'md').toLowerCase();
+      const abs = resolveArtefact(rel);
+      const f = Bun.file(abs);
+      if (!(await f.exists())) return json({ ok: false, error: 'modul ne obstaja: ' + rel }, 404);
+      const base = (rel.split('/').pop() || 'modul').replace(/\.[^.]+$/, '');
+      if (format === 'docx' || format === 'pdf') {
+        const md = await f.text();
+        let buf: Uint8Array; let mime: string; let ext: string;
+        if (format === 'docx') { buf = await toDocxBuffer(md); mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'; ext = 'docx'; }
+        else { buf = await toPdfBuffer(md); mime = 'application/pdf'; ext = 'pdf'; }
+        return new Response(buf, {
+          headers: { 'Content-Type': mime, 'Content-Disposition': `attachment; filename="${encodeURIComponent(base)}.${ext}"`, 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+      // else: surov download izvirnika (MD/HTML/PY/JSON...)
+      const raw = Bun.file(abs);
+      const nm = rel.split('/').pop() || 'modul';
+      const buf = await raw.arrayBuffer();
+      return new Response(buf, {
+        headers: { 'Content-Type': contentTypeFor(nm), 'Content-Disposition': `attachment; filename="${encodeURIComponent(nm)}"`, 'Access-Control-Allow-Origin': '*' },
+      });
+    }
 
     // API: prenesi/preglej dejanski artefakt (npr. out/presentation.html).
     // GET /api/artifact?path=out/presentation.html
@@ -258,4 +489,4 @@ const server = Bun.serve({
 });
 
 console.log(`\n[command-center] živo na http://localhost:${server.port}/`);
-console.log(`  /api/health · /api/ledger · /api/runs · POST /api/run\n`);
+console.log(`  /api/health · /api/ledger · /api/runs · /api/modules · /api/export · POST /api/run\n`);
