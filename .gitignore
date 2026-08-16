@@ -26,6 +26,9 @@ diagrams/
 .env
 .env.local
 *.local
+client_secret.json
+# Google OAuth token (shranjen po avtorizaciji) — občutljivo
+.gtoken.json
 
 # Python (sodelavec / .rob_ai)
 venv/

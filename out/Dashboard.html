@@ -491,12 +491,34 @@ function toolAction(name){
     openPanel(); // seznam modulov/podatkov
     toast('🧠 MEMORY · moduli in podatki v plošči Moduli.');
     setTimeout(()=>{ const ml=document.getElementById('modsList'); if(ml) ml.scrollIntoView({block:'start'}); },20);
+  }else if(n==='DRIVE'||n==='EMAIL'||n==='CALENDAR'){
+    googleTool(n);
   }else{
-    // DRIVE / EMAIL / CALENDAR — še ni prave integracije.
-    toast(`${iconOf(n)} ${name}: integracija prihaja — še ni povezana.`);
+    toast(`${iconOf(n)} ${name}: ni določene akcije.`);
   }
 }
 function iconOf(n){ return n==='DRIVE'?'☁':n==='EMAIL'?'✉':'◷'; }
+
+/* Google orodja: DRIVE / EMAIL / CALENDAR */
+async function googleTool(n){
+  // Preveri povezanost; če ni, sproži OAuth (redirect na Google).
+  try{
+    const s=await api('/api/google/status');
+    if(!s?.connected){ window.location.href='/api/google/auth'; return; }
+  }catch{ toast('Google ni dosegljiv.'); return; }
+  const ep = n==='DRIVE'?'drive':n==='EMAIL'?'email':'calendar';
+  try{
+    const r=await api('/api/google/'+ep);
+    if(!r?.ok){ toast('Napaka pri poizvedbi Google.'); return; }
+    let msg='';
+    if(n==='DRIVE'){ const f=r.files||[]; msg=`☁ Drive · ${f.length} datotek:\n`+f.map(x=>' · '+(x.name||'?')).slice(0,6).join('\n'); }
+    else if(n==='EMAIL'){ const m=r.messages||[]; msg=`✉ Email · ${m.length} sporočil:\n`+m.map(x=>' · '+(x.snippet||'?').slice(0,36)).join('\n'); }
+    else{ const e=r.events||[]; msg=`◷ Cal · ${e.length} dogodkov:\n`+e.map(x=>' · '+(x.summary||'?')).slice(0,6).join('\n'); }
+    // prikaži v modal
+    document.getElementById('viewOverlay').style.display='flex';
+    document.getElementById('viewIframe').srcdoc='<html><body style="font:14px/system-ui;background:#0a1628;color:#eef6ff;padding:24px;line-height:1.8;white-space:pre-wrap">'+msg+'</body></html>';
+  }catch(err){ toast('Napaka pri Google: '+String(err.message||err)); }
+}
 
 /* ---- live tech novice (iz interneta prek /api/news) ---- */
 let newsQueue=[]; let newsIdx=0;
@@ -769,7 +791,7 @@ function renderModules(){
         <div class="mod-sub">${esc(m.ext)} · ${(m.sizeBytes/1024).toFixed(1)} KB</div>
       </div>
       <div class="mod-acts">
-        ${m.ext==='md'?dl('md','MD')+dl('docx','Word')+dl('pdf','PDF'):''}
+        ${m.ext==='md'?dl('md','MD')+dl('docx','Word')+dl('pdf','PDF')+dl('xlsx','Excel'):''}
         ${(m.ext==='html'||m.ext==='htm')?dl('html','HTML')+dl('pdf','PDF'):''}
         ${(m.ext==='py')?dl('py','PY'):''}
         ${(m.ext==='json')?dl('json','JSON'):''}
@@ -811,8 +833,8 @@ function openModule(path){
   ov.style.display='flex';
 }
 function downloadModule(path,format){
-  // surov format (md/html/py/json) gre skozi /api/artifact; docx/pdf skozi /api/export
-  const url = (format==='docx'||format==='pdf')
+  // surov format (md/html/py/json) gre skozi /api/artifact; docx/pdf/xlsx skozi /api/export
+  const url = (format==='docx'||format==='pdf'||format==='xlsx')
     ? '/api/export?path='+encodeURIComponent(path)+'&format='+format
     : '/api/artifact?path='+encodeURIComponent(path);
   const a=document.createElement('a');

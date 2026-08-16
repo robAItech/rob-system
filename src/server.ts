@@ -37,10 +37,103 @@ import {
 } from 'docx';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { marked } from 'marked';
+import ExcelJS from 'exceljs';
 
 const DB_PATH = process.env.LEDGER_DB ?? '.gstack-run.sqlite';
 const PORT = Number(process.env.PORT ?? 8787);
 const OUT_ROOT = process.env.OUT_ROOT ?? '.';
+
+// =====================================================================
+//  Google OAuth + API (Drive / Gmail / Calendar)
+// =====================================================================
+const GOOGLE_SECRET_FILE = `${OUT_ROOT}/client_secret.json`;
+const GOOGLE_TOKEN_FILE = `${OUT_ROOT}/.gtoken.json`;
+const G_REDIRECT = `http://localhost:${PORT}/api/google/oauth2callback`;
+
+/** Prebere OAuth kredentials iz client_secret.json. */
+async function googleCreds(): Promise<{ client_id: string; client_secret: string } | null> {
+  try {
+    const f = Bun.file(GOOGLE_SECRET_FILE);
+    if (!(await f.exists())) return null;
+    const j = JSON.parse(await f.text());
+    const w = j.web || {};
+    if (!w.client_id || !w.client_secret) return null;
+    return { client_id: w.client_id, client_secret: w.client_secret };
+  } catch { return null; }
+}
+
+/** Prebere shranjeni access/refresh token (če obstaja). */
+async function googleToken(): Promise<{ access_token: string; refresh_token?: string; expires_at?: number } | null> {
+  try {
+    const f = Bun.file(GOOGLE_TOKEN_FILE);
+    if (!(await f.exists())) return null;
+    return JSON.parse(await f.text());
+  } catch { return null; }
+}
+async function saveGoogleToken(t: unknown): Promise<void> {
+  await Bun.write(GOOGLE_TOKEN_FILE, JSON.stringify(t));
+}
+
+/** Aquire access token, po potrebi osveži z refresh tokenom. */
+async function googleAccessToken(): Promise<string | null> {
+  const t = await googleToken();
+  if (!t) return null;
+  if (t.expires_at && t.expires_at > Date.now()) return t.access_token;   // še veljaven
+  if (!t.refresh_token) return null;
+  const c = await googleCreds();
+  if (!c) return null;
+  try {
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `client_id=${encodeURIComponent(c.client_id)}&client_secret=${encodeURIComponent(c.client_secret)}&refresh_token=${encodeURIComponent(t.refresh_token)}&grant_type=refresh_token`,
+    });
+    const j = await r.json() as { access_token?: string; expires_in?: number };
+    if (!j.access_token) return null;
+    await saveGoogleToken({ ...t, access_token: j.access_token, expires_at: Date.now() + (j.expires_in ?? 3600) * 1000 });
+    return j.access_token;
+  } catch { return null; }
+}
+
+/** Sestavi avtorizacijski URL za Google OAuth. */
+async function googleAuthUrl(scopes: string[]): Promise<string | null> {
+  const c = await googleCreds();
+  if (!c) return null;
+  const params = new URLSearchParams({
+    client_id: c.client_id,
+    redirect_uri: G_REDIRECT,
+    response_type: 'code',
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: scopes.join(' '),
+  });
+  return 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
+}
+
+/** Izmenja authorization code → tokens. */
+async function googleExchangeCode(code: string): Promise<boolean> {
+  const c = await googleCreds();
+  if (!c) return false;
+  try {
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `code=${encodeURIComponent(code)}&client_id=${encodeURIComponent(c.client_id)}&client_secret=${encodeURIComponent(c.client_secret)}&redirect_uri=${encodeURIComponent(G_REDIRECT)}&grant_type=authorization_code`,
+    });
+    const j = await r.json() as { access_token?: string; refresh_token?: string; expires_in?: number };
+    if (!j.access_token) return false;
+    await saveGoogleToken({ access_token: j.access_token, refresh_token: j.refresh_token ?? null, expires_at: Date.now() + (j.expires_in ?? 3600) * 1000 });
+    return true;
+  } catch { return false; }
+}
+
+/** Splošni GET proti Google API s tokenom. */
+async function googleGet(path: string): Promise<unknown | null> {
+  const at = await googleAccessToken();
+  if (!at) return null;
+  try {
+    const r = await fetch('https://www.googleapis.com' + path, { headers: { Authorization: 'Bearer ' + at } });
+    return r.ok ? (await r.json()) : null;
+  } catch { return null; }
+}
 
 /** Resnični disk. */
 class Disk implements FsLike {
@@ -287,6 +380,51 @@ async function toPdfBuffer(md: string): Promise<Uint8Array> {
   return new Uint8Array(await pdf.save());
 }
 
+/** Markdown → Excel (.xlsx). Markdown tabele | a | b | → Excel preglednice
+ *  (ena preglednica na izvorni del), ostalo kot odstavki v prvi koloni. */
+async function toXlsxBuffer(md: string): Promise<Uint8Array> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Rob AI'; wb.created = new Date();
+  const lines = md.replace(/\r/g, '').split('\n');
+  let ws = wb.addWorksheet('Vsebina');
+  ws.views = [{ state: 'normal' }];
+  const rows: string[][] = [];
+  let inTable = false; let tableRows: string[][] = [];
+  const pushTable = () => {
+    if (tableRows.length) {
+      const name = 'Tabela' + wb.worksheets.length;
+      const t = wb.addWorksheet(name);
+      tableRows.forEach(r => t.addRow(r));
+      t.getRow(1).font = { bold: true };
+      t.columns.forEach(c => { if (c) c.width = 24; });
+    }
+    tableRows = [];
+  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) { inTable = false; continue; }
+    if (/^\|.*\|$/.test(line)) {
+      inTable = true;
+      const cells = line.replace(/^\||\|$/g, '').split('|').map(s => s.trim().replace(/\*\*/g, ''));
+      if (!/^:?-{2,}:?$/.test(cells.join('').replace(/[:\-]/g, ''))) {
+        tableRows.push(cells);
+      }
+      continue;
+    }
+    if (inTable) { pushTable(); inTable = false; }
+    // naslov → prvi stolpec, poudarjeno
+    const h = line.match(/^(#{1,3})\s+(.*)$/);
+    rows.push([h ? h[2] : line.replace(/^\s*[-*+]\s+/, '').replace(/\*\*(.+?)\*\*/g, '$1')]);
+  }
+  pushTable();
+  // nespecificirano besedilo v glavno preglednico "Vsebina"
+  rows.forEach(r => ws.addRow(r));
+  ws.getColumn(1).width = 60;
+  if (JSON.stringify(rows) === '[]' && wb.worksheets.length === 1) ws.addRow(['Sistem ni zaznal strukturiranih podatkov.']);
+  const buf = await wb.xlsx.writeBuffer();
+  return new Uint8Array(buf);
+}
+
 /** Markdown → HTML (spremeni vsebino v okrašeno HTML, za ogled). */
 async function mdToHtml(rel: string): Promise<{ html: string; isHtml: boolean } | null> {
   const abs = resolveArtefact(rel);
@@ -425,11 +563,12 @@ const server = Bun.serve({
       const f = Bun.file(abs);
       if (!(await f.exists())) return json({ ok: false, error: 'modul ne obstaja: ' + rel }, 404);
       const base = (rel.split('/').pop() || 'modul').replace(/\.[^.]+$/, '');
-      if (format === 'docx' || format === 'pdf') {
+      if (format === 'docx' || format === 'pdf' || format === 'xlsx') {
         const md = await f.text();
         let buf: Uint8Array; let mime: string; let ext: string;
         if (format === 'docx') { buf = await toDocxBuffer(md); mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'; ext = 'docx'; }
-        else { buf = await toPdfBuffer(md); mime = 'application/pdf'; ext = 'pdf'; }
+        else if (format === 'pdf') { buf = await toPdfBuffer(md); mime = 'application/pdf'; ext = 'pdf'; }
+        else { buf = await toXlsxBuffer(md); mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; ext = 'xlsx'; }
         return new Response(buf, {
           headers: { 'Content-Type': mime, 'Content-Disposition': `attachment; filename="${encodeURIComponent(base)}.${ext}"`, 'Access-Control-Allow-Origin': '*' },
         });
@@ -482,6 +621,59 @@ const server = Bun.serve({
       } catch (err) {
         return json({ ok: false, error: String(err instanceof Error ? err.message : err) }, 500);
       }
+    }
+
+    // ================================================================
+    // Google integracije: Drive / Gmail / Calendar (OAuth)
+    // ================================================================
+    const G_SCOPES = ['https://www.googleapis.com/auth/drive.readonly',
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/calendar.readonly'];
+
+    // Začetek avtorizacije → preusmeri na Google.
+    if (req.method === 'GET' && url.pathname === '/api/google/auth') {
+      const u = await googleAuthUrl(G_SCOPES);
+      if (!u) return json({ ok: false, error: 'client_secret.json manjka ali ni veljaven' }, 500);
+      return Response.redirect(u, 302);
+    }
+    // OAuth callback → izmenjaj code za token, vrni na dashboard.
+    if (req.method === 'GET' && url.pathname === '/api/google/oauth2callback') {
+      const code = url.searchParams.get('code') || '';
+      const okCall = await googleExchangeCode(code);
+      const html = okCall
+        ? '<html><body style="font:15px system-ui;background:#061020;color:#eef;"><div style="max-width:420px;margin:10vh auto;padding:30px;border:1px solid #333;border-radius:14px;background:#0a1628"><h2 style="color:#ffd166">✅ Povezano z Googlom</h2><p>Token je shranjen. Vrni se na dashboard in klikni Drive / Email / Calendar.</p><p><a href="/" style="color:#4fc3ff">Nazaj na dashboard</a></p></div></body></html>'
+        : '<html><body style="font:15px system-ui;background:#061020;color:#eef"><div style="max-width:420px;margin:10vh auto;padding:30px;border:1px solid #333;border-radius:14px;background:#301010"><h2 style="color:#ff5c7a">Napaka</h2><p>Google avtorizacija ni uspela. Poskusi znova.</p></div></body></html>';
+      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+    // Drive: seznam datotek.
+    if (req.method === 'GET' && url.pathname === '/api/google/drive') {
+      const q = url.searchParams.get('q') || '';
+      const d = await googleGet(`/drive/v3/files?pageSize=12&fields=files(id,name,mimeType,modifiedTime)&orderBy=modifiedTime desc&q=${encodeURIComponent("'" + q + "' in parents or trashed=false")}`);
+      return d ? json({ ok: true, files: (d as { files?: unknown[] }).files || [] }) : json({ ok: false, error: 'ni avtorizacije / napaka', authorized: false }, 401);
+    }
+    // Email: zadnje sporočila.
+    if (req.method === 'GET' && url.pathname === '/api/google/email') {
+      const d = await googleGet('/gmail/v1/users/me/messages?maxResults=10');
+      if (!d) return json({ ok: false, error: 'ni avtorizacije / napaka', authorized: false }, 401);
+      const list = (d as { messages?: { id?: string }[] }).messages || [];
+      const out: { id: string; snippet: string }[] = [];
+      for (const m of list.slice(0, 10)) {
+        const md = await googleGet(`/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`);
+        const x = md as { snippet?: string } | null;
+        out.push({ id: m.id || '?', snippet: x?.snippet || '' });
+      }
+      return json({ ok: true, messages: out });
+    }
+    // Calendar: prihodnji dogodki.
+    if (req.method === 'GET' && url.pathname === '/api/google/calendar') {
+      const mY = new Date().toISOString();
+      const d = await googleGet(`/calendar/v3/calendars/primary/events?maxResults=8&singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(mY)}&fields=items(summary,start)`);
+      return d ? json({ ok: true, events: (d as { items?: unknown[] }).items || [] }) : json({ ok: false, error: 'ni avtorizacije / napaka', authorized: false }, 401);
+    }
+    // Status povezave.
+    if (req.method === 'GET' && url.pathname === '/api/google/status') {
+      const tok = await googleToken();
+      return json({ ok: true, connected: !!tok });
     }
 
     return json({ ok: false, error: '404 · neznana pot: ' + url.pathname }, 404);
