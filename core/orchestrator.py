@@ -6,34 +6,62 @@ from core.loopx_bridge import LoopXEngineBridge
 
 class RobAIOrchestrator:
     @staticmethod
+    def _phase(project: str, directive: str, label: str) -> bool:
+        """Izvede en GStack/RSI fazni tek (gbrain → gstack → hermes → loopx)."""
+        print(f"  ── Faza '{label}' zanke ──")
+        # 1. GBRAIN: kontekst in prepovedani vzorci
+        gbrain = GBrainBridge()
+        blacklists = gbrain.get_blacklists(project)
+        # 2. GRAPHIFY: AST graf
+        graphify = GraphifyBridge()
+        graphify.build_code_graph()
+        # 3. GSTACK: arhitekturna specifikacija
+        gstack = GSTACKArchitectBridge(blacklists)
+        manifest = gstack.generate_manifest(project, directive)
+        # 4. HERMES: ogrodje/datoteke
+        hermes = HermesBuilderBridge(project)
+        hermes.write_initial_stubs_if_missing()
+        # 5. LOOPX: verifikacijska + samoozdravitvena zanka
+        loopx = LoopXEngineBridge(project)
+        ok = loopx.execute_and_heal(directive)
+        print(f"  ── Faza '{label}': {'ZELEN' if ok else 'FAIL'} ──")
+        return ok
+
+    @staticmethod
     def run(project: str, directive: str) -> bool:
         print(f"🚀 [ROB AI STUDIO] Inicializacija zahteve za modul: '{project}'")
         print(f"📜 Direktiva: '{directive}'")
-
-        # 1. GBRAIN: Pridobivanje konteksta in prepovedanih vzorcev
-        gbrain = GBrainBridge()
-        blacklists = gbrain.get_blacklists(project)
-
-        # 2. GRAPHIFY: Posodobitev in analiza AST grafa
-        graphify = GraphifyBridge()
-        graphify.build_code_graph()
-
-        # 3. GSTACK: Razčlenitev arhitekture v specifikacijo
-        gstack = GSTACKArchitectBridge(blacklists)
-        manifest = gstack.generate_manifest(project, directive)
-        print(f"🏗️ GSTACK Specifikacija ustvarjena ({len(manifest['files'])} datoteke)")
-
-        # 4. HERMES: Izdelava datotek in ogrodja
-        hermes = HermesBuilderBridge(project)
-        hermes.write_initial_stubs_if_missing()
-
-        # 5. LOOPX: Izvajanje verifikacijske in samoozdravitvene zanke
-        loopx = LoopXEngineBridge(project)
-        success = loopx.execute_and_heal(directive)
-
+        success = RobAIOrchestrator._phase(project, directive, "implementacija")
         if success:
             print(f"✅ Modul '{project}' uspešno potrjen (100% VERIFIED GREEN)!")
         else:
             print(f"❌ Napaka pri verifikaciji modula '{project}'. Traceback zablokiran v GBRAIN.")
-
         return success
+
+    @staticmethod
+    def run_autonomous(project: str, goal: str) -> bool:
+        """Faza 2 — avtonomno podjetje: nalogo razčleni na več RSI faz in
+        vsako izvede (SPEC → IMPLEMENT). Menedžer načrtuje, RSI zanka gradi.
+
+        Determinating (no LLM planiranje): iz cilja, če cilj zveni kot dokument/
+        Markdown → samo spec; sicer spec + implement.
+        """
+        print(f"🤖 [F2] Avtonomni delovnik za: '{goal}'")
+        g = goal.lower()
+        # Preprost menedžerjev načrt: ali želiš dokument ali modul?
+        wants_doc = any(w in g for w in ("markdown", "predlog", "poročilo", "roadmap", "dokument"))
+        if wants_doc:
+            # Samo ena faza — dokument (MD/HTML) izdelava.
+            return RobAIOrchestrator._phase(project, goal, "dokument")
+        # Dvofaza: spec (MD) + implementacija (Python).
+        spec_directive = f"Izdelaj Markdown specifikacijo v actions/{project}/ za naslednji cilj: {goal}. Vsebuj naslov #, odstavke in načrt."
+        impl_directive = f"Izdelaj Python modul {project} v actions/{project}/, ki uresniči cilj: {goal}. Vsebuj funkcionalne funkcije in pytest test, vsi testi 100% zeleni."
+        ok_spec = RobAIOrchestrator._phase(project, spec_directive, "specifikacija")
+        if not ok_spec:
+            print(f"❌ [F2] Specifikacijska faza ni zelena — avtonomni delovnik prekinjen.")
+            return False
+        # Spec shranimo kot dokument zraven; nato implement.
+        ok_impl = RobAIOrchestrator._phase(project, impl_directive, "implementacija")
+        print("✅ [F2] Avtonomni delovnik končan."
+              f" spec={'ZELEN' if ok_spec else 'X'} / implement={'ZELEN' if ok_impl else 'X'}")
+        return ok_impl

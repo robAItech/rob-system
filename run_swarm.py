@@ -76,10 +76,15 @@ def main() -> None:
         help="Začetni vodilni agent (privzeto: GSTACK-Architect)"
     )
     parser.add_argument(
-        "--max-retries", 
-        type=int, 
-        default=5, 
+        "--max-retries",
+        type=int,
+        default=5,
         help="Največje število poskusov samoozdravitve zanke LoopX (privzeto: 5)"
+    )
+    parser.add_argument(
+        "--autonomous",
+        action="store_true",
+        help="Faza 2: avtonomni delovnik — nalogo razdeli na spec + implement (več RSI faz)"
     )
 
     args = parser.parse_args()
@@ -94,10 +99,15 @@ def main() -> None:
     start_time = time.time()
     
     try:
-        success = RobAIOrchestrator.run(
-            project=args.target,
-            directive=args.directive
-        )
+        if args.autonomous:
+            success = RobAIOrchestrator.run_autonomous(
+                project=args.target, goal=args.directive
+            )
+        else:
+            success = RobAIOrchestrator.run(
+                project=args.target,
+                directive=args.directive
+            )
         
         execution_time = round(time.time() - start_time, 2)
 
