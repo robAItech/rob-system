@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gbrain-evals"
+version = "0.1.0"
+description = "GBrain-Evals: vrednotenje spomina in napoved modela za Rob AI Studio."
+requires-python = ">=3.10"
+readme = "README.md"
+
+# Flat top-level paket: uvoz prek gbrain_evals (Python normalizira "-" v "_").
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["gbrain*"]

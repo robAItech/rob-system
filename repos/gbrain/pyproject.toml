@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gbrain"
+version = "0.1.0"
+description = "GBrain: kontekstni spomin in black-list vzorcev za Rob AI Studio."
+requires-python = ">=3.10"
+readme = "README.md"
+
+[tool.setuptools]
+packages = ["gbrain"]
