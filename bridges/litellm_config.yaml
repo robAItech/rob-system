@@ -1,19 +1,33 @@
+# ====================================================================
+# MODUL: bridges/litellm_config.yaml
+# FUNKCIJA: Končni neprebojni Hermes Anthropic -> DeepSeek Router
+# ====================================================================
+
 model_list:
-  # 1. Preslikava primarnega modela (Claude Code zahteva Opus 5)
-  - model_name: claude-opus-5
+  - model_name: "*opus*"
     litellm_params:
-      model: deepseek/deepseek-chat  # Ali deepseek-reasoner, odvisno kaj točno uporabljaš
+      model: anthropic/deepseek-v4-pro
+      api_base: "https://api.deepseek.com/anthropic"
       api_key: os.environ/DEEPSEEK_API_KEY
 
-  # 2. Varnostna preslikava (če sistem kdaj preklopi na Sonnet)
-  - model_name: claude-3-5-sonnet-20241022
+  - model_name: "*sonnet*"
     litellm_params:
-      model: deepseek/deepseek-chat
+      model: anthropic/deepseek-v4-flash
+      api_base: "https://api.deepseek.com/anthropic"
       api_key: os.environ/DEEPSEEK_API_KEY
 
+  - model_name: "*"
+    litellm_params:
+      model: anthropic/deepseek-v4-flash
+      api_base: "https://api.deepseek.com/anthropic"
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+# Za zagon.ps1 (Python parser prebira general_settings.master_key)
 general_settings:
-  # 3. Nastavitev krovnega ključa (To reši 401 Authentication Fails napako)
-  master_key: sk-hermes-master-key
+  master_key: "sk-hermes-master-key"
+  drop_params: true
 
-  # 4. Kritično: Odstranjevanje parametrov, ki jih DeepSeek ne razume (prepreči zlom proxyja)
+# Za LiteLLM strežniško jedro
+litellm_settings:
+  master_key: "sk-hermes-master-key"
   drop_params: true
