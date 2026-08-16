@@ -131,6 +131,7 @@ def main() -> None:
     start_time = time.time()
     
     try:
+        from core.audit import record as audit_record
         if args.autonomous:
             success = RobAIOrchestrator.run_autonomous(
                 project=args.target, goal=args.directive
@@ -140,7 +141,14 @@ def main() -> None:
                 project=args.target,
                 directive=args.directive
             )
-        
+        # F5 — revizija v živi poti (trajni sledljivi dnevnik).
+        audit_record(
+            event="build", project=args.target,
+            status="ok" if success else "failed",
+            detail=args.directive[:400],
+            agent=args.agent,
+        )
+
         execution_time = round(time.time() - start_time, 2)
 
         if success:

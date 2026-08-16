@@ -49,6 +49,7 @@ class LoopXEngineBridge:
         self.graphify = GraphifyBridge()
         self.llm = DeepSeekLLMClient()
         self.max_attempts = 5
+        self.llm_calls = 0   # F5: števec LLM klicev za revizijo in cost-zavarovanje
 
     # ------------------------------------------------------------------ #
     #  Stanje zanke
@@ -167,6 +168,7 @@ class LoopXEngineBridge:
             f"{out_note}"
         )
         try:
+            self.llm_calls += 1   # F5: revizijski števec LLM klicev
             # generate_completion je async korutina; zanko držimo sync,
             # zato LLM klic v tem kontekstu zaženemo prek asyncio.
             response = asyncio.run(
@@ -256,6 +258,7 @@ class LoopXEngineBridge:
                     self.project, directive, "VERIFIED GREEN", verified_code="Pass"
                 )
                 self.graphify.build_code_graph()
+                self._audit("ok")
                 return True
 
             # Rdeč/celokupni fail → RSI healing (3.1–3.3). Direktiva in vrsta se preneseta
@@ -277,7 +280,20 @@ class LoopXEngineBridge:
 
             if attempt == self.max_attempts:
                 self.update_loopx_state("FAILED", attempt)
-                self.gbrain.record_task(self.project, directive, "FAILED", traceback=stderr)
+                self.gbrain.record_task(self.project, directive, "FAILED", traceback=reason)
+                self._audit("failed")
                 return False
 
+        self._audit("failed")
         return False
+
+    def _audit(self, status: str) -> None:
+        """F5 — revizijski vnos ob koncu RSI teka (z LLM-klic števcem)."""
+        try:
+            from core.audit import record
+            record(
+                event="rsi-run", project=self.project, status=status,
+                llm_calls=self.llm_calls, detail=f"max_attempts={self.max_attempts}",
+            )
+        except Exception:
+            pass
