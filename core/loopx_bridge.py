@@ -214,16 +214,60 @@ class LoopXEngineBridge:
             return "markdown"
         return "python"  # privzeto: python modul / kaj drugega
 
-    # F1 — verifikacija glede na vrsto izdelka. Vrne (pass, napis).
-    def _verify(self, kind: str) -> Tuple[bool, str]:
-        if kind == "python":
+    def _docker_available(self) -> bool:
+        """Tier 1 — ali sta Docker CLI IN daemon na voljo (jek. docker info).
+
+        `docker --version` pokaže le klient; za `docker run` potrebujemo
+        daemon. Zato preverimo `docker info` (rc=0 → daemon deluje)."""
+        try:
+            r = subprocess.run(["docker", "info"], capture_output=True, text=True, timeout=20)
+            return r.returncode == 0
+        except Exception:
+            return False
+
+    def _verify_python_sandbox(self) -> Tuple[bool, str]:
+        """Tier 1 — izvedba pytest v efemernem Docker peskovniku.
+
+        Varnostna meja: kontejner vidi SAMO ./actions, ima --network none
+        (brez omrežja → ne more namestiti zlonamernih paketov / klicati ven),
+        --read-only koren (ne more pisati po OS) in se uniči po teku (--rm).
+        Če Docker ni na voljo → PADE NA HOST z jasno oznako »NI IZOLIRANO«.
+        """
+        if not self._docker_available():
             env = {"PYTHONPATH": "."}
             result = subprocess.run(
                 [sys.executable, "-m", "pytest", "-v", str(self.target_dir)],
                 capture_output=True, text=True,
                 env=dict(subprocess.os.environ, **env),
             )
-            return result.returncode == 0, (result.stderr or result.stdout or "pytest ni zelen")
+            msg = result.stderr or result.stdout or "pytest ni zelen"
+            return result.returncode == 0, f"[NI IZOLIRANO — host] {msg[:400]}"
+
+        # Sandbox: slika 'rob-sandbox' naj bo zgrajena prek Dockerfile.sandbox
+        # (python:3.11-slim + pytest). Runtime: brez omrežja, read-only, samo ./actions.
+        cwd = Path.cwd()
+        actions_abs = (cwd / "actions").resolve()
+        target_rel = self.target_dir.relative_to(cwd)  # e.g. actions/foo
+        vol = f"{actions_abs}:/work"
+        cmd = [
+            "docker", "run", "--rm", "--network", "none", "--read-only",
+            "--security-opt", "no-new-privileges",
+            "--user", "1000:1000",            # ne-root v kontejnerju
+            "-v", vol, "-w", "/work",
+            "rob-sandbox:latest",
+            "python", "-m", "pytest", "-v", f"/work/{target_rel}",
+        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        except Exception as e:
+            return False, f"[Docker sandbox napaka] {e}"
+        msg = result.stderr or result.stdout or "pytest ni zelen"
+        return result.returncode == 0, f"[sandbox] {msg[:400]}"
+
+    # F1 — verifikacija glede na vrsto izdelka. Vrne (pass, napis).
+    def _verify(self, kind: str) -> Tuple[bool, str]:
+        if kind == "python":
+            return self._verify_python_sandbox()
         if kind == "markdown":
             # Zelen = obstaja vsaj ena .md datoteka z naslovom (ni prazen stub).
             mds = list(self.target_dir.glob("*.md"))

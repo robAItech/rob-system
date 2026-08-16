@@ -1,0 +1,16 @@
+# Tier 1 — izvedbeni peskovnik za RSI pytest.
+# Slika se zgradi ENKRAT (z omrežjem, kontrolirano) in se v runtime uporablja
+# z ``--network none`` + ``--read-only``, da LLM-generirana koda ne more
+# namestiti zlonamernih paketov ali klicati v omrežje.
+
+FROM python:3.11-slim
+
+# pytest je vnaprej nameščen (zgradba z omrežjem → runtime brez omrežja).
+RUN pip install --no-cache-dir pytest
+
+# Ne-root uporabnik za varnost v kontejnerju.
+RUN adduser --disabled-password --uid 1000 sandbox
+USER sandbox
+WORKDIR /work
+
+# Dockerfile.sandbox — build:  docker build -f Dockerfile.sandbox -t rob-sandbox .
