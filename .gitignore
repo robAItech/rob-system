@@ -36,4 +36,5 @@ __pycache__/
 
 # Baze podatkov in lokalno stanje (Rob AI Studio)
 .rob_ai/memory.db
+.loopx/
 .DS_Store
