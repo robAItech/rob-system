@@ -10,6 +10,14 @@ import argparse
 import time
 from pathlib import Path
 
+# Vsili UTF-8 izhod tudi, ko je stdout preusmerjen na pipe (ne terminal).
+# Brez tega emoji/šumniki v izpisu crash-on Windows cp1250 (UnicodeEncodeError).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass  # reconfigure ni vedno na voljo (nekateri okolji)
+
 # Zagotovi, da je koren projekta vedno na PYTHONPATH
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:

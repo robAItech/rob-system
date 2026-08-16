@@ -121,18 +121,21 @@ class LoopXEngineBridge:
     #  3.1–3.3  LLM popravek + RSI zanka + zapis v GBRAIN
     # ------------------------------------------------------------------ #
 
-    def _heal_once(self, traceback: str) -> Tuple[bool, str]:
+    def _heal_once(self, traceback: str, directive: str) -> Tuple[bool, str]:
         """Poskuša popraviti kodo z LLM-jem (3.1, 3.2).
 
         Vrni (uspeh, poročilo).
         """
         sources = self._read_module_sources()
         prompt = (
-            f"Izvirna koda modula `{self.project}`:\n"
+            f"Izvirna koda modula `{self.project}` (trenutno ogrodje/stubs):\n"
             f"{json.dumps(sources, ensure_ascii=False, indent=2)}\n\n"
+            "DIREKTIVA (kaj naj modul dejansko počne):\n"
+            f"{directive[:3000]}\n\n"
             "Traceback neuspelega testa:\n"
             f"{traceback[:8000]}\n\n"
-            "Vrni popravljene datoteke v formatu ### FILE: ...:"
+            "Vrni POPOLNA, delujoča Python datoteka v formatu ### FILE: ...:"
+            " (vse datoteke popolne, brez placeholdoj — dejanska implementacija)"
         )
         try:
             # generate_completion je async korutina; zanko držimo sync,
@@ -190,9 +193,10 @@ class LoopXEngineBridge:
                 self.graphify.build_code_graph()
                 return True
 
-            # Rdeč test → RSI healing (3.1–3.3)
+            # Rdeč test → RSI healing (3.1–3.3). Direktiva se prenese LLM-ju,
+            # da ve, kaj implementirati (ne le nejasni stub traceback).
             stderr = result.stderr or result.stdout
-            healed, report = self._heal_once(stderr)
+            healed, report = self._heal_once(stderr, directive)
 
             # 3.3 — zapis učnih vzorcev v GBRAIN (mednáložni spomin)
             error_type = self._classify_error(stderr[:2000])

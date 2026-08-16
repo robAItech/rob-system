@@ -479,6 +479,47 @@ async function runTask(task: string, kind: 'full' | 'dashboard'): Promise<Record
   }
 }
 
+/**
+ * Faza 0 — avtonomno izvedbeno jedro = Python RSI/GStack orkestrator.
+ * Spožene `python run_swarm.py --target <modul> --directive <navodilo>` v
+ * podprocesu (ista pot kot `./rob build`). LoopX samozdravitvena zanka
+ * (pytest → LLM popravi → 100% zelen) je notranje v RSI jedru.
+ */
+async function runRsiBuild(target: string, directive: string, maxRetries = 5): Promise<Record<string, unknown>> {
+  const pythonCmd = process.env.PYTHON_BIN ?? 'python';
+  let sout = '';
+  let serr = '';
+  let exitCode = -1;
+  const started = Date.now();
+  try {
+    const proc = Bun.spawn({
+      cmd: [pythonCmd, 'run_swarm.py', '--target', target, '--directive', directive,
+        '--agent', 'GSTACK-Architect', '--max-retries', String(maxRetries)],
+      cwd: OUT_ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // cp1250 pipe → emoji (🤖) v run_swarm.py print_banner bi podrl izvajanje;
+      // UTF-8 reši (enako kot pri LiteLLM).
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+    });
+    sout = await new Response(proc.stdout).text();
+    serr = await new Response(proc.stderr).text();
+    exitCode = await proc.exited;
+  } catch (err) {
+    serr += '\n' + String(err instanceof Error ? err.message : err);
+  }
+  const seconds = Math.round((Date.now() - started) / 100) / 10;
+  const moduleDir = `actions/${target}`;
+  return {
+    ok: exitCode === 0,
+    target,
+    exitCode,
+    seconds,
+    moduleDir,
+    stdout: sout.slice(0, 4000),
+    stderr: serr.slice(0, 2000),
+  };
+}
+
 // =====================================================================
 //  HTTP strežnik
 // =====================================================================
@@ -529,6 +570,16 @@ const server = Bun.serve({
       const html = await Bun.file(`${OUT_ROOT}/out/Dashboard.html`).text().catch(() => null)
         ?? await Bun.file('out/Dashboard.html').text();
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+
+    // Serviraj roadmap (strateški načrt) — samostojen HTML.
+    if (req.method === 'GET' && url.pathname === '/roadmap') {
+      const html = `${OUT_ROOT}/.rob_ai/roadmap.html`;
+      const file = Bun.file(html);
+      if (await file.exists()) {
+        return new Response(await file.text(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      }
+      return json({ ok: false, error: 'roadmap.html manjka v .rob_ai/' }, 404);
     }
 
     // API: health / ledger / runs / news
@@ -618,6 +669,25 @@ const server = Bun.serve({
       try {
         const res = await runTask(task, kind);
         return json({ ok: true, task, ...res });
+      } catch (err) {
+        return json({ ok: false, error: String(err instanceof Error ? err.message : err) }, 500);
+      }
+    }
+
+    // Faza 0: Avtonomni build prek RSI/GStack jedra (Python orkestrator).
+    // Dashboard in `./rob build` zdaj delita isto zanko (LoopX self-heal).
+    if (req.method === 'POST' && url.pathname === '/api/build') {
+      const raw = await req.text().catch(() => '');
+      let body: { target?: unknown; directive?: unknown; max_retries?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const target = String(body.target || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+      const directive = String(body.directive || '').trim();
+      if (!target) return json({ ok: false, error: 'target je prazen' }, 400);
+      if (!directive) return json({ ok: false, error: 'directive je prazen' }, 400);
+      const maxRetries = Math.min(Number(body.max_retries) || 5, 10);
+      try {
+        const res = await runRsiBuild(target, directive, maxRetries);
+        return json({ ok: true, ...res });
       } catch (err) {
         return json({ ok: false, error: String(err instanceof Error ? err.message : err) }, 500);
       }

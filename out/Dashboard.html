@@ -233,6 +233,8 @@ body{
 .status .legend{display:flex;gap:16px;margin-left:auto}
 .status .legend span{display:flex;align-items:center;gap:6px}
 .status .k{width:7px;height:7px;border-radius:50%;display:inline-block}
+.rmlink{color:var(--azure);text-decoration:none;font:600 11px var(--font);letter-spacing:.06em;margin-left:4px;border:1px solid var(--edge-soft);padding:3px 9px;border-radius:8px;transition:all .15s}
+.rmlink:hover{border-color:var(--gold);color:var(--gold);box-shadow:0 0 10px var(--gold-soft)}
 
 /* modal artefaktov */
 .overlay{position:fixed;inset:0;background:rgba(2,5,12,.72);backdrop-filter:blur(6px);display:none;
@@ -357,6 +359,7 @@ body{
                placeholder="Napiši nalogo za Rob AI jedro…  (Ctrl+Enter za pošiljanje)" />
         <div class="actions">
           <button class="btn primary" id="runBtn"><span class="fi">◉</span>Chat</button>
+          <button class="btn ghost" id="buildBtn" title="Avtonomni build: sproži RSI/GStack zanko (LoopX self-heal)"><span class="fi">◈</span>Build RSI</button>
           <button class="btn ghost" id="voiceBtn"><span class="fi">◎</span>Voice In</button>
         </div>
       </div>
@@ -372,6 +375,7 @@ body{
       <span><i class="k" style="background:var(--azure)"></i><span id="evCount">0</span> dogodkov</span>
       <span><i class="k" style="background:var(--good)"></i>poraba <b id="budgetVal">—</b></span>
       <span><i class="k" style="background:var(--ink-3)"></i><span id="systemVal">povezano</span></span>
+      <a href="/roadmap" target="_blank" class="rmlink">Roadmap ↗</a>
     </span>
   </footer>
 </div>
@@ -498,6 +502,36 @@ function toolAction(name){
   }
 }
 function iconOf(n){ return n==='DRIVE'?'☁':n==='EMAIL'?'✉':'◷'; }
+
+/* Faza 0 — avtonomni build prek RSI/GStack jedra (/api/build) */
+async function runRsiBuild(){
+  const input=document.getElementById('taskInput');
+  const directive=(input.value||'').trim();
+  if(!directive){ toast('Najprej napiši direktivo v polje.'); return; }
+  input.value='';
+  const btn=document.getElementById('buildBtn');
+  const prev=btn.innerHTML; btn.disabled=true; btn.innerHTML='…RSI teče';
+  toast('◈ Zaganjam avtonomni RSI build…');
+  try{
+    // target: prva beseda/direktiva → varno ime modula
+    const target=directive.split(/\s+/)[0].toLowerCase().replace(/[^a-z0-9_-]/g,'_')||'modul';
+    const res=await api('/api/build',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,directive})});
+    // prikaži izid v modal
+    const ov=document.getElementById('viewOverlay');
+    const ifr=document.getElementById('viewIframe');
+    const ok = res?.ok;
+    const head = ok?'✅ BUILD GREEN':'❌ BUILD FAILED';
+    const body = (res?.stdout||'') + (res?.stderr?'\n\n[stderr]\n'+res.stderr:'');
+    ifr.srcdoc='<html style="background:#0a1628;color:#eef6ff;font:13px/1.7 ui-monospace,monospace"><body style="padding:22px;white-space:pre-wrap"><div style="color:'+(ok?'#35e07b':'#ff5c7a')+';font-weight:700;font-size:15px;margin-bottom:12px">'+head+'</div><div style="color:#a7c6e6">'+esc(body||'brez izhoda')+'</div>';
+    ov.style.display='flex';
+    toast(ok?'◈ Build GREEN · modul: '+res?.moduleDir:'◈ Build FAILED');
+    await loadModules();
+  }catch(err){
+    toast('Napaka pri RSI build: '+String(err.message||err));
+  }finally{
+    btn.disabled=false; btn.innerHTML=prev;
+  }
+}
 
 /* Google orodja: DRIVE / EMAIL / CALENDAR */
 async function googleTool(n){
@@ -849,6 +883,8 @@ const runBtn=document.getElementById('runBtn');
 const taskInput=document.getElementById('taskInput');
 runBtn.addEventListener('click',()=>runTask());
 taskInput.addEventListener('keydown',e=>{ if(e.key==='Enter') runTask(); });
+const buildBtn=document.getElementById('buildBtn');
+buildBtn.addEventListener('click',()=>runRsiBuild());
 (async()=>{await loadAll();setInterval(()=>loadAll(),POLL_MS);setInterval(()=>loadNews(),60000);setInterval(()=>loadModules(),15000);})();
 </script>
 </body>
