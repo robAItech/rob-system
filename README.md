@@ -125,49 +125,39 @@ OPENAI_API_KEY=vaš_openai_api_ključ
 ENVIRONMENT=production
 ```
 
-### 3. Zagon Claude Code prek LiteLLM + DeepSeek (`dev.ps1`)
+### 3. Zagon Claude Code prek LiteLLM + DeepSeek (`rob dev`)
 
 `Claude Code` privzeto kliče Anthropic API. Da ne kurimo dragih Anthropic
-tokenov, projekt uporablja [LiteLLM](https://www.litellm.ai/) kot lokalni
-proxy, ki zahtevke preslika na **cenejši DeepSeek API** z vašim
-`DEEPSEEK_API_KEY`. Vse v enem ukaz:
+tokenov, se projekt nasloni na enotno **Python orkestracijo** (`core/dev_cli.py`,
+launcher `dev.bat` / `rob dev`), ki dvigne [LiteLLM](https://www.litellm.ai/)
+proxy in preslika zahtevke na **cenejši DeepSeek API** z vašim
+`DEEPSEEK_API_KEY`. Poleg proxyja dvigne še **Command-Center dashboard**:
 
-```powershell
-.\dev.ps1                       # požene LiteLLM v ozadju, počaka na pripravo,
-                                # postavi ANTHROPIC_* env spremenljivke in
-                                # požene `claude`; po izhodu sam ugasne proxy.
-.\dev.ps1 -Init                 # dry-run: preveri konfiguracijo in okolje (ne zažene nič).
-.\dev.ps1 -ProxyOnly            # samo LiteLLM v ospredju (za ročno uporabo).
-.\dev.ps1 -ClaudeOnly           # samo claude ob že obstoječem proxyju.
-```
-
-Konfiguracija proxyja živi v `bridges/litellm_config.yaml` — modeli so
-preslikani na `deepseek/deepseek-chat`, krovni ključ (`master_key`) in
-`drop_params: true` (odstranjuje parametre, ki jih DeepSeek ne razume)
-pa preprečujejo 401-avtentikacijske napake in zlom proxyja.
-
-### 4. Izoliran zagon prek `zagon.ps1` (proxy :4010 + Command-Center)
-
-Če imaš na portu **4000** svoj delujoči LiteLLM proxy (npr. v lastnem
-terminalu) in ga ne želiš upravljati s skripte, uporabi `zagon.ps1`, ki
-vse dvigne **izolirano**, brez da bi se kdaj dotaknil porta 4000:
-
-- **Proxy LiteLLM na **:4010** (lasten, izoliran)**
+- **Proxy LiteLLM na :4010** (lasten, izoliran)
 - **Command-Center dashboard** na **:8787** via `bun run src/server.ts`
   (`/api/health` · `/api/ledger` · `/api/runs` · `POST /api/run`)
 
-```powershell
-.\zagon.ps1                 # proxy :4010 + dashboard :8787 v ozadju, poveže claude;
-                            # po izhodu sam ugasne oboje. Port 4000 se ne dotakne.
-.\zagon.ps1 -Init           # dry-run: preveri config, ključ, porta 4010/8787 in okolje.
-.\zagon.ps1 -ProxyOnly      # samo LiteLLM na 4010 v ospredju.
-.\zagon.ps1 -DashboardOnly  # samo Command-Center (bun run src/server.ts) na 8787.
-.\zagon.ps1 -ClaudeOnly     # samo claude ob že obstoječem proxyju na 4010.
+Vse v enem ukazu (Windows `dev.bat`, Linux/WSL `./rob dev`):
+
+```bash
+dev.bat                     # proxy :4010 + dashboard :8787 v ozadju, poveže claude;
+                            # po izhodu sam ugasne samo kar je zagnal. Port 4000 se ne dotakne.
+dev.bat --init              # dry-run: preveri config, ključ, porta 4010/8787 in PATH.
+dev.bat --proxy-only        # samo LiteLLM na 4010 v ospredju.
+dev.bat --dashboard-only    # samo Command-Center (bun run src/server.ts) na 8787.
+dev.bat --claude-only       # samo claude ob že obstoječem proxyju na 4010.
 ```
 
-`zagon.ps1` **nikoli** ne upravlja porta 4000 — ta ostane rezerviran za
-uporabnikov obstoječi proxy in ni vpleten v nobeno preverjanje ali
-čiščenje.
+Na Linux/WSL uporabi `./rob dev [--init|--proxy-only|--dashboard-only|--claude-only]`,
+ki delegira na isti Python modul.
+
+Konfiguracija proxyja živi v `bridges/litellm_config.yaml` — modeli so
+preslikani na Anthropic-kompatibilen DeepSeek endpoint (`api.deepseek.com/anthropic`),
+krovni ključ (`master_key`) in `drop_params: true` pa preprečujejo
+401-avtentikacijske napake in zlom proxyja.
+
+Orkestracija **nikoli** ne upravlja porta 4000 — ta ostane rezerviran za
+uporabnikov obstoječi proxy in ni vpleten v nobeno preverjanje ali čiščenje.
 
 ## 🤖 Avtonomna orkestracija (RSI/GStack) — delovanje in roadmap F0–F6
 
