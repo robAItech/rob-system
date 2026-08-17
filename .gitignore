@@ -42,6 +42,7 @@ __pycache__/
 .rob_ai/business_ledger.json
 .rob_ai/audit.jsonl
 .rob_ai/eval_history.json
+.rob_ai/.visual_qa_tmp.png
 
 # Baze podatkov in lokalno stanje (Rob AI Studio)
 .rob_ai/memory.db

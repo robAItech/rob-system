@@ -95,6 +95,19 @@ def main() -> None:
         help="Faza 6: iz poslovne ideje izdela predlog (RSI Sales delovnik), ga presodi"
              " in vnese v glavno knjigo podjetja"
     )
+    parser.add_argument(
+        "--visual-qa",
+        metavar="POT_ALI_URL",
+        help="Neobvezen vizualni QA: Gemma 4 (Ollama) pogleda HTML sliko in vrne "
+             "kakovostno poročilo UI. Za Hermes/dashboard ali ročno tarčo."
+    )
+    parser.add_argument(
+        "--visual-qa-model",
+        default=None,
+        metavar="MODEL",
+        help="Ollama model za vizualni QA (privzeto gemma4:latest). Npr. "
+             "--visual-qa-model gemma4:31b za večji model."
+    )
 
     args = parser.parse_args()
 
@@ -102,10 +115,26 @@ def main() -> None:
     validate_environment()
 
     # Ročna validacija: --target/--directive sta potrebna le za redni/autonomous build
-    # (ne za --process-agenda ali --business).
-    if not (args.process_agenda or args.business):
+    # (ne za --process-agenda ali --business ali --visual-qa).
+    if not (args.process_agenda or args.business or args.visual_qa):
         if not args.target or not args.directive:
-            parser.error("--target in --directive sta obvezna (ali uporabi --process-agenda / --business)")
+            parser.error("--target in --directive sta obvezna (ali uporabi --process-agenda / --business / --visual-qa)")
+
+    # Neobvezen vizualni QA (Gemma 4): pogleda HTML pot | url in izpiše poročilo.
+    if args.visual_qa:
+        try:
+            from core.visual_qa import review as visual_review
+            print(f"🔍 [VQA] Vizualni QA: {args.visual_qa} "
+                  f"(model={args.visual_qa_model or 'privzeti'})")
+            # model=None → uporabi modulov privzeti (ne posreduj, da ne preglasi default).
+            if args.visual_qa_model:
+                report = visual_review(args.visual_qa, model=args.visual_qa_model)
+            else:
+                report = visual_review(args.visual_qa)
+            print("\n".join(f"  {k}: {v}" for k, v in report.items()))
+        except Exception as e:
+            print(f"[VQA] napaka pri vizualnem QA: {e}")
+        return 0 if report.get("ok") is True else 1 if report.get("error") else 0
 
     # Faza 6 — poslovni delovnik (Sales): ideja → predlog → presodba → glavna knjiga.
     if args.business:

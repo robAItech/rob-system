@@ -464,6 +464,11 @@ class LoopXEngineBridge:
                     self.project, directive, "VERIFIED GREEN", verified_code="Pass"
                 )
                 self.graphify.build_code_graph()
+                # NEOBVEZEN vizualni QA (HTML artefakti): Gemma 4 pogleda UI in
+                # zapiše kakovostno poročilo v GBRAIN. Nikoli ne blokira builda —
+                # napaka QA je zgolj opozorilo.
+                if kind == "html":
+                    self._run_optional_visual_qa()
                 self._audit("ok")
                 return True
 
@@ -506,6 +511,32 @@ class LoopXEngineBridge:
 
         self._audit("failed")
         return False
+
+    def _run_optional_visual_qa(self) -> None:
+        """NEOBVEZEN vizualni QA za HTML artefakte (Gemma 4 + Playwright).
+
+        Zajeme prvi .html v target_dir, Gemma pogleda UI, poročilo se zapiše v
+        GBRAIN memory (key visual_qa/<target>). Nikoli ne blokira builda: vse
+        napake se požrejo (opozorilo), build ostane zelen.
+        """
+        try:
+            from core.visual_qa import review as visual_review
+            htmls = sorted(self.target_dir.glob("*.html"))
+            if not htmls:
+                return
+            report = visual_review(str(htmls[0]))
+            self.gbrain.store_memory_node(
+                key=f"visual_qa/{self.project}",
+                data={"source": str(htmls[0]),
+                      "verdict": report.get("ok"),
+                      "summary": report.get("summary", ""),
+                      "issues": report.get("issues", []),
+                      "error": report.get("error", "")},
+                tags=["visual_qa", "html", self.project],
+            )
+            print(f"[LOOPX] vizualni QA ob: {report.get('summary', '?')[:80]}", flush=True)
+        except Exception as e:
+            print(f"[WARN] vizualni QA preskočen (ni blokirno): {e}", flush=True)
 
     def _audit(self, status: str) -> None:
         """F5 — revizijski vnos ob koncu RSI teka (z LLM-klic števcem)."""
