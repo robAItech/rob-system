@@ -32,8 +32,13 @@ def _save(items: list) -> None:
     AGENDA_FILE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def add(goal: str, kind: str = "python", target: str | None = None, repeat: str | None = None) -> dict:
-    """Doda naročilo v čakalno vrsto. Vrne novo naročilo."""
+def add(goal: str, kind: str = "python", target: str | None = None,
+        repeat: str | None = None, source: str | None = None) -> dict:
+    """Doda naročilo v čakalno vrsto. Vrne novo naročilo.
+
+    `source` (opcijsko): od koder naloga (dashboard | cli | gmail | voice) — za
+    sledenje izvora na dashboardu. Ne vpliva na obdelavo.
+    """
     items = _load()
     item = {
         "id": uuid.uuid4().hex[:12],
@@ -45,6 +50,8 @@ def add(goal: str, kind: str = "python", target: str | None = None, repeat: str 
         "created_at": int(time.time()),
         "updated_at": int(time.time()),
     }
+    if source:
+        item["source"] = source
     items.append(item)
     _save(items)
     return item

@@ -555,6 +555,86 @@ function contentTypeFor(name: string): string {
   }
 }
 
+// =====================================================================
+//  Faza 2 — Gmail → agendi (čaka na potrditev). LLM-free polling worker.
+// =====================================================================
+const GMAIL_CURSOR_FILE = `${OUT_ROOT}/.rob_ai/gmail_cursor.json`;
+
+/** Razpozna vrsto izdelka iz goal/subject (Python | Markdown | HTML). */
+function detectGmailKind(goal: string): string {
+  const g = goal.toLowerCase();
+  if (/(spetna|dashboard|html|\.html|<html)/.test(g)) return 'html';
+  if (/(predlog|poro.ilo|poslovni|markdown|dokument|.md|specifikacij)/.test(g)) return 'markdown';
+  return 'python';
+}
+
+/** Prebere cursor (Set<string> že-obdelanih mail id). */
+function readGmailCursor(): Set<string> {
+  try {
+    const txt = Bun.file(GMAIL_CURSOR_FILE).textSync?.() ?? '';
+    const arr = JSON.parse(txt || '[]') as string[];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch { return new Set(); }
+}
+
+function writeGmailCursor(ids: Set<string>): void {
+  try {
+    Bun.write(GMAIL_CURSOR_FILE, JSON.stringify([...ids], null, 0));
+  } catch { /* ignore */ }
+}
+
+/** Preves Snippet/From/Subject iz Gmail metadata odziva. */
+function gmailMeta(d: unknown): { from: string; subject: string } {
+  let from = ''; let subject = '';
+  const headers = ((d as { payload?: { headers?: { name?: string; value?: string }[] } }).payload?.headers) ?? [];
+  for (const h of headers) {
+    if (h.name === 'From') from = h.value ?? '';
+    if (h.name === 'Subject') subject = h.value ?? '';
+  }
+  return { from, subject };
+}
+
+/** Doda mail kot naloga v agendo (source=gmail), ostane pending (čaka potrditev). */
+async function agendaAddGmail(goal: string, kind: string): Promise<void> {
+  const proc = Bun.spawn({
+    cmd: ['python', '-c',
+      `from core.agenda import add; import json; print(json.dumps(add(${JSON.stringify(goal)}, kind=${JSON.stringify(kind)}, source='gmail')))`],
+    cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+  });
+  await proc.exited;
+}
+
+/**
+ * Gmail polling worker: prebere zadnja neprebrana sporočila, doda nova (ki
+ * še niso v cursorju) v agendo kot `pending` (source=gmail). NE avtomatsko
+ * obdela — uporabnik pregleda na dashboardu. Ne kuriti LLM (samo Gmail API).
+ */
+async function gmailToAgenda(): Promise<{ added: number }> {
+  let added = 0;
+  const at = await googleAccessToken();
+  if (!at) return { added };               // ni avtorizacije → skip
+  const list = await googleGet('/gmail/v1/users/me/messages?maxResults=12&q=is:unread');
+  if (!list) return { added };
+  const messages = (list as { messages?: { id?: string }[] }).messages ?? [];
+  const cursor = readGmailCursor();
+  for (const m of messages) {
+    const id = m.id; if (!id || cursor.has(id)) continue;
+    const md = await googleGet(`/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`);
+    if (!md) continue;
+    const { from, subject } = gmailMeta(md);
+    const snippet = (md as { snippet?: string }).snippet ?? '';
+    // Goal: Subject + izvor kontekst (snippet skrajšan). Raw — brez LLM limanje.
+    const goal = subject.trim() ? subject.trim() : (snippet.trim() || 'Povpraševanje iz emaila');
+    const kind = detectGmailKind(goal + ' ' + snippet);
+    await agendaAddGmail(`${goal} (od: ${from})`, kind);
+    cursor.add(id);     // oznaci obdeleno → ne ponovi
+    added++;
+  }
+  writeGmailCursor(cursor);
+  return { added };
+}
+
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
@@ -799,10 +879,18 @@ const server = Bun.serve({
       const tok = await googleToken();
       return json({ ok: true, connected: !!tok });
     }
+    // Faza 2 — ročna takojšnja preverka Gmail-a → novi vnosi v agendo.
+    if (req.method === 'POST' && url.pathname === '/api/google/poll') {
+      const r = await gmailToAgenda();
+      return json({ ok: true, added: r.added });
+    }
 
     return json({ ok: false, error: '404 · neznana pot: ' + url.pathname }, 404);
   },
 });
+
+// Faza 2 — periodični Gmail polling (npr. vsakih 5 min), ko server teče.
+setInterval(() => { gmailToAgenda().catch(() => {}); }, 5 * 60 * 1000);
 
 console.log(`\n[command-center] živo na http://localhost:${server.port}/`);
 console.log(`  /api/health · /api/ledger · /api/runs · /api/modules · /api/export · POST /api/run\n`);

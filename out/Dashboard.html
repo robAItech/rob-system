@@ -400,6 +400,7 @@ body{
   <div class="modules-subhead">Agenda (čakalna vrsta naročil)</div>
   <div class="agenda-row">
     <input id="agendaInput" class="prompt-input" style="flex:1;padding:9px 12px;font-size:12.5px" placeholder="Dodaj nalogo na agenda…" />
+    <button class="mini-btn" id="voiceAgendaBtn" title="Glasovni vnos → v agenda" onclick="voiceAgenda()">🎤</button>
     <button class="mini-btn gold" onclick="addAgenda()">Dodaj</button>
   </div>
   <div class="modules-list tl" id="agendaList"><div class="mod-empty">Agenda je prazna.</div></div>
@@ -853,6 +854,29 @@ function renderAgenda(){
         <div class="agendameta"><span class="ag-st ${esc(it.status||'pending')}">${esc(it.status||'pending')}</span><span>${esc(it.target||'')}</span>${it.repeat?`<span>⟳</span>`:''}</div>
       </div>
     </div>`).join('');
+}
+/* Faza 2 — glasovni vnos → agenda (Web Speech, piše v agendaInput → Dodaj). */
+let vAgendaOn=false;
+function voiceAgenda(){
+  const btn=document.getElementById('voiceAgendaBtn');
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ toast('Voice: ta brskalnik ne podpira govornega vnosa — vnesi besedilo ročno.'); return; }
+  const rec=new SR();
+  rec.lang='sl-SI'; rec.interimResults=false;
+  const input=document.getElementById('agendaInput');
+  rec.onstart=()=>{ vAgendaOn=true; btn.textContent='…'; btn.style.borderColor='var(--gold)'; };
+  rec.onresult=(e)=>{
+    let txt='';
+    for(let i=0;i<e.results.length;i++){ txt += e.results[i][0].transcript||''; }
+    input.value=(input.value+' '+txt).trim();
+    try{ rec.stop(); }catch{}
+  };
+  rec.onerror=(ev)=>{ btn.textContent='🎤'; btn.style.borderColor='';
+    toast('Voice napaka: '+(ev?.error||'x')+(ev?.error==='not-allowed'?' — dovoli mikrofon.':'.')); vAgendaOn=false; };
+  rec.onend=()=>{ btn.textContent='🎤'; btn.style.borderColor='';
+    if(input.value.trim()){ toast('Govor zapisan — klikni »Dodaj« ali uredi besedilo.'); } vAgendaOn=false; };
+  if(vAgendaOn){ try{ rec.stop(); }catch{}; vAgendaOn=false; return; }
+  rec.start();
 }
 async function addAgenda(){
   const input=document.getElementById('agendaInput');
