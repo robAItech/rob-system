@@ -578,12 +578,21 @@ async function googleTool(n){
   }catch{ toast('Google ni dosegljiv.'); return; }
   const ep = n==='DRIVE'?'drive':n==='EMAIL'?'email':'calendar';
   try{
-    const r=await api('/api/google/'+ep);
-    if(!r?.ok){ toast('Napaka pri poizvedbi Google.'); return; }
+    let r;
+    try{ r=await api('/api/google/'+ep); }
+    catch(e){
+      const code=(String(e?.message||'').match(/(\d{3})/)||[])[1];
+      const who = n==='DRIVE'?'Drive':n==='EMAIL'?'Gmail':'Calendar';
+      toast(`${who}: ${code?'HTTP '+code:'napaka'} — `+
+        (n==='DRIVE'
+          ? 'omogoči Drive API (console.cloud.google.com/apis/library/drive.googleapis.com) in ponovno poveži.'
+          : code==='401' ? 'token/dostop ni veljaven — ponovno se poveži (dashboard → Email).' : 'Google dvig.'));
+      return;
+    }
     let msg='';
-    if(n==='DRIVE'){ const f=r.files||[]; msg=`☁ Drive · ${f.length} datotek:\n`+f.map(x=>' · '+(x.name||'?')).slice(0,6).join('\n'); }
-    else if(n==='EMAIL'){ const m=r.messages||[]; msg=`✉ Email · ${m.length} sporočil:\n`+m.map(x=>' · '+(x.snippet||'?').slice(0,36)).join('\n'); }
-    else{ const e=r.events||[]; msg=`◷ Cal · ${e.length} dogodkov:\n`+e.map(x=>' · '+(x.summary||'?')).slice(0,6).join('\n'); }
+    if(n==='DRIVE'){ const f=r.files||[]; msg=`☁ Drive · ${f.length} datotek:\n`+(f.map(x=>' · '+(x.name||'?')).slice(0,6).join('\n')||'(ni datotek)'); }
+    else if(n==='EMAIL'){ const m=r.messages||[]; msg=`✉ Email · ${m.length} sporočil:\n`+(m.map(x=>' · '+(x.snippet||'?').slice(0,36)).join('\n')||'(ni sporočil)'); }
+    else{ const e=r.events||[]; msg=`◷ Cal · ${e.length} dogodkov:\n`+(e.map(x=>' · '+(x.summary||'?')).slice(0,6).join('\n')||'(ni dogodkov)'); }
     // prikaži v modal
     document.getElementById('viewOverlay').style.display='flex';
     document.getElementById('viewIframe').srcdoc='<html><body style="font:14px/system-ui;background:#0a1628;color:#eef6ff;padding:24px;line-height:1.8;white-space:pre-wrap">'+msg+'</body></html>';
@@ -822,6 +831,11 @@ function initVoice(){
 /* ---------- artefakti modal (Drag & Drop za staro) ---------- */
 async function openModal(){ /* po želji; trenutno le prilagodljiv kašelj */ }
 function closeModal(){document.getElementById('overlay').style.display='none';document.getElementById('overlay').innerHTML='';}
+/* Zapre viewOverlay (ogled modula / Google email seznama / build izhod). */
+function closeView(){
+  const ov=document.getElementById('viewOverlay');
+  if(ov) ov.style.display='none';
+}
 
 /* ---------- živa ura ---------- */
 function tickClock(){
