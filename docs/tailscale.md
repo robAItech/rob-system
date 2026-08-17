@@ -8,16 +8,14 @@ dashboard **ni avtenticiran** (CORS `*`). Namesto tega uporabi **Tailscale**,
 ki ustvari zasebno, šifrirano omrežje med tvojimi napravami. Zunanji svet ne
 vidi nič; samo tvoje naprave (v isti tailnet).
 
-## Stanje na tem sistemu (preverjeno)
+## Stanje na tem sistemu (preverjeno — DELUJE)
 
-- **Tailscale nameščen** (`tailscaled.exe` teče kot storitev).
-- **Prijavljen v tailnet** (`rob.istria@gmail.com`, "Login successful") — to JE
-  narejeno; prijava je v redu.
-- **Slediti mora še `tailscale up`** — dokler ta korak ni dokončan, je daemon v
-  stanju `NoState` / *"Tailscale is starting"* / *"Unable to connect to the
-  Tailscale coordination server"*, in **dashboard NI dosegljiv prek tailnet IP**
-  (`tailscale ip -4` → "no current Tailscale IPs"). To je NORMALNO takoj po
-  prijavi — le treba je vzpostaviti tunel.
+- **Tailscale nameščen in povezan.**
+- Tailnet IP tega PC-ja: **`100.125.242.115`** (`tailscale ip -4`).
+- Dashboard dosegljiv prek tailnet IP: **`http://100.125.242.115:8787` → HTTP 200** ✓
+- Device: `pcrlprogntb` · `rob.istria@`.
+- Vzpostavljeno tako, da se v zagnanem **Tailscale GUI** (tailscale-ipn.exe)
+  potrdi/Connect (in po potrebi `tailscale up` v PowerShell).
 
 ## DOKONČAJ `tailscale up` (najprej to)
 
