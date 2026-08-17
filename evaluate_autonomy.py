@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -215,8 +216,31 @@ class AutonomyEval:
 
 
 # ------------------------------------------------------------------ #
-#  main
+#  Meritveno sledenje (opazljivost avtonomnosti skozi čas)
 # ------------------------------------------------------------------ #
+HISTORY_FILE = ROOT / ".rob_ai" / "eval_history.json"
+
+
+def _read_history() -> List[dict]:
+    if not HISTORY_FILE.exists():
+        return []
+    try:
+        return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def _append_history(entry: dict) -> None:
+    """Doda meritev v eval zgodovino (append). Tolerantno: napaka → opozorilo."""
+    try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        hist = _read_history()
+        hist.append(entry)
+        HISTORY_FILE.write_text(json.dumps(hist, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"[WARN] ni mogoče shraniti eval zgodovine: {e}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="rob eval",
@@ -226,6 +250,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--target", metavar="NAME", default=None, help="samo en case po imenu")
     p.add_argument("--dry-run", action="store_true",
                    help="samo strukturna preverba EVAL_CASES (brez LLM/RSI)")
+    p.add_argument("--history", type=int, nargs="?", const=5, metavar="N",
+                   help="izpiši zadnjih N meritvenih vnosov (trend) iz eval zgodovine")
     return p
 
 
@@ -246,6 +272,20 @@ def main(argv=None) -> int:
     print("🤖 P5 — SWE-bench stila samo-eval za avtonomnost")
     print("=" * 70)
 
+    # --history: izpiši trend meritvenih vnosov (brez ponovnega LLM teka).
+    if args.history is not None:
+        from datetime import datetime
+        hist = _read_history()
+        n = min(args.history, len(hist)) if hist else 0
+        print(f"📈 Eval zgodovina (zadnjih {n} od {len(hist)} tekov):")
+        if not hist:
+            print("   (ni zabeleženih tekov)")
+        for e in hist[-n:] if n else []:
+            dt = e.get("date", "?")
+            print(f"   {dt}  {e.get('passed','?')}/{e.get('total','?')}  "
+                  f"({(e.get('rate',0)*100):.0f}%)")
+        return 0
+
     if args.dry_run:
         evaluator = AutonomyEval(cases)
         ok = all(evaluator.smoke_check(c) for c in cases)
@@ -263,6 +303,18 @@ def main(argv=None) -> int:
         print(f"   {flag} {r['name']}: RSI={'ZELEN' if r['rsi_ok'] else 'X'} · "
               f"checks {r['checks_ok']}/{r['checks_total']} · {r['reason']}")
     print("=" * 70)
+
+    # Meritveno sledenje: shrani ta tek v zgodovino (opazljivost skozi čas).
+    from datetime import datetime, timezone
+    _append_history({
+        "date": datetime.now(timezone.utc).isoformat(),
+        "passed": summary["passed"],
+        "total": summary["total"],
+        "rate": summary["rate"],
+        "cases": {r["name"]: {"rsi_ok": r["rsi_ok"],
+                              "checks_ok": r["checks_ok"],
+                              "checks_total": r["checks_total"]} for r in evaluator.results},
+    })
     return 0 if summary["rate"] >= 1.0 else 1
 
 

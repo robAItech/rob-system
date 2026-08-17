@@ -152,10 +152,14 @@ def test_execute_and_heal_vrne_true_ob_zelenem_testu(tmp_path, monkeypatch):
 
 
 def test_execute_and_heal_brez_healinga_vrne_false(tmp_path, monkeypatch):
-    """3.1–3.3 — rdeč test + nič popravka → po max_attempts vrne False."""
+    """3.1–3.3 — rdeč test + nič popravka → zgodnja prekinitev ob ponavljajoči napaki.
+
+    Nova značilnost: ko se ista error_type (npr. ValueError) ponovi ≥
+    REPEAT_ABORT_AFTER-krat, se tek zgodaj prekine (ne kuri LLM do max_attempts).
+    """
     engine = _navidezni_engine(tmp_path, monkeypatch)
 
-    # pytest zmeraj rdeč (returncode 1); _heal_once ne najde popravka
+    # pytest zmeraj rdeč (returncode 1, ista ValueError); _heal_once ne najde popravka.
     with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
          mock.patch.object(
         subprocess, "run", return_value=mock.Mock(returncode=1, stderr="X\nValueError: n", stdout="")
@@ -163,13 +167,13 @@ def test_execute_and_heal_brez_healinga_vrne_false(tmp_path, monkeypatch):
         result = engine.execute_and_heal("build demo")
 
     assert result is False
-    # Po 5 poskusih je bil zapisan vzorec v GBRAIN (3.3) in končno stanje FAILED.
+    # Zgodnja prekinitev ob ponavljajoči napaki → current_attempt = prag, ne max.
     reg = Path(tmp_path / ".loopx" / "registry.json")
     import json
     with reg.open(encoding="utf-8") as f:
         state = json.load(f)
     assert state["status"] == "FAILED"
-    assert state["current_attempt"] == engine.max_attempts
+    assert state["current_attempt"] == engine.REPEAT_ABORT_AFTER
 
 
 def test_execute_and_heal_uspeh_po_healingu(tmp_path, monkeypatch):

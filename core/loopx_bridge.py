@@ -48,6 +48,10 @@ class LoopXEngineBridge:
     3.5  Zelen cikel je dokončan šele, ko record_task vpiše rekord (ne 0).
     """
 
+    # ✅ prag: če se isto error_type ponovi tolikokrat znotraj teka → zgodnja
+    #    prekinitev (učenje iz ponavljajočih se napak, ne slepo kurjenje LLM).
+    REPEAT_ABORT_AFTER = 3
+
     def __init__(self, project: str):
         self.project = project
         self.target_dir = Path(f"actions/{project}")
@@ -57,6 +61,7 @@ class LoopXEngineBridge:
         self.llm = DeepSeekLLMClient()
         self.max_attempts = 5
         self.llm_calls = 0   # F5: števec LLM klicev za revizijo in cost-zavarovanje
+        self._heal_fail_count: Dict[str, int] = {}   # error_type → štev ponovitev v teku
 
     # ------------------------------------------------------------------ #
     #  Stanje zanke
@@ -446,6 +451,7 @@ class LoopXEngineBridge:
         """Jedro RSI zanke (pod target-lockom). Vrača True ob zelenem, sicer False."""
         kind = self._detect_kind(directive)
         print(f"[LOOPX] vrsta izdelka: {kind}", flush=True)
+        self._heal_fail_count = {}  # reset števca ponavljajočih napak za ta tek
         for attempt in range(1, self.max_attempts + 1):
             self.update_loopx_state("RUNNING", attempt)
 
@@ -461,12 +467,26 @@ class LoopXEngineBridge:
                 self._audit("ok")
                 return True
 
-            # Rdeč/celokupni fail → RSI healing (3.1–3.3). Direktiva in vrsta se preneseta
-            # LLM-ju, da ve, kaj zdomiti. `reason` je traceback oz. sporočilo.
+            # Rdeč → učenje iz ponavljajočih se napak: če se ista vrsta napake
+            # ponovi ≥ REPEAT_ABORT_AFTER-krat, zgodaj prekini (ne kuri LLM naprej).
+            error_type = self._classify_error(reason[:2000])
+            self._heal_fail_count[error_type] = self._heal_fail_count.get(error_type, 0) + 1
+            if self._heal_fail_count[error_type] >= self.REPEAT_ABORT_AFTER:
+                print(f"[LOOPX] ista napaka {error_type} po "
+                      f"{self._heal_fail_count[error_type]} poskusih — zgodnje prekinjeno.",
+                      flush=True)
+                self.update_loopx_state("FAILED", attempt)
+                self.gbrain.record_task(
+                    self.project, directive, "FAILED",
+                    traceback=f"ista napaka {error_type} po {self._heal_fail_count[error_type]} poskusih",
+                )
+                self._audit("failed")
+                return False
+
+            # RSI healing (3.1–3.3). `reason` je traceback oz. sporočilo.
             healed, report = self._heal_once(reason, directive, kind)
 
             # 3.3 — zapis učnih vzorcev v GBRAIN (mednáložni spomin)
-            error_type = self._classify_error(reason[:2000])
             self.gbrain.add_blacklist_pattern(
                 self.project,
                 error_pattern=f"{self.project}.{error_type}",

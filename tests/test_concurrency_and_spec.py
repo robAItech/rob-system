@@ -5,6 +5,7 @@ Brez pravih LLM/Docker — vse mocka. Preveri:
 - P2/target-lock: drugi build istega targeta ne dobi locka; release potem ok.
 - P0: _heal_once vstavi spec_hint v prompt; prazna → brez bloka.
 """
+import subprocess
 import sys
 from pathlib import Path
 from unittest import mock
@@ -108,3 +109,69 @@ def test_heal_once_prazna_spec_hint_ni_v_promptu(tmp_path, monkeypatch):
         ok, _ = e._heal_once("Traceback\nValueError: x", "d", kind="python")
     assert ok is True
     assert "arhitekturna usmeritev izvedbe" not in captured["prompt"]
+
+
+# ------------------------------------------------------------------ #
+#  Zgodnja prekinitev na ponavljajoči napaki (učenje, ne slepo kurjenje)
+# ------------------------------------------------------------------ #
+def test_heal_loop_pretrga_ponavljanje_po_pragu(tmp_path, monkeypatch):
+    """3× ista error_type → _heal_once klican ≤ prag-1, nato zgodaj FAILED."""
+    monkeypatch.chdir(tmp_path)
+    e = _engine_tmp(tmp_path, monkeypatch)
+    calls = {"n": 0}
+
+    def fake_heal_once(reason, directive, kind):
+        calls["n"] += 1
+        return (False, "ni popravka")
+
+    from unittest import mock as _m
+    with _m.patch.object(e, "_verify_ruff", return_value=(True, "")), \
+         _m.patch.object(e, "_docker_available", return_value=False), \
+         _m.patch.object(subprocess, "run",
+                         return_value=_m.Mock(returncode=1, stderr="X\nValueError: n", stdout="")), \
+         _m.patch.object(e, "_heal_once", side_effect=fake_heal_once):
+        r = e.execute_and_heal("build")
+    assert r is False
+    # _heal_once klican le do praga-prvi (vsak attempt), ne do max_attempts.
+    assert calls["n"] == e.REPEAT_ABORT_AFTER - 1
+
+
+def test_heal_loop_razlicne_napake_ne_pretrga(tmp_path, monkeypatch):
+    """Različne napake zaporedoma → NE zgodnja prekinitev, gredo skozi."""
+    monkeypatch.chdir(tmp_path)
+    e = _engine_tmp(tmp_path, monkeypatch)
+    errors = iter(["ValueError: a", "ImportError: b", "TypeError: c", "KeyError: d"])
+
+    from unittest import mock as _m
+    def fake_run(*a, **k):
+        return _m.Mock(returncode=1, stderr=next(errors, "ValueError: e"), stdout="")
+    with _m.patch.object(e, "_verify_ruff", return_value=(True, "")), \
+         _m.patch.object(subprocess, "run", side_effect=fake_run), \
+         _m.patch.object(e, "_heal_once", return_value=(False, "x")):
+        # Skrajšamo max_attempts, da test hitreje konča (različne napake ne
+        # sprožijo praga → teče do max_attempts).
+        e.max_attempts = 4
+        r = e.execute_and_heal("build")
+    assert r is False
+    assert e._heal_fail_count.get("ValueError", 0) <= 1  # zgo. prekinitev ni centralna
+
+
+# ------------------------------------------------------------------ #
+#  Eval meritveno sledenje (opazljivost skozi čas)
+# ------------------------------------------------------------------ #
+def test_eval_history_append_rase(tmp_path, monkeypatch):
+    """_append_history doda vnos; _read_history vrne naraščajoči array."""
+    import evaluate_autonomy as ev
+    hist = tmp_path / "eval_history.json"
+    monkeypatch.setattr(ev, "HISTORY_FILE", hist)
+    ev._append_history({"date": "2026-01-01T00:00Z", "passed": 1, "total": 2, "rate": 0.5})
+    ev._append_history({"date": "2026-01-02T00:00Z", "passed": 2, "total": 2, "rate": 1.0})
+    assert len(ev._read_history()) == 2
+
+
+def test_eval_history_read_prazen_ne_crash(tmp_path, monkeypatch):
+    """Brez datoteke → _read_history vrne [] in --history ne crash."""
+    import evaluate_autonomy as ev
+    hist = tmp_path / "nepostoji.json"
+    monkeypatch.setattr(ev, "HISTORY_FILE", hist)
+    assert ev._read_history() == []
