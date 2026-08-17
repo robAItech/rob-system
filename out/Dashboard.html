@@ -393,9 +393,19 @@ body{
   <span>Moduli</span><span class="cnt" id="modsCount">0</span>
 </button>
 <div class="modules-panel" id="modsPanel">
-  <div class="modules-head"><b>Moduli / Naloge</b><span class="x" onclick="toggleModules()">✕</span></div>
-  <div class="modules-list" id="modsList"><div class="mod-empty">Nalagam module…</div></div>
-  <div class="modules-subhead">Popravi obstoječi izdelek</div>
+  <div class="modules-head"><b>NaloGe &amp; Moduli</b><span class="x" onclick="toggleModules()">✕</span></div>
+
+  <!-- 1. AGENDA — čakalna vrsta naročil (povpraševanja, Gmail/glas/pisno) — na vrhu -->
+  <div class="modules-subhead" style="color:var(--gold)">▸ Agenda (čakalna vrsta) — tukaj čaka povpraševanje na tvojo odločitev</div>
+  <div class="agenda-row">
+    <input id="agendaInput" class="prompt-input" style="flex:1;padding:9px 12px;font-size:12.5px" placeholder="Dodaj nalogo na agenda…" />
+    <button class="mini-btn" id="voiceAgendaBtn" title="Glasovni vnos → v agenda" onclick="voiceAgenda()">🎤</button>
+    <button class="mini-btn gold" onclick="addAgenda()">Dodaj</button>
+  </div>
+  <div class="modules-list tl" id="agendaList"><div class="mod-empty">Agenda je prazna.</div></div>
+
+  <!-- 2. POPRAVI TO — popravi obstoječi izdelek -->
+  <div class="modules-subhead">▸ Popravi obstoječi izdelek</div>
   <div class="agenda-row">
     <select id="editableSel" class="prompt-input" style="flex:1;padding:8px 10px;font-size:12px">
       <option value="">… nalagam izdelke …</option>
@@ -406,21 +416,22 @@ body{
     <input id="fixInput" class="prompt-input" style="flex:1;padding:9px 12px;font-size:12.5px" placeholder="Kaj naj popravim? (npr. spremeni barve, dodaj CTA…)" />
     <button class="mini-btn gold" onclick="runFix()">🔄 Popravi</button>
   </div>
-  <div class="modules-subhead" id="modsSubhead">Zadnje izvedbe</div>
+
+  <!-- 3. ZADNJE IZVEDBE (zgodovina) -->
+  <div class="modules-subhead" id="modsSubhead">▸ Zadnje izvedbe</div>
   <div class="modules-list tl" id="timeList"><div class="mod-empty">No izvedbe…</div></div>
-  <div class="modules-subhead">Agenda (čakalna vrsta naročil)</div>
-  <div class="agenda-row">
-    <input id="agendaInput" class="prompt-input" style="flex:1;padding:9px 12px;font-size:12.5px" placeholder="Dodaj nalogo na agenda…" />
-    <button class="mini-btn" id="voiceAgendaBtn" title="Glasovni vnos → v agenda" onclick="voiceAgenda()">🎤</button>
-    <button class="mini-btn gold" onclick="addAgenda()">Dodaj</button>
-  </div>
-  <div class="modules-list tl" id="agendaList"><div class="mod-empty">Agenda je prazna.</div></div>
-  <div class="modules-subhead">Poslovanje · prilivi <b id="revTotal" style="color:var(--gold)"></b></div>
+
+  <!-- 4. POSLOVANJE -->
+  <div class="modules-subhead">▸ Poslovanje · prilivi <b id="revTotal" style="color:var(--gold)"></b></div>
   <div class="agenda-row">
     <input id="bizInput" class="prompt-input" style="flex:1;padding:9px 12px;font-size:12.5px" placeholder="Poslovna ideja → izdelaj predlog…" />
     <button class="mini-btn gold" onclick="addBusiness()">Izdelaj</button>
   </div>
   <div class="modules-list tl" id="bizList"><div class="mod-empty">Brez poslovnih vnosov.</div></div>
+
+  <!-- 5. MODULI / ARTEFAKTI — zgodovina izdelkov (najbolj sekundarno, na dnu) -->
+  <div class="modules-subhead">▸ Moduli / artefakti (izdelki)</div>
+  <div class="modules-list" id="modsList"><div class="mod-empty">Nalagam module…</div></div>
 </div>
 
 <!-- modal artefaktov -->
