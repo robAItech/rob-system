@@ -204,11 +204,15 @@ class LoopXEngineBridge:
         except Exception:
             graph_ctx = ""
         graph_note = f"KODNI GRAF (dependency kontekst):\n{graph_ctx}\n\n" if graph_ctx else ""
+        # P0 — spec_hint: arhitekturna usmeritev iz GStack manifesta. Če prazna → skip.
+        spec_hint = getattr(self, "spec_hint", None) or ""
+        spec_note = f"SPEC (arhitekturna usmeritev izvedbe):\n{spec_hint}\n\n" if spec_hint else ""
         prompt = (
             f"Izvirna vsebina modula `{self.project}` (trenutno ogrodje/stubs):\n"
             f"{json.dumps(sources, ensure_ascii=False, indent=2)}\n\n"
             "DIREKTIVA (kaj naj izdelek dejansko vsebuje):\n"
             f"{directive[:3000]}\n\n"
+            f"{spec_note}"
             f"{learned_note}"
             f"{graph_note}"
             "Razlog verifikacije (doseči je treba zelen):\n"
@@ -389,7 +393,57 @@ class LoopXEngineBridge:
     #  Glavna zanka
     # ------------------------------------------------------------------ #
 
-    def execute_and_heal(self, directive: str) -> bool:
+    # P2 — sočasnost: atomic file-lock na ciljni modul. Prepreči, da dva build-a
+    # istega `actions/<target>/` pisanja in pytest-a v istem dir hkrati (race).
+    # Uporabljen `os.open(... O_EXCL)` — atomic na filesystem; lock živi v
+    # `.loopx/<target>.lock`.
+    def _lock_path(self) -> Path:
+        return Path(".loopx") / f"{self.project}.lock"
+
+    def _acquire_target_lock(self, timeout: float = 2.0) -> bool:
+        import os, time as _t
+        p = self._lock_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        deadline = _t.monotonic() + timeout
+        while True:
+            try:
+                fd = os.open(str(p), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, str(os.getpid()).encode())
+                os.close(fd)
+                return True
+            except FileExistsError:
+                if _t.monotonic() >= deadline:
+                    return False
+                _t.sleep(0.15)
+
+    def _release_target_lock(self) -> None:
+        import os
+        p = self._lock_path()
+        try:
+            p.unlink()
+        except OSError:
+            pass
+
+    def execute_and_heal(self, directive: str, spec_hint: str = "") -> bool:
+        """RSI zanka. `spec_hint` = arhitekturna usmeritev (P0) iz GStack manifesta,
+        ki jo _heal_once vstavi v LLM prompt (če ni prazna).
+
+        P2 — sočasnost: pred zanko vzame atomic target-lock; drugi build istega
+        modula čaka kratek čas in ob časovni izteku vrne False (ne tekmuje).
+        Lock se sprosti v `finally` ne glede na izid.
+        """
+        self.spec_hint = spec_hint  # P0 — usmeritev za _heal_once
+        if not self._acquire_target_lock():
+            print(f"[LOOPX] TARGET ZAKLENJEN: '{self.project}' — drug build že poteka. Preskočen.",
+                  flush=True)
+            return False
+        try:
+            return self._heal_loop(directive)
+        finally:
+            self._release_target_lock()
+
+    def _heal_loop(self, directive: str) -> bool:
+        """Jedro RSI zanke (pod target-lockom). Vrača True ob zelenem, sicer False."""
         kind = self._detect_kind(directive)
         print(f"[LOOPX] vrsta izdelka: {kind}", flush=True)
         for attempt in range(1, self.max_attempts + 1):

@@ -24,12 +24,14 @@ class RobAIOrchestrator:
             graph_ctx = ""
         gstack = GSTACKArchitectBridge(blacklists, code_graph_context=graph_ctx)
         manifest = gstack.generate_manifest(project, directive)
+        # P0 — spec_hint: GStack blueprint + blacklists postanejo LLM usmeritev.
+        spec_hint = gstack.render_spec_hint(manifest)
         # 4. HERMES: ogrodje/datoteke
         hermes = HermesBuilderBridge(project)
         hermes.write_initial_stubs_if_missing()
         # 5. LOOPX: verifikacijska + samoozdravitvena zanka
         loopx = LoopXEngineBridge(project)
-        ok = loopx.execute_and_heal(directive)
+        ok = loopx.execute_and_heal(directive, spec_hint=spec_hint)
         print(f"  ── Faza '{label}': {'ZELEN' if ok else 'FAIL'} ──")
         return ok
 

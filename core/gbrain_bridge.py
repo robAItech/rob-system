@@ -1,16 +1,39 @@
 import sqlite3
 import json
+import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent  # repo koren (core/ → koren)
+
 class GBrainBridge:
     def __init__(self, db_path: Path = Path(".rob_ai/memory.db")):
-        self.db_path = db_path
+        # P2 — sočasnost: privzeti relativni db_path razreši iz REPO KORENA, ne iz cwd.
+        # Na ta način sočasni buildi iz različnih cwd-jev uporabijo ISTI memory.db
+        # (prej je bil relativni na cwd → več db ali "database is locked" ob prepletu).
+        # Eksplicitni (absolutni) db_path — npr. v tmp-testeh — ostane nespremenjen.
+        if not db_path.is_absolute():
+            self.db_path = PROJECT_ROOT / db_path
+        else:
+            self.db_path = db_path
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        # P2 — retry na "database is locked": sočasni pisači se ne zrušijo,
+        # ampak počakajo (do 3 poskuse s kratkim spancem).
+        last_err: Optional[Exception] = None
+        for _ in range(3):
+            try:
+                conn = sqlite3.connect(self.db_path, timeout=5)
+                conn.row_factory = sqlite3.Row
+                conn.execute("PRAGMA journal_mode=WAL")
+                return conn
+            except sqlite3.OperationalError as e:
+                last_err = e
+                time.sleep(0.3)
+        # Zadnji poskus brez WAL (če WAL ni na voljo) — še vedno poveži.
+        conn = sqlite3.connect(self.db_path, timeout=5)
         conn.row_factory = sqlite3.Row
         return conn
 
