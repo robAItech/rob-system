@@ -196,12 +196,21 @@ class LoopXEngineBridge:
                 "Naučeno iz prejšnjih poskusov (izogni se tem napakam):\n"
                 f"{pats}\n\n"
             )
+        # Graf-kontekst (graphify): LLM vidi dependency pregled za ciljni modul —
+        # torej kje se nahaja in kdo ga uporablja. Varno: če render pade,
+        # nadaljujemo brez njega (ne blokiramo healinga).
+        try:
+            graph_ctx = self.graphify.render_context(self.project)
+        except Exception:
+            graph_ctx = ""
+        graph_note = f"KODNI GRAF (dependency kontekst):\n{graph_ctx}\n\n" if graph_ctx else ""
         prompt = (
             f"Izvirna vsebina modula `{self.project}` (trenutno ogrodje/stubs):\n"
             f"{json.dumps(sources, ensure_ascii=False, indent=2)}\n\n"
             "DIREKTIVA (kaj naj izdelek dejansko vsebuje):\n"
             f"{directive[:3000]}\n\n"
             f"{learned_note}"
+            f"{graph_note}"
             "Razlog verifikacije (doseči je treba zelen):\n"
             f"{traceback[:8000]}\n\n"
             f"{out_note}"

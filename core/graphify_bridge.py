@@ -70,3 +70,80 @@ class GraphifyBridge:
             if target_module in data.get("imports", []):
                 impacted.append(file_path)
         return impacted
+
+    # ------------------------------------------------------------------ #
+    #  Graph-kontekst za LLM (compact izvleček — ne full dump).
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _norm(path: str) -> str:
+        """Normalizira separatorje → POSIX (/), da deluje na Windows (\\)."""
+        return path.replace("\\", "/")
+
+    @classmethod
+    def _layer(cls, path: str) -> str:
+        """Razvrsti datoteko v plast: core/ actions/ src/ ali koren."""
+        p = cls._norm(path)
+        for prefix in ("core/", "actions/", "src/"):
+            if p.startswith(prefix):
+                return prefix.rstrip("/")
+        return "koren"
+
+    def render_context(self, project: str, max_chars: int = 2000) -> str:
+        """Compact, LLM-berljiv povzetek kode grafa (ne ~110 KB dump-a).
+
+        LLM med RSI healingom vidi: per-plastni pregled (kje so moduli in
+        njihova oblika) + vplive ciljnega `project`-a (fan-in / fan-out).
+        Determininš, omejen na max_chars, tolerantna na manjkanje grafa
+        (zgradi na zahtevo). Izhod se posreduje v RSI `_heal_once` prompt.
+        """
+        if not self.graph_file.exists():
+            self.build_code_graph()
+
+        try:
+            with open(self.graph_file, "r", encoding="utf-8") as f:
+                graph = json.load(f)
+        except OSError:
+            return ""
+
+        nodes = graph.get("nodes", {})
+        if not nodes:
+            return "(graf je prazen)"
+
+        def _in_project(rel: str) -> bool:
+            """Ali je rel znotraj map akcijskega modula `project` (POSIX-normalizirano)."""
+            p = self._norm(rel)
+            return p == project or p.startswith(f"/{project}/") or p.startswith(f"{project}/")
+
+        # 1) Per-plast compact pregled: path (fn N, cls M, imp K).
+        by_layer: Dict[str, List[str]] = {}
+        for rel, data in nodes.items():
+            layer = self._layer(rel)
+            by_layer.setdefault(layer, []).append(
+                f"{self._norm(rel)} (fn {len(data.get('functions', []))}, "
+                f"cls {len(data.get('classes', []))}, imp {len(data.get('imports', []))})"
+            )
+
+        lines = ["=== CODE GRAPH (compact) ==="]
+        for layer in ("core", "actions", "src", "koren"):
+            items = by_layer.get(layer)
+            if items:
+                lines.append(f"  [{layer}] " + "; ".join(items))
+
+        # 2) Vplivi ciljnega modula: fan-out (kaj ta modul import-ira) + fan-in
+        #    (katere datoteke uporabljajo ta modul).
+        lines.append(f"  Vplivi za '{project}':")
+        fan_out: Set[str] = set()
+        for rel, data in nodes.items():
+            if _in_project(rel):
+                fan_out.update(data.get("imports", []))
+        if fan_out:
+            lines.append(f"    import-ira: {', '.join(sorted(fan_out)[:30])}")
+        fan_in = [self._norm(rel) for rel, data in nodes.items()
+                  if any(project in imp for imp in data.get("imports", []))]
+        if fan_in:
+            lines.append(f"    uporablja ga: {', '.join(sorted(fan_in)[:30])}")
+
+        out = "\n".join(lines)
+        if len(out) > max_chars:
+            out = out[:max_chars] + f"\n…(+{len(out) - max_chars} znakov izpuščenih)"
+        return out

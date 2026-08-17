@@ -16,7 +16,13 @@ class RobAIOrchestrator:
         graphify = GraphifyBridge()
         graphify.build_code_graph()
         # 3. GSTACK: arhitekturna specifikacija
-        gstack = GSTACKArchitectBridge(blacklists)
+        #    Graf-kontekst se posreduje v manifest (dependency_context), da spec
+        #    nosi pregled odvisnosti za kasnejšo LLM uporabo.
+        try:
+            graph_ctx = graphify.render_context(project)
+        except Exception:
+            graph_ctx = ""
+        gstack = GSTACKArchitectBridge(blacklists, code_graph_context=graph_ctx)
         manifest = gstack.generate_manifest(project, directive)
         # 4. HERMES: ogrodje/datoteke
         hermes = HermesBuilderBridge(project)
