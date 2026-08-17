@@ -932,6 +932,12 @@ async function addBusiness(){
   }catch(err){ toast('Napaka: '+String(err.message||err)); }
   finally{ if(btn){btn.disabled=false;btn.innerHTML=prev;} }
 }
+/* Odpira/zapira moduli panel (v njem Agenda, Popravi to, moduli). Toggle je bil
+   klican, ampak definicija je manjkala → panel se ni odprl (Agenda ni bila vidna). */
+function toggleModules(){
+  const p=document.getElementById('modsPanel');
+  if(p) p.classList.toggle('open');
+}
 /* "Popravi to" — izberi obstoječi RSI izdelek in pošlji povratno direktivo. */
 async function loadEditable(force){
   const sel=document.getElementById('editableSel');

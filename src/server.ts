@@ -602,9 +602,11 @@ function readGmailCursor(): Set<string> {
   } catch { return new Set(); }
 }
 
-function writeGmailCursor(ids: Set<string>): void {
+async function writeGmailCursor(ids: Set<string>): Promise<void> {
   try {
-    Bun.write(GMAIL_CURSOR_FILE, JSON.stringify([...ids], null, 0));
+    // Bun.write je asinhrone; BEZ await se cursor ne zapiše zanesljivo pred
+    // naslednjim pollom → poll ponovi iste mail-e (duplicate). Await je nujen.
+    await Bun.write(GMAIL_CURSOR_FILE, JSON.stringify([...ids], null, 0));
   } catch { /* ignore */ }
 }
 
@@ -630,6 +632,11 @@ async function agendaAddGmail(goal: string, kind: string): Promise<void> {
   await proc.exited;
 }
 
+/** Preskoči očitna sistemska sporočila/obvestila (ne prava povpraševanja). */
+function isSystemNotice(text: string): boolean {
+  return /(delili|deljenje|obvestilo|security|verifikac|byteplus|recovery|newsletter|novost.*google|račun.*delili|dostop.blokiran|google.*obvesti|povezavo\|podatek.*delil|sprememba.*gesla|two.?factor)/i.test(text);
+}
+
 /**
  * Gmail polling worker: prebere zadnja neprebrana sporočila, doda nova (ki
  * še niso v cursorju) v agendo kot `pending` (source=gmail). NE avtomatsko
@@ -651,12 +658,18 @@ async function gmailToAgenda(): Promise<{ added: number }> {
     const snippet = (md as { snippet?: string }).snippet ?? '';
     // Goal: Subject + izvor kontekst (snippet skrajšan). Raw — brez LLM limanje.
     const goal = subject.trim() ? subject.trim() : (snippet.trim() || 'Povpraševanje iz emaila');
+    // Filter: preskoči očitna sistemska sporočila/obvestila (ne povpraševanja),
+    // da ne zamašimo agende z Google obvestili npr. "S storitvijo byteplus ste delili…".
+    if (isSystemNotice(goal + ' ' + snippet + ' ' + from)) {
+      console.log(`[gmail-poll] preskočeno (obvestilo): ${id} «${subject.slice(0, 60)}»`);
+      continue;
+    }
     const kind = detectGmailKind(goal + ' ' + snippet);
     await agendaAddGmail(`${goal} (od: ${from})`, kind);
     cursor.add(id);     // oznaci obdeleno → ne ponovi
     added++;
   }
-  writeGmailCursor(cursor);
+  await writeGmailCursor(cursor);
   return { added };
 }
 
