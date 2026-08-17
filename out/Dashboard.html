@@ -102,7 +102,7 @@ body{
 .news p b{color:var(--ink)}
 
 /* ---------- glavno platno: jedro + agenti + orodja ---------- */
-.stage{flex:1;display:grid;grid-template-columns:1.4fr 5.4fr 1.2fr;gap:16px;padding:8px 30px 0;min-height:0}
+.stage{flex:1;display:grid;grid-template-columns:1.4fr 5.4fr;gap:16px;padding:8px 30px 0;min-height:0}
 /* leva kolona: periferna vozlišča orodij preseljena na desno po specu;
    leva ostane prostorna za jedro. Desno: tools. */
 
@@ -373,8 +373,7 @@ body{
       </div>
     </div>
 
-    <!-- desna kolona: ANALYTICS, CRM, MEMORY -->
-    <div class="right-col" id="toolColRight"></div>
+    <!-- (desna kolona z ANALYTICS/CRM/MEMORY odstranjena — so bili prazni prečesala isti panel) -->
   </main>
 
   <!-- Spodaj: live prompt + akcije (Chat / Voice In) -->
@@ -486,7 +485,7 @@ const AGENTS=[
   'architect','planner','engineer','builder','qa','screenshot',
 ];
 const TOOLS=[
-  ['DRIVE','☁',0],['EMAIL','✉',0],['CALENDAR','◷',0],['ANALYTICS','▤',1],['CRM','◉',1],['MEMORY','◈',2],
+  ['DRIVE','☁',0],['EMAIL','✉',0],['CALENDAR','◷',0],
 ];
 
 /* zgradi orbiterje okoli jedra — vsak agent dobi kratico + ime role */
@@ -516,12 +515,10 @@ function buildAgents(){
   });
 }
 
-/* zgradi orodja — levo (DRIVE, EMAIL, CALENDAR) in desno (ANALYTICS, CRM, MEMORY) */
+/* zgradi orodja — DRIVE, EMAIL, CALENDAR (Google) */
 function buildTools(){
   const left=document.getElementById('toolColLeft');
-  const right=document.getElementById('toolColRight');
   TOOLS.forEach(([name,ic,st],i)=>{
-    const col = i<3 ? left : right;
     const el=document.createElement('div');
     el.className='tool';
     el.dataset.name=name;
@@ -529,41 +526,16 @@ function buildTools(){
         <div class="ttxt"><b>${name}</b><span>${st===0?'aktiven':st===1?'sink':'arhiv'}</span></div>
         <div class="tdot"></div>`;
     el.addEventListener('click',()=>toolAction(name));
-    col.appendChild(el);
+    left.appendChild(el);
   });
 }
-/* Klik na orodje → preusmeri na obstoječi pogled/podatke. */
+/* Klik na orodje → Google integracija (Drive/Email/Calendar). */
 function toolAction(name){
   const n=(name||'').toUpperCase();
-  const openPanel=()=>{
-    const p=document.getElementById('modsPanel');
-    p.classList.add('open'); loadModules();
-  };
-  if(n==='ANALYTICS'){
-    // Odpre statistiko/KPI kot toast in preklopi na timeline pogled.
-    const runs=apiRuns||[];
-    const ok=runs.filter(r=>r.status==='completed').length;
-    const run=runs.filter(r=>r.status==='running').length;
-    const bad=runs.filter(r=>r.status==='failed'||r.status==='stuck').length;
-    const ev=healthData?.eventCount??(ledgerData||[]).length;
-    toast(`📊 ANALYTICS · ${ev} dogodkov · ${ok} zaključeno · ${run} v teku · ${bad} napak`);
-    openPanel(); // pokaži izvedbe kot statistika
-    setTimeout(()=>{ const tl=document.getElementById('timeList'); if(tl) tl.scrollIntoView({block:'center'}); },120);
-  }else if(n==='CRM'){
-    openPanel(); // zgodovina izvedb (timeline)
-    toast('👥 CRM · zgodovina izvedb v »Zadnje izvedbe«.');
-    setTimeout(()=>{ const tl=document.getElementById('timeList'); if(tl) tl.scrollIntoView({block:'center'}); },20);
-  }else if(n==='MEMORY'){
-    openPanel(); // seznam modulov/podatkov
-    toast('🧠 MEMORY · moduli in podatki v plošči Moduli.');
-    setTimeout(()=>{ const ml=document.getElementById('modsList'); if(ml) ml.scrollIntoView({block:'start'}); },20);
-  }else if(n==='DRIVE'||n==='EMAIL'||n==='CALENDAR'){
+  if(n==='DRIVE'||n==='EMAIL'||n==='CALENDAR'){
     googleTool(n);
-  }else{
-    toast(`${iconOf(n)} ${name}: ni določene akcije.`);
   }
 }
-function iconOf(n){ return n==='DRIVE'?'☁':n==='EMAIL'?'✉':'◷'; }
 
 /* Faza 0 — avtonomni build prek RSI/GStack jedra (/api/build) */
 async function runRsiBuild(){
