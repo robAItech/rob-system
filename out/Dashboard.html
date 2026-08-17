@@ -947,7 +947,12 @@ async function addBusiness(){
    klican, ampak definicija je manjkala → panel se ni odprl (Agenda ni bila vidna). */
 function toggleModules(){
   const p=document.getElementById('modsPanel');
-  if(p) p.classList.toggle('open');
+  if(!p) return;
+  const was=p.classList.contains('open');
+  p.classList.toggle('open');
+  // Ob ODPRTJU naloži sveže podatke (modules/timeline, agenda, editable),
+  // da panel ni prazen z samo naslovi.
+  if(!was){ loadModules(); loadAgenda(); loadEditable(); }
 }
 /* "Popravi to" — izberi obstoječi RSI izdelek in pošlji povratno direktivo. */
 async function loadEditable(force){
