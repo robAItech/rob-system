@@ -258,12 +258,15 @@ body{
 .modules-toggle:hover{border-color:var(--gold);box-shadow:0 0 22px var(--gold-soft)}
 .modules-toggle .cnt{background:var(--gold);color:#231400;border-radius:20px;padding:1px 8px;font-weight:700}
 .modules-panel{
-  position:fixed;right:20px;bottom:128px;width:min(380px,92vw);max-height:70vh;z-index:41;
+  position:fixed;right:20px;bottom:96px;width:min(420px,94vw);max-height:88vh;z-index:41;
   display:flex;flex-direction:column;border-radius:var(--r);overflow-y:auto;overflow-x:hidden;
   background:rgba(8,18,34,.92);border:1px solid var(--edge);backdrop-filter:blur(12px);
   box-shadow:0 20px 60px rgba(0,0,0,.6);transform:translateY(8px);opacity:0;pointer-events:none;
   transition:transform .2s,opacity .2s}
 .modules-panel.open{transform:translateY(0);opacity:1;pointer-events:auto}
+.modules-panel::-webkit-scrollbar{width:8px}
+.modules-panel::-webkit-scrollbar-thumb{background:rgba(79,195,255,.35);border-radius:6px}
+.modules-list{flex:0 0 auto}
 .modules-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
   border-bottom:1px solid var(--edge-soft)}
 .modules-head b{font-size:13px;letter-spacing:.14em;color:var(--gold);text-transform:uppercase}
