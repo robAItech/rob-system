@@ -108,7 +108,8 @@ body{
 
 /* CENTRALNO jedro — luminous zlata krogla + agenti orbiterji */
 .core-wrap{position:relative;display:flex;align-items:center;justify-content:center;min-height:0;
-  padding-bottom:6vh; /* dvigne jedro, da spodnji agenti ne trčijo ob dock/propmt */}
+  padding-bottom:6vh; /* dvigne jedro, da spodnji agenti ne trčijo ob dock/propmt */
+  margin-right:min(430px,38vw); /* odstop desno, da nonstop panel ne prekriva jedra */}
 .orb{position:relative;width:min(58vh,600px);aspect-ratio:1}
 .core{
   position:absolute;inset:0;margin:auto;width:36%;aspect-ratio:1;border-radius:50%;
@@ -268,12 +269,13 @@ body{
 .modules-toggle:hover{border-color:var(--gold);box-shadow:0 0 22px var(--gold-soft)}
 .modules-toggle .cnt{background:var(--gold);color:#231400;border-radius:20px;padding:1px 8px;font-weight:700}
 .modules-panel{
-  position:fixed;right:20px;bottom:96px;width:min(420px,94vw);max-height:88vh;z-index:41;
+  /* Nonstop odprt desno (brez klika): vedno viden, position:fixed desno. */
+  position:fixed;right:20px;top:96px;bottom:150px;width:min(420px,92vw);z-index:41;
   display:flex;flex-direction:column;border-radius:var(--r);overflow-y:auto;overflow-x:hidden;
   background:rgba(8,18,34,.92);border:1px solid var(--edge);backdrop-filter:blur(12px);
-  box-shadow:0 20px 60px rgba(0,0,0,.6);transform:translateY(8px);opacity:0;pointer-events:none;
-  transition:transform .2s,opacity .2s}
-.modules-panel.open{transform:translateY(0);opacity:1;pointer-events:auto}
+  box-shadow:0 20px 60px rgba(0,0,0,.6);transform:none;opacity:1;pointer-events:auto;
+  transition:none}
+.modules-panel.closed{opacity:0;pointer-events:none;transform:translateX(8px);transition:opacity .2s,transform .2s}
 .modules-panel::-webkit-scrollbar{width:8px}
 .modules-panel::-webkit-scrollbar-thumb{background:rgba(79,195,255,.35);border-radius:6px}
 .modules-list{flex:0 0 auto}
@@ -964,11 +966,10 @@ async function addBusiness(){
 function toggleModules(){
   const p=document.getElementById('modsPanel');
   if(!p) return;
-  const was=p.classList.contains('open');
-  p.classList.toggle('open');
-  // Ob ODPRTJU naloži sveže podatke (modules/timeline, agenda, editable),
-  // da panel ni prazen z samo naslovi.
-  if(!was){ loadModules(); loadAgenda(); loadEditable(); }
+  const was=p.classList.contains('closed');
+  p.classList.toggle('closed');
+  // Ob ODPRTJU (odprt → ni več closed) naloži sveže podatke.
+  if(was){ loadModules(); loadAgenda(); loadEditable(); }
 }
 /* "Popravi to" — izberi obstoječi RSI izdelek in pošlji povratno direktivo. */
 async function loadEditable(force){
