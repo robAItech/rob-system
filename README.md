@@ -150,6 +150,28 @@ Vse v enem ukazu — `rob dev` (dela na Windows, Linux in WSL):
 
 Vsi načini delegirajo na isti Python modul `core/dev_cli.py`.
 
+#### Avtonomen zagon (PC kot centralni server) — brez terminala
+
+Dashboard :8787 je spletni UI za **vnos nalog** (`POST /api/build`) in **ogled
+izida** (GREEN/FAILED + stdout/stderr) — glavni način uporabe, ni terminala.
+System (proxy+dashboard) se dvigne **samodejno ob prijavi** v ozadju, idempotentno:
+
+```powershell
+python core/dev_cli.py --serve       # dvigne vse v ozadju, izpiše Dashboard URL, ne blokira
+pwsh -File scripts\register-autostart.ps1   # registrira Task Scheduler (ob prijavi)
+pwsh -File scripts\register-autostart.ps1 -Query   # preveri
+```
+
+**CLI/terminal ostaja kot varnostna (rescue) pot** — `rob dev` še vedno deluje
+za ročni nadzor, stop/start/reset, ročni claude itd. Avtonomen zagon NE zamenja
+CLI-ja; oba sobivata (idempotentno prepozna že-tekoč system).
+
+**Tailscale** (varen remote dostop iz drugih naprav) je **ročni predpogoj**:
+namesti Tailscale (`tailscale.com/download`), `tailscale login`, `tailscale up` —
+potem dashboard dosegljiv tudi s Tailscale IP iz laptopa. **Varnostno**: dashboard
+API ni avtenticiran (CORS `*`), zato **nikoli ne odpiraj javnega porta 8787/4010**
+na internet — uporabi Tailscale/zaprti VPN, ne odprt port.
+
 Konfiguracija proxyja živi v `bridges/litellm_config.yaml` — modeli so
 preslikani na Anthropic-kompatibilen DeepSeek endpoint (`api.deepseek.com/anthropic`),
 krovni ključ (`master_key`) in `drop_params: true` pa preprečujejo

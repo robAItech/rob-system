@@ -217,6 +217,51 @@ def test_cmd_all_ne_klico_porta_4000(monkeypatch, tmp_path):
     # return 0 (claude je "odšel", cleanup no-op ker port_listener→None)
     assert rc == 0
 
+# ------------------------------------------------------------------ #
+#  cmd_serve — avtonomen zagon (--serve), idempotentno, brez claude
+# ------------------------------------------------------------------ #
+def test_cmd_serve_idempotentno_ne_duplicira_ne_claude(monkeypatch, tmp_path):
+    """System že teče (proxy+dashboard zelena) → --serve NE zažene novega, NE kliče claude."""
+    monkeypatch.chdir(tmp_path)
+    cfg = dev_cli.Config(Path(tmp_path))
+    cfg.deepseek_key = "sekret"
+    monkeypatch.setattr(dev_cli, "which", lambda n: Path("C:/x/" + n))
+
+    spawned = []
+    monkeypatch.setattr(dev_cli, "_spawn", lambda *a, **k: spawned.append(a) or mock.MagicMock())
+    monkeypatch.setattr(dev_cli, "proxy_health", lambda base, key: True)    # žе teče
+    monkeypatch.setattr(dev_cli, "dashboard_health", lambda url: True)      # žе teče
+
+    rc = dev_cli.cmd_serve(cfg)
+
+    assert rc == 0
+    assert spawned == [], "--serve idempotentno: NE zažene duplikata, ko system žе teče"
+    # NE kliče claude (subprocess.call / _claude_commandline ne smeta it naprej) — cmd_serve
+    # se ne dotika claude; preverimo, da ni bilo nobenega _spawn-a (proxy/dashboard žе sta).
+
+
+def test_cmd_serve_ne_zazene_claude_ampak_dvigne_system(monkeypatch, tmp_path):
+    """System NE teče → --serve dvigne proxy+dashboard v ozadju, ampak NIKOLI claude."""
+    monkeypatch.chdir(tmp_path)
+    cfg = dev_cli.Config(Path(tmp_path))
+    cfg.deepseek_key = "sekret"
+    monkeypatch.setattr(dev_cli, "which", lambda n: Path("C:/x/" + n))
+
+    fake_proc = mock.MagicMock()
+    fake_proc.poll.return_value = None
+    monkeypatch.setattr(dev_cli, "_spawn", lambda *a, **k: fake_proc)
+    monkeypatch.setattr(dev_cli, "proxy_health", lambda base, key: False)   # ni gor → dvigni
+    monkeypatch.setattr(dev_cli, "dashboard_health", lambda url: False)
+    monkeypatch.setattr(dev_cli, "wait_health", lambda ck, seconds, **k: True)  # ne čakaj
+    monkeypatch.setattr(dev_cli, "port_listener", lambda port: None)
+    call = mock.MagicMock()
+    monkeypatch.setattr(dev_cli.subprocess, "call", call)
+
+    rc = dev_cli.cmd_serve(cfg)
+
+    assert rc == 0
+    call.assert_not_called()   # NI claude izvedbe (za razliko od cmd_all)
+
 
 # ------------------------------------------------------------------ #
 #  Pomožni: ujemi stdout

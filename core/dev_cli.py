@@ -398,6 +398,71 @@ def cmd_all(cfg: Config, args: Sequence[str]) -> int:
     return code
 
 
+def cmd_serve(cfg: Config) -> int:
+    """Avtonomen zagon: dvigne proxy+dashboard v OZADJU, brez claude-a.
+
+    Namenjeno avtonomnemu zagonu (Task Scheduler / --serve): system teče 24/7,
+    vnos nalog gre skozi dashboard UI. Idempotentno — če system že teče,
+    ne duplicira. Vrne takoj (ne blokira, ne zažene claude). Tailscale check
+    za remote dostop (če ni nameščen → opozorilo, ne fail).
+    """
+    proxy_base = f"http://127.0.0.1:{PORT}"
+    dash_url = f"http://127.0.0.1:{DASH_PORT}"
+
+    litellm = which("litellm")
+    if not litellm:
+        print("[NAP] 'litellm' ni na PATH.")
+        return 1
+    if not cfg.deepseek_key:
+        print("[NAP] DEEPSEEK_API_KEY ni v .env.")
+        return 1
+
+    # --- Proxy (idempotentno) ---
+    already_proxy = proxy_health(proxy_base, cfg.master_key)
+    sp_proxy = SpawnedServer(started_by_us=not already_proxy, port=PORT)
+    if already_proxy:
+        print(f"[LINK] Proxy že teče na {proxy_base} - uporabljam obstoječega.")
+    else:
+        print(f"[PROXY] Zaganjam v OZADJU ({proxy_base})...")
+        sp_proxy.popen = _spawn([str(litellm), "--config", str(cfg.config_path), "--port", str(PORT)], cfg)
+        if sp_proxy.popen is None:
+            return 1
+        if not wait_health(lambda: proxy_health(proxy_base, cfg.master_key), PROXY_TIMEOUT):
+            print("[NAP] Proxy se ni zagnal v 30s.")
+            sp_proxy.clean()
+            return 1
+
+    # --- Dashboard (idempotentno) ---
+    already_dash = dashboard_health(dash_url)
+    sp_dash = SpawnedServer(started_by_us=not already_dash, port=DASH_PORT)
+    if already_dash:
+        print(f"[LINK] Dashboard že teče na {dash_url} - uporabljam obstoječega.")
+    else:
+        print(f"[DASH] Zaganjam Command-Center ({dash_url}) v OZADJU...")
+        bun = which("bun")
+        if bun:
+            sp_dash.popen = _spawn([str(bun), "run", "src/server.ts"], cfg, cwd=cfg.root)
+        if sp_dash.popen is None:
+            print("[WARN] Dashboard ni bil zagnan; nadaljujem.")
+        elif not wait_health(lambda: dashboard_health(dash_url), DASH_TIMEOUT):
+            print("[WARN] Dashboard se ni odzval v 15s — nadaljujem.")
+
+    # --- Tailscale (remote dostop) — preveri, poročaj, ne fail ---
+    ts = which("tailscale")
+    if ts:
+        print(f"[TS] Tailscale nameščen. Dashboard dosegljiv tudi prek Tailscale IP "
+              f"(preveri: tailscale status).")
+    else:
+        print("[WARN] 'tailscale' ni na PATH — remote dostop Z DRUGIH naprav ne bo deloval. "
+              "Namesti Tailscale (tailscale.com) + 'tailscale up' za varen dostop prek omrežja. "
+              "Lokalno dashboard deluje.")
+
+    print(f"[OK] AVTONOMEN ZAGON pripravljen.")
+    print(f"      Dashboard:  {dash_url}      (vnos nalog prek UI)")
+    print(f"      Terminal/rescue:  rob dev   (ročni nadzor / claude)")
+    return 0
+
+
 # ------------------------------------------------------------------ #
 #  Glavni vstop (argparse)
 # ------------------------------------------------------------------ #
@@ -411,6 +476,9 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--proxy-only", action="store_true", help="samo LiteLLM na 4010 v ospredju.")
     g.add_argument("--dashboard-only", action="store_true", help="samo Command-Center (bun src/server.ts) na 8787.")
     g.add_argument("--claude-only", action="store_true", help="samo claude ob že obstoječem proxyju na 4010.")
+    g.add_argument("--serve", action="store_true",
+                   help="AVTONOMEN zagon: proxy+dashboard v ozadju, brez claude (UI je vnos). "
+                        "Za Task Scheduler / stalni server. Idempotentno.")
     return p
 
 
@@ -430,6 +498,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return cmd_dashboard_only(cfg)
     if ns.claude_only:
         return cmd_claude_only(cfg, rest)
+    if ns.serve:
+        return cmd_serve(cfg)
     return cmd_all(cfg, rest)
 
 
