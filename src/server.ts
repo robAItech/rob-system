@@ -842,6 +842,22 @@ const server = Bun.serve({
       if (code === 0) { try { item = JSON.parse(out); } catch { /* */ } }
       return json({ ok: code === 0, item });
     }
+    // Oznaka statusa agenda naloge (npr. done po obdelavi prek trajne agende).
+    if (req.method === 'POST' && url.pathname === '/api/agenda/mark') {
+      const raw = await req.text().catch(() => '');
+      let body: { id?: unknown; status?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const id = String(body.id || '').trim();
+      const status = String(body.status || '').trim();
+      if (!id || !status) return json({ ok: false, error: 'id in status sta obvezna' }, 400);
+      const proc = Bun.spawn({
+        cmd: ['python', '-c', `from core.agenda import mark; mark(${JSON.stringify(id)}, ${JSON.stringify(status)})`],
+        cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+      });
+      await proc.exited;
+      return json({ ok: true, id, status });
+    }
 
     // Faza 6: poslovna knjiga (glavna knjiga podjetja) — branje in nov delovnik.
     if (req.method === 'GET' && url.pathname === '/api/business') {

@@ -186,6 +186,16 @@ body{
   background:var(--panel);border:1px solid var(--edge-soft);backdrop-filter:blur(8px);
   transition:transform .2s, border-color .2s, box-shadow .2s}
 .left-col .tool:hover{transform:translateX(4px);border-color:var(--edge);box-shadow:6px 0 20px rgba(79,195,255,.15)}
+.agenda-main{width:100%;max-height:38vh;display:flex;flex-direction:column;gap:8px;
+  border:1px solid var(--edge-soft);border-radius:14px;padding:10px;background:var(--panel);
+  backdrop-filter:blur(8px)}
+.agenda-main-head{font:700 11px var(--font);letter-spacing:.14em;text-transform:uppercase;color:var(--gold)}
+.agenda-main-list{display:flex;flex-direction:column;gap:6px;overflow-y:auto;max-height:30vh}
+.agenda-main-item{font:12px var(--font);color:var(--ink);padding:7px 9px;border-radius:9px;
+  background:rgba(79,195,255,.06);border:1px solid var(--edge-soft);cursor:pointer}
+.agenda-main-item:hover{background:rgba(79,195,255,.14)}
+.agenda-main-item .am-src{font:10px var(--mono);color:var(--ink-3)}
+.agenda-main-empty{font:12px var(--font);color:var(--ink-3)}
 .right-col .tool:hover{transform:translateX(-4px);border-color:var(--edge);box-shadow:-6px 0 20px rgba(79,195,255,.15)}
 .tool .tic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:17px;
   background:linear-gradient(135deg,rgba(79,195,255,.25),rgba(30,111,208,.15));border:1px solid var(--edge-soft);flex:none}
@@ -344,8 +354,14 @@ body{
 
   <!-- Sredina: leva orodja + centralno jedro + desna orodja -->
   <main class="stage">
-    <!-- leva kolona: DRIVE, EMAIL, CALENDAR -->
-    <div class="left-col" id="toolColLeft"></div>
+    <!-- leva kolona: trajna Agenda (vedno vidna) + orodja DRIVE/EMAIL/CALENDAR -->
+    <div class="left-col">
+      <div class="agenda-main" id="agendaMain">
+        <div class="agenda-main-head">📋 Agenda</div>
+        <div class="agenda-main-list" id="agendaMainList"><div class="mod-empty">Agenda prazna.</div></div>
+      </div>
+      <div id="toolColLeft"></div>
+    </div>
 
     <!-- centralno jedro + orbiterji (dvignjeno, da ne trči ob dock) -->
     <div class="core-wrap">
@@ -869,16 +885,41 @@ async function loadAgenda(){
 }
 function renderAgenda(){
   const list=document.getElementById('agendaList');
-  if(!list) return;
-  if(!agendaCache.length){ list.innerHTML='<div class="mod-empty">Agenda je prazna. Dodaj nalogo zgoraj.</div>'; return; }
-  list.innerHTML=agendaCache.slice().reverse().map(it=>`
+  const aml=document.getElementById('agendaMainList');
+  const items=agendaCache.slice().reverse();
+  const emptyHtml='<div class="mod-empty">Agenda je prazna.</div>';
+  if(list) list.innerHTML = items.length ? items.map(it=>`
     <div class="tl-item">
       <div class="tl-dot ${it.status==='done'?'ok':it.status==='failed'?'bad':it.status==='running'?'run':'warn'}"></div>
       <div class="tl-body">
         <div class="tl-task">${esc((it.goal||'').slice(0,48))}</div>
         <div class="agendameta"><span class="ag-st ${esc(it.status||'pending')}">${esc(it.status||'pending')}</span><span>${esc(it.target||'')}</span>${it.repeat?`<span>⟳</span>`:''}</div>
       </div>
-    </div>`).join('');
+    </div>`).join('') : '<div class="mod-empty">Agenda je prazna. Dodaj nalogo zgoraj.</div>';
+  // Trajna Agenda (leva kolona, vedno vidna) — kompaktna predstavitev.
+  if(aml) aml.innerHTML = items.length
+    ? items.slice(0,12).map(it=>`
+      <div class="agenda-main-item" onclick="runAgendaFromMain('${cssEsc(it.id)}')">
+        <div>${esc((it.goal||'').slice(0,42))}</div>
+        <span class="am-src">${esc(it.source||'')} · ${esc(it.status||'pending')}</span>
+      </div>`).join('')
+    : '<div class="agenda-main-empty">Ni čakajočih nalog.</div>';
+}
+/* Trajna agenda (leva kolona): klik na nalogo → požene RSI build te naloge
+   in označi kot done. To ustreza "zjutraj vidiš in potrdiš". */
+async function runAgendaFromMain(id){
+  const it=agendaCache.find(x=>x.id===id);
+  if(!it){ toast('Naloga ni najdena.'); return; }
+  const target=(it.target||'').trim().replace(/[^a-zA-Z0-9_-]/g,'_')||'naloga';
+  const directive=(it.goal||'').trim();
+  toast('▶ Obdelujem: '+esc((it.goal||'').slice(0,40)));
+  try{
+    const res=await api('/api/build',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,directive})});
+    // Označi kot done/ne glede na izid (obdelano), osveži.
+    await api('/api/agenda/mark',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,status:'done'})});
+    toast(res?.ok?'✅ Obdelano (zelena) · '+target:'⚠ Obdelano, a ne zeleno: '+target);
+    loadAgenda();
+  }catch(err){ toast('Napaka: '+String(err.message||err)); }
 }
 /* Faza 2 — glasovni vnos → agenda (Web Speech, piše v agendaInput → Dodaj). */
 let vAgendaOn=false;
