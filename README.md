@@ -81,22 +81,21 @@ Sistem temelji na treh integriranih stebrih:
 
 ```
 Rob AI Studio/
-├── rob                               # Glavni CLI izvršljivi motor (Swarm Engine)
-├── pytest.ini                        # Konfiguracija za globalno testno mrežo
-├── bridges/
-│   └── llm_bridge.py                 # Enoviti vmesnik za LLM komunikacijo (DeepSeek/OpenAI)
-├── actions/
-│   ├── enterprise_rsi_engine/        # Avtonomni motor za samoizboljševanje in testiranje
-│   │   ├── __init__.py
-│   │   ├── schemas.py                # Pydantic contract modeli
-│   │   ├── enterprise_rsi_engine.py  # AST Analyzer & Self-Healing Core
-│   │   ├── main.py                   # FastAPI vmesnik za RSI storitve
-│   │   └── test_enterprise_rsi_engine.py  # Testni paket modula
-│   └── [ostali produkcijski moduli]/ # Poslovna logika za stranke in aplikacije
-└── tests/
-    ├── test_architecture.py          # Preverjanje celovitosti strukture
-    ├── test_integration.py           # Integracijski testi
-    └── test_master_suite.py          # Celovita sistemska testna matrika
+├── rob                               # CLI motor (rescue nadzor: rob dev / rob build / rob eval)
+├── dev.bat                           # Windows launcher za rob dev
+├── core/                             # Python jedro
+│   ├── dev_cli.py                    # Orkestracija (proxy+dashboard+claude, --serve)
+│   ├── orchestrator.py               # RSI/GStack faza (gbrain→graphify→gstack→loopx)
+│   ├── loopx_bridge.py               # RSI zanka (pytest→LLM→100% zelen) + test-lock
+│   ├── agenda.py                     # Čakalna vrsta naročil (več vhodov → vrsta)
+│   ├── audit.py / business.py / visual_qa.py  # revizija / glavna knjiga / vizualni QA
+├── src/                              # TypeScript Command-Center dashboard
+│   └── server.ts                     # :8787 /api/* + Gmail polling (Faza 2)
+├── actions/                          # Produkcijski moduli (RSI jih gradi/popravlja)
+├── bridges/litellm_config.yaml       # DeepSeek proxy routing
+├── scripts/                          # autostart.bat + register-autostart.ps1 (HKCU Run)
+├── evaluate_autonomy.py              # P5 — SWE-bench stila samo-eval (rob eval)
+└── tests/                            # Pytest suite (79 testov)
 ```
 
 ## 🛠️ Hitra namestitev in zagon
@@ -104,16 +103,14 @@ Rob AI Studio/
 ### 1. Kloniranje repozitorija in priprava okolja
 
 ```bash
-git clone https://github.com/vash-org/rob-ai-studio.git
-cd "rob-ai-studio"
-
-# Ustvarjanje in aktivacija virtualnega okolja
-python3 -m venv venv
-source venv/bin/activate
-
-# Namestitev odvisnosti
-pip install -r requirements.txt
+git clone https://github.com/robAItech/AI-podjetje-V5.git
+cd "Rob system"
 ```
+
+Zahtevana orodja na PATH (nameščena ročno, ni venv):
+- **Python 3.11+** (glavni interpreter `python`)
+- **bun** (`npm i -g bun`) — za dashboard (`bun run src/server.ts`)
+- **litellm** (`python -m pip install litellm`) — za proxy
 
 ### 2. Konfiguracija okoljskih spremenljivk
 
@@ -121,8 +118,6 @@ Ustvarite datoteko `.env` v korenskem imeniku projekta:
 
 ```
 DEEPSEEK_API_KEY=vaš_deepseek_api_ključ
-OPENAI_API_KEY=vaš_openai_api_ključ
-ENVIRONMENT=production
 ```
 
 ### 3. Zagon Claude Code prek LiteLLM + DeepSeek (`rob dev`)

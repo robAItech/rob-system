@@ -55,3 +55,7 @@ __pycache__/
 actions/fizzbuzz/
 actions/divide_safe/
 actions/count_words/
+
+# Odvečne lokalne mape (niso v gitu)
+app/
+demo/
