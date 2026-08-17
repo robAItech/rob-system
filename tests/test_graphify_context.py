@@ -127,3 +127,26 @@ def test_heal_once_prezivi_izjemo_render_context(tmp_path, monkeypatch):
 
     assert ok is True  # healing še vedno uspe brez grafa
     assert "KODNI GRAF" not in captured["prompt"]  # graf izpuščen
+
+
+def test_heal_once_popravi_to_dobi_obstojece_sources(tmp_path, monkeypatch):
+    """"Popravi to": obstoječi modul (z vsebino) → LLM prompt vsebuje obstoječo
+    kodo (sources), ne samo praznih stubs — da lahko LLM ustrezno popravi."""
+    monkeypatch.chdir(tmp_path)
+    _write_graph(tmp_path)
+    eng = _engine_with_graph(tmp_path)   # ustvari demo_service.py z `def run(): return 1`
+    captured = {}
+
+    async def fake_generate_completion(prompt, system_prompt, use_coder_model=False):
+        captured["prompt"] = prompt
+        return "### FILE: demo_service.py\n```python\ndef run():\n    return 2\n```\n"
+
+    with mock.patch.object(eng, "graphify") as mock_graph, \
+         mock.patch.object(eng.llm, "generate_completion", side_effect=fake_generate_completion):
+        mock_graph.render_context.return_value = ""
+        ok, _report = eng._heal_once("Traceback\nValueError: x", "popravi logiko", kind="python")
+
+    assert ok is True
+    # LLM vidi obstoječo vsebino modula (sources), ne praznih stubs.
+    assert "def run():" in captured["prompt"]
+    assert "return 1" in captured["prompt"]   # obstoječa implementacija, ne stub

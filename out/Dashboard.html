@@ -395,6 +395,17 @@ body{
 <div class="modules-panel" id="modsPanel">
   <div class="modules-head"><b>Moduli / Naloge</b><span class="x" onclick="toggleModules()">✕</span></div>
   <div class="modules-list" id="modsList"><div class="mod-empty">Nalagam module…</div></div>
+  <div class="modules-subhead">Popravi obstoječi izdelek</div>
+  <div class="agenda-row">
+    <select id="editableSel" class="prompt-input" style="flex:1;padding:8px 10px;font-size:12px">
+      <option value="">… nalagam izdelke …</option>
+    </select>
+    <button class="mini-btn gold" id="loadEditableBtn" onclick="loadEditable(true)">↻</button>
+  </div>
+  <div class="agenda-row">
+    <input id="fixInput" class="prompt-input" style="flex:1;padding:9px 12px;font-size:12.5px" placeholder="Kaj naj popravim? (npr. spremeni barve, dodaj CTA…)" />
+    <button class="mini-btn gold" onclick="runFix()">🔄 Popravi</button>
+  </div>
   <div class="modules-subhead" id="modsSubhead">Zadnje izvedbe</div>
   <div class="modules-list tl" id="timeList"><div class="mod-empty">No izvedbe…</div></div>
   <div class="modules-subhead">Agenda (čakalna vrsta naročil)</div>
@@ -921,6 +932,43 @@ async function addBusiness(){
   }catch(err){ toast('Napaka: '+String(err.message||err)); }
   finally{ if(btn){btn.disabled=false;btn.innerHTML=prev;} }
 }
+/* "Popravi to" — izberi obstoječi RSI izdelek in pošlji povratno direktivo. */
+async function loadEditable(force){
+  const sel=document.getElementById('editableSel');
+  try{
+    const r=await api('/api/editable');
+    const items=(r?.editable)||[];
+    const cur=sel.value;
+    const opts=items.map(e=>{
+      const label=`${e.name} ${(e.type||'').toUpperCase()}`;
+      return `<option value="${cssEsc(e.name)}">${esc(label)}</option>`;
+    }).join('');
+    sel.innerHTML='<option value="">— izberi izdelek —</option>'+opts;
+    if(cur) sel.value=cur;
+  }catch{ sel.innerHTML='<option value="">napaka nalaganja</option>'; }
+}
+async function runFix(){
+  const sel=document.getElementById('editableSel');
+  const target=(sel.value||'').trim();
+  const inp=document.getElementById('fixInput');
+  const directive=(inp.value||'').trim();
+  if(!target){ toast('Najprej izberi izdelek, ki ga želiš popraviti.'); return; }
+  if(!directive){ toast('Napiši, kaj naj popravim (povratna direktiva).'); return; }
+  inp.value='';
+  toast('🔄 Popravljam izdelek «'+target+'» …');
+  try{
+    const res=await api('/api/build',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,directive})});
+    const ok=res?.ok;
+    const out=(res?.stdout||'')+(res?.stderr?'\n\n[stderr]\n'+res.stderr:'');
+    toast(ok?'✅ Poprava zelena · '+target:'❌ Poprava neuspešna · '+target);
+    // kratek log: odpre viewOverlay z izhodom builda
+    const ov=document.getElementById('viewOverlay');
+    const ifr=document.getElementById('viewIframe');
+    ifr.srcdoc='<html style="background:#0a1628;color:#eef6ff;font:13px monospace"><body style="padding:22px;white-space:pre-wrap"><div style="color:'+(ok?'#35e07b':'#ff5c7a')+';font-weight:700">'+((ok?'✅ Poprava zelena':'❌ Poprava neuspešna')+' · '+target)+'</div><div style="color:#a7c6e6">'+esc(out||'brez izhoda')+'</div></body></html>';
+    ov.style.display='flex';
+    loadEditable(true);
+  }catch(err){ toast('Napaka: '+String(err.message||err)); }
+}
 function renderModules(){
   document.getElementById('modsCount').textContent=moduleCache.length;
   const list=document.getElementById('modsList');
@@ -985,7 +1033,7 @@ function downloadModule(path,format){
 }
 
 /* ---------- init ---------- */
-buildAgents();buildTools();tickClock();greet();initVoice();loadNews();loadModules();
+buildAgents();buildTools();tickClock();greet();initVoice();loadNews();loadModules();loadEditable();
 setInterval(tickClock,1000);
 const runBtn=document.getElementById('runBtn');
 const taskInput=document.getElementById('taskInput');

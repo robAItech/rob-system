@@ -283,6 +283,31 @@ async function listModules(): Promise<Record<string, unknown>[]> {
   return out.sort((a, b) => String(b.name).localeCompare(String(a.name)));
 }
 
+/** "Popravi to" — seznam RSI modulov (actions/<name>/), ki jih uporabnik lahko uredi. */
+async function listEditable(): Promise<Record<string, unknown>[]> {
+  const base = `${OUT_ROOT}/actions`;
+  const out: Record<string, unknown>[] = [];
+  try {
+    const glob = new Bun.Glob('*/');
+    for await (const dir of glob.scan({ cwd: base, onlyFiles: false })) {
+      const name = dir.replace(/\/$/, '');
+      if (!name || name.startsWith('.')) continue;
+      // Glavni artefakt: .py/.html/.md/.pyc iz actions/<name>/ (preskoči test_).
+      let type = 'python';
+      let artefact = '';
+      const fglob = new Bun.Glob('*.{py,html,htm,md}');
+      for await (const f of fglob.scan({ cwd: `${base}/${name}`, onlyFiles: true })) {
+        if (f.startsWith('test_')) continue;
+        if (artefact === '' && f !== '__init__.py') artefact = f;
+        if (f.endsWith('.html') || f.endsWith('.htm')) type = 'html';
+        else if (type === 'python' && (f.endsWith('.md'))) type = 'markdown';
+      }
+      out.push({ name, type, artefact: artefact || type });
+    }
+  } catch { /* actions/ morda ne obstaja */ }
+  return out.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
 /** Skromen razčlenjevalnik Markdown → odstavki Worda (naslovi, kulice, navaden tekst). */
 async function toDocxBuffer(md: string): Promise<Uint8Array> {
   const lines = md.replace(/\r/g, '').split('\n');
@@ -671,6 +696,10 @@ const server = Bun.serve({
     // API: seznam produciranih modulov (iz out/)
     if (req.method === 'GET' && url.pathname === '/api/modules') {
       return json({ modules: await listModules() });
+    }
+    // "Popravi to" — RSI module (actions/<name>/), ki jih uporabnik lahko uredi.
+    if (req.method === 'GET' && url.pathname === '/api/editable') {
+      return json({ editable: await listEditable() });
     }
 
     // API: ogled vsebine modula (Markdown → HTML ali surov HTML)
