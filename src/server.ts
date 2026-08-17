@@ -621,8 +621,24 @@ function gmailMeta(d: unknown): { from: string; subject: string } {
   return { from, subject };
 }
 
-/** Doda mail kot naloga v agendo (source=gmail), ostane pending (čaka potrditev). */
-async function agendaAddGmail(goal: string, kind: string): Promise<void> {
+/** Doda mail kot naloga v agendo (source=gmail), ostane pending (čaka potrditev).
+    DEDUP: če agenda že vsebuje nalogo z istim goal (iz istega maila), ne doda.
+    Vrne true, če je bila dodana; false, če je že obstajala (podvojeno). */
+async function agendaAddGmail(goal: string, kind: string): Promise<boolean> {
+  // Preveri, ali že obstaja (ne glede na status) — robustno pred cursorjevo krha.
+  const chk = Bun.spawn({
+    cmd: ['python', '-c',
+      `from core.agenda import all_; import json; print(json.dumps([ (i.get('goal') or '')[:120] for i in all_() ]))`],
+    cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+  });
+  const chkOut = await new Response(chk.stdout).text();
+  await chk.exited;
+  let existGoals: string[] = [];
+  try { const p = JSON.parse(chkOut.trim() || '[]'); existGoals = Array.isArray(p) ? p : []; } catch { existGoals = []; }
+  const g = (goal || '').slice(0, 120);
+  if (existGoals.includes(g)) return false;   // že v agendi → ne podvajaj
+
   const proc = Bun.spawn({
     cmd: ['python', '-c',
       `from core.agenda import add; import json; print(json.dumps(add(${JSON.stringify(goal)}, kind=${JSON.stringify(kind)}, source='gmail')))`],
@@ -630,6 +646,7 @@ async function agendaAddGmail(goal: string, kind: string): Promise<void> {
     env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
   });
   await proc.exited;
+  return true;
 }
 
 /** Preskoči očitna sistemska sporočila/obvestila (ne prava povpraševanja). */
@@ -665,9 +682,9 @@ async function gmailToAgenda(): Promise<{ added: number }> {
       continue;
     }
     const kind = detectGmailKind(goal + ' ' + snippet);
-    await agendaAddGmail(`${goal} (od: ${from})`, kind);
+    const didAdd = await agendaAddGmail(`${goal} (od: ${from})`, kind);
     cursor.add(id);     // oznaci obdeleno → ne ponovi
-    added++;
+    if (didAdd) added++;   // štej samo res dodane (dedup že obstajajoče skippa)
   }
   await writeGmailCursor(cursor);
   return { added };
