@@ -129,27 +129,26 @@ ENVIRONMENT=production
 
 `Claude Code` privzeto kliče Anthropic API. Da ne kurimo dragih Anthropic
 tokenov, se projekt nasloni na enotno **Python orkestracijo** (`core/dev_cli.py`,
-launcher `dev.bat` / `rob dev`), ki dvigne [LiteLLM](https://www.litellm.ai/)
-proxy in preslika zahtevke na **cenejši DeepSeek API** z vašim
-`DEEPSEEK_API_KEY`. Poleg proxyja dvigne še **Command-Center dashboard**:
+ukaz `rob dev`), ki dvigne [LiteLLM](https://www.litellm.ai/) proxy in preslika
+zahtevke na **cenejši DeepSeek API** z vašim `DEEPSEEK_API_KEY`. Poleg proxyja
+dvigne še **Command-Center dashboard**:
 
 - **Proxy LiteLLM na :4010** (lasten, izoliran)
 - **Command-Center dashboard** na **:8787** via `bun run src/server.ts`
   (`/api/health` · `/api/ledger` · `/api/runs` · `POST /api/run`)
 
-Vse v enem ukazu (Windows `dev.bat`, Linux/WSL `./rob dev`):
+Vse v enem ukazu — `rob dev` (dela na Windows, Linux in WSL):
 
 ```bash
-dev.bat                     # proxy :4010 + dashboard :8787 v ozadju, poveže claude;
+./rob dev                   # proxy :4010 + dashboard :8787 v ozadju, poveže claude;
                             # po izhodu sam ugasne samo kar je zagnal. Port 4000 se ne dotakne.
-dev.bat --init              # dry-run: preveri config, ključ, porta 4010/8787 in PATH.
-dev.bat --proxy-only        # samo LiteLLM na 4010 v ospredju.
-dev.bat --dashboard-only    # samo Command-Center (bun run src/server.ts) na 8787.
-dev.bat --claude-only       # samo claude ob že obstoječem proxyju na 4010.
+./rob dev --init            # dry-run: preveri config, ključ, porta 4010/8787 in PATH.
+./rob dev --proxy-only      # samo LiteLLM na 4010 v ospredju.
+./rob dev --dashboard-only  # samo Command-Center (bun run src/server.ts) na 8787.
+./rob dev --claude-only     # samo claude ob že obstoječem proxyju na 4010.
 ```
 
-Na Linux/WSL uporabi `./rob dev [--init|--proxy-only|--dashboard-only|--claude-only]`,
-ki delegira na isti Python modul.
+Vsi načini delegirajo na isti Python modul `core/dev_cli.py`.
 
 Konfiguracija proxyja živi v `bridges/litellm_config.yaml` — modeli so
 preslikani na Anthropic-kompatibilen DeepSeek endpoint (`api.deepseek.com/anthropic`),
