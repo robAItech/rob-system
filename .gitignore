@@ -56,6 +56,9 @@ __pycache__/
 actions/fizzbuzz/
 actions/divide_safe/
 actions/count_words/
+# Runtime test build-i iz klikov (trajna agenda / testne naloge) — izven gita
+actions/test/
+actions/testna/
 
 # Odvečne lokalne mape (niso v gitu)
 app/
