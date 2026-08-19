@@ -270,6 +270,24 @@ Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
 `RSISelfHealingEngine` živi kot samostojen modul v
 `actions/enterprise_rsi_engine/`, ne kot jedro.
 
+## 🔄 Tri samorazvojne zanke (Zanke 1–3)
+
+Poleg RSI samozdravljenja (ki popravlja MODULE `actions/*`) ima sistem tri
+samorazvojne zanke, ki izboljšujejo NJEGA SAMEGA — spomin, presojo in orkestracijo:
+
+| Zanka | Modul | Kaj dela |
+|---|---|---|
+| **1 · spomin** | `core/memory_consolidation.py` | Konsolidacija: surove epizode (`task_history`) → semantične lekcije (`semantic_memories`). Lekcije se vbrizgajo v heal prompt (kumulativno učenje). |
+| **2 · presoja** | `core/run_review.py` | Post-run samoevalvacija: klasificira VZROK izida na nivoju odločitve (`spec_mismatch`/`llm_error`/…), ne le testa. |
+| **3 · orkestracija** | `core/self_improve.py` + `core/prompt_registry.py` | RSI nase: predlaga izboljšan RSI prompt, ga preveri z guardom (varnostne invariante) + regresijskimi testi, in promovira/zavrne (z rollbackom). |
+
+```bash
+./rob consolidate      # Zanka 1: strdi epizode → semantične lekcije
+./rob improve          # Zanka 3: samorazvojni cikel (predlog → guard → test → promocija)
+```
+
+Skupaj te tri zanke zaprejo "sistem izboljšuje lastno hitrost izboljševanja".
+
 ## 🧪 Testni standardi
 
 V projektu velja pravilo **Zero Flaky Tests**. Koda ne velja za
