@@ -135,6 +135,77 @@ class SelfImprover:
         return {"proposed": True, "version_id": version_id, "promoted": False, "tests_passed": False}
 
     # ------------------------------------------------------------------ #
+    #  Samorazvoj parametrov (Zanka 3, globlje)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _parse_json_object(text: str) -> Dict[str, Any]:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return {}
+        try:
+            val = json.loads(text[start:end + 1])
+            return val if isinstance(val, dict) else {}
+        except Exception:
+            return {}
+
+    def propose_tuning(self, current: Dict[str, float], context: str) -> Optional[Dict[str, float]]:
+        """LLM predlaga nove vrednosti parametrov orkestracije (ali None)."""
+        if not self._llm_available():
+            return None
+        from core.tuning import BOUNDS
+        system_prompt = (
+            "Si samorazvojni inženir sistema. Na podlagi nedavnih recenzij/neuspehov "
+            "predlagaj IZBOLJŠANE vrednosti parametrov orkestracije. Vrni SAMO JSON objekt "
+            'oblike {"max_attempts": N, "repeat_abort_after": N} ali prazno, če ni izboljšave.'
+        )
+        prompt = (
+            f"TRENUTNI PARAMETRI: {json.dumps(current)}\n"
+            f"MEJE: {json.dumps(BOUNDS)}\n"
+            f"NEDAVNI KONTEKST: {context}\n\n"
+            "Nove vrednosti (v mejah):"
+        )
+        from core.llm_client import DeepSeekLLMClient
+        llm = DeepSeekLLMClient()
+        raw = asyncio.run(llm.generate_completion(prompt=prompt, system_prompt=system_prompt, use_coder_model=False))
+        obj = self._parse_json_object(raw)
+        if not obj:
+            return None
+        out: Dict[str, float] = {}
+        for name in current:
+            if name in obj:
+                try:
+                    out[name] = float(obj[name])
+                except (TypeError, ValueError):
+                    pass
+        return out if out else None
+
+    def tune_cycle(self, context: str = "", test_targets: Optional[List[str]] = None,
+                   dry_run: bool = False) -> Dict[str, Any]:
+        """En cikel samorazvojnega uglaševanja: predlog → meje → vrata → promocija/zavrnitev."""
+        from core.tuning import Tuning
+        tuning = Tuning(self.registry.db_path)
+        proposal = self.propose_tuning(tuning.all(), context)
+        if proposal is None:
+            return {"proposed": False, "reason": "LLM ni predlagal spremembe (ali ni ključa)"}
+
+        try:
+            version_ids = {}
+            for name, value in proposal.items():
+                version_ids[name] = tuning.set(name, value, note="auto-tune (Zanka 3)")
+        except ValueError as e:
+            return {"proposed": True, "promoted": False, "reason": f"guard: {e}"}
+
+        if dry_run:
+            return {"proposed": True, "dry_run": True, "params": proposal}
+
+        if self.evaluate(test_targets):
+            for name, vid in version_ids.items():
+                tuning.promote(name, vid)
+            return {"proposed": True, "promoted": True, "params": proposal, "tests_passed": True}
+        return {"proposed": True, "promoted": False, "params": proposal, "tests_passed": False}
+
+    # ------------------------------------------------------------------ #
     #  Kontekst iz spomina (za predlog)
     # ------------------------------------------------------------------ #
     def gather_context(self, limit: int = 8) -> str:
@@ -171,6 +242,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--dry-run", action="store_true", help="predlog + guard brez promocije")
     p.add_argument("--rollback", action="store_true", help="vrni RSI prompt na prejšnjo verzijo")
     p.add_argument("--stats", action="store_true", help="statistika prompt-registra")
+    p.add_argument("--tune", action="store_true", help="samorazvojno uglaševanje parametrov (Zanka 3, globlje)")
     args = p.parse_args(argv)
 
     imp = SelfImprover()
@@ -186,6 +258,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         current = imp.registry.get_active(PROMPT_NAME, RSI_PROMPT_SYSTEM)
         context = imp.gather_context()
         res = imp.run_cycle(current, context, dry_run=args.dry_run)
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+        return 0
+    if args.tune:
+        context = imp.gather_context()
+        res = imp.tune_cycle(context, dry_run=args.dry_run)
         print(json.dumps(res, ensure_ascii=False, indent=2))
         return 0
     p.print_help()

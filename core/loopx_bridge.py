@@ -60,6 +60,7 @@ class LoopXEngineBridge:
         self.graphify = GraphifyBridge()
         self.llm = DeepSeekLLMClient()
         self.max_attempts = 5
+        self.repeat_abort_after = self.REPEAT_ABORT_AFTER  # Zanka 3: samorazvojni prag
         self.llm_calls = 0   # F5: števec LLM klicev za revizijo in cost-zavarovanje
         self._heal_fail_count: Dict[str, int] = {}   # error_type → štev ponovitev v teku
         self._prompt_registry = None  # Zanka 3: lazy prompt-register (verzioniran prompt)
@@ -74,6 +75,16 @@ class LoopXEngineBridge:
             return active or RSI_PROMPT_SYSTEM
         except Exception:
             return RSI_PROMPT_SYSTEM
+
+    def _load_tuning(self) -> None:
+        """Zanka 3 — preberi samorazvojne parametre iz registra (padec na privzeto)."""
+        try:
+            from core.tuning import Tuning
+            t = Tuning(self.gbrain.db_path)
+            self.max_attempts = int(t.get("max_attempts", self.max_attempts))
+            self.repeat_abort_after = int(t.get("repeat_abort_after", self.repeat_abort_after))
+        except Exception:
+            pass  # ob napaki ostanemo pri privzetih vrednostih
 
     # ------------------------------------------------------------------ #
     #  Stanje zanke
@@ -482,6 +493,7 @@ class LoopXEngineBridge:
         print(f"[LOOPX] vrsta izdelka: {kind}", flush=True)
         self._heal_fail_count = {}  # reset števca ponavljajočih napak za ta tek
         self.last_reason = ""       # Zanka 2: zadnji razlog (za post-run review)
+        self._load_tuning()         # Zanka 3: samorazvojni parametri (max_attempts, prag)
         for attempt in range(1, self.max_attempts + 1):
             self.update_loopx_state("RUNNING", attempt)
 
@@ -506,7 +518,7 @@ class LoopXEngineBridge:
             # ponovi ≥ REPEAT_ABORT_AFTER-krat, zgodaj prekini (ne kuri LLM naprej).
             error_type = self._classify_error(reason[:2000])
             self._heal_fail_count[error_type] = self._heal_fail_count.get(error_type, 0) + 1
-            if self._heal_fail_count[error_type] >= self.REPEAT_ABORT_AFTER:
+            if self._heal_fail_count[error_type] >= self.repeat_abort_after:
                 print(f"[LOOPX] ista napaka {error_type} po "
                       f"{self._heal_fail_count[error_type]} poskusih — zgodnje prekinjeno.",
                       flush=True)
