@@ -13,11 +13,9 @@ napake resnično nauči.
 def divide(a: float, b: float) -> float:
     """Deli ``a`` z ``b``.
 
-    NAMERNA NAPAKA: manjka zaščita pred deljenjem z nič.
-    Pravilno bi moralo biti::
-
-        if b == 0:
-            raise ValueError("deljenje z nič ni dovoljeno")
-        return a / b
+    Ob deljenju z nič (``b == 0``) vrne ``ValueError`` s sporočilom
+    'deljenje z nič ni dovoljeno', ne ``ZeroDivisionError``.
     """
+    if b == 0:
+        raise ValueError("deljenje z nič ni dovoljeno")
     return a / b

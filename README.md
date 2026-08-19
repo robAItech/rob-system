@@ -279,11 +279,12 @@ samorazvojne zanke, ki izboljšujejo NJEGA SAMEGA — spomin, presojo in orkestr
 |---|---|---|
 | **1 · spomin** | `core/memory_consolidation.py` | Konsolidacija: surove epizode (`task_history`) → semantične lekcije (`semantic_memories`). Lekcije se vbrizgajo v heal prompt (kumulativno učenje). |
 | **2 · presoja** | `core/run_review.py` | Post-run samoevalvacija: klasificira VZROK izida na nivoju odločitve (`spec_mismatch`/`llm_error`/…), ne le testa. |
-| **3 · orkestracija** | `core/self_improve.py` + `core/prompt_registry.py` | RSI nase: predlaga izboljšan RSI prompt, ga preveri z guardom (varnostne invariante) + regresijskimi testi, in promovira/zavrne (z rollbackom). |
+| **3 · orkestracija** | `core/self_improve.py` + `core/prompt_registry.py` + `core/tuning.py` | RSI nase: samorazvoj **promptov** (guard + regresijski testi + rollback) in **parametrov** (`max_attempts`, `repeat_abort_after` — z mejami + rollback). |
 
 ```bash
 ./rob consolidate      # Zanka 1: strdi epizode → semantične lekcije
-./rob improve          # Zanka 3: samorazvojni cikel (predlog → guard → test → promocija)
+./rob improve          # Zanka 3: samorazvoj promptov (predlog → guard → test → promocija)
+./rob tune             # Zanka 3: samorazvoj parametrov (max_attempts, repeat_abort_after)
 ```
 
 Skupaj te tri zanke zaprejo "sistem izboljšuje lastno hitrost izboljševanja".

@@ -1,0 +1,1 @@
+"""demo_bug paket — demonstracija konsolidacije napak."""
