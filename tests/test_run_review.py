@@ -1,0 +1,69 @@
+"""tests/test_run_review.py — Zanka 2: post-run samoevalvacija odločitev.
+
+Preveri: recenzent klasificira vzrok izida na nivoju odločitve, zapiše recenzijo
+in (za konkretne neuspehe) vpiše lekcijo v semantični spomin (Zanka 1).
+Testi prisilijo hevristično recenzijo (brez LLM/omrežja).
+"""
+
+import pytest
+
+from core.run_review import RunReviewer
+
+
+@pytest.fixture(autouse=True)
+def _force_heuristic(monkeypatch):
+    """Izklopi LLM recenzijo — testi tečejo lokalno, brez omrežja."""
+    monkeypatch.setattr(RunReviewer, "_llm_available", staticmethod(lambda: False))
+
+
+def test_review_failed_run_creates_review_and_lesson(tmp_path):
+    r = RunReviewer(tmp_path / "memory.db")
+    res = r.review({
+        "project": "billing", "directive": "zgradi obračun DDV",
+        "outcome": "failed", "traceback": "ista napaka ValueError po 3 poskusih",
+        "llm_calls": 3, "attempts": 5, "spec_hint": "",
+    })
+    assert res["outcome"] == "failed"
+    assert res["root_cause"] == "recurring_error"
+    assert res["lesson"]  # konkretna lekcija
+
+    stats = r.stats()
+    assert stats["reviews"] == 1
+    assert stats["by_cause"]["recurring_error"] == 1
+
+
+def test_review_green_run_has_no_lesson(tmp_path):
+    r = RunReviewer(tmp_path / "memory.db")
+    res = r.review({"project": "demo", "directive": "x", "outcome": "green", "traceback": ""})
+    assert res["root_cause"] == "correct"
+    assert res["lesson"] == ""  # uspeh nima konkretne lekcije
+
+
+def test_recent_returns_reviews_newest_first(tmp_path):
+    r = RunReviewer(tmp_path / "memory.db")
+    r.review({"project": "a", "directive": "x", "outcome": "failed",
+              "traceback": "ista napaka ValueError po 3 poskusih"})
+    r.review({"project": "b", "directive": "y", "outcome": "green"})
+
+    recent = r.recent()
+    assert len(recent) == 2
+    assert recent[0]["project"] == "b"  # najnovejši prvi
+
+
+def test_review_writes_lesson_into_semantic_memory(tmp_path):
+    """Konkretna lekcija gre takoj v semantic_memories (Zanka 1 → takoj priklicljiva)."""
+    from core.memory_consolidation import MemoryConsolidator
+
+    r = RunReviewer(tmp_path / "memory.db")
+    r.review({"project": "billing", "directive": "x", "outcome": "failed",
+              "traceback": "ista napaka ValueError po 3 poskusih"})
+
+    cons = MemoryConsolidator(tmp_path / "memory.db")
+    assert cons.stats()["semantic_memories"] == 1
+
+
+def test_unknown_root_cause_fallback(tmp_path):
+    """Brez prepoznavnega vzorca → root_cause = unknown."""
+    r = RunReviewer(tmp_path / "memory.db")
+    res = r.review({"project": "x", "directive": "y", "outcome": "failed", "traceback": "nekaj splošnega"})
+    assert res["root_cause"] == "unknown"

@@ -32,6 +32,20 @@ class RobAIOrchestrator:
         # 5. LOOPX: verifikacijska + samoozdravitvena zanka
         loopx = LoopXEngineBridge(project)
         ok = loopx.execute_and_heal(directive, spec_hint=spec_hint)
+        # Zanka 2 — post-run samoevalvacija odločitev (produkcijska pot; ne blokira).
+        try:
+            from core.run_review import RunReviewer
+            RunReviewer(loopx.gbrain.db_path).review({
+                "project": project,
+                "directive": directive,
+                "outcome": "green" if ok else "failed",
+                "traceback": getattr(loopx, "last_reason", "") or "",
+                "llm_calls": loopx.llm_calls,
+                "attempts": loopx.max_attempts,
+                "spec_hint": spec_hint,
+            })
+        except Exception as e:
+            print(f"[ORCH] post-run review preskočen: {e}", flush=True)
         print(f"  ── Faza '{label}': {'ZELEN' if ok else 'FAIL'} ──")
         return ok
 

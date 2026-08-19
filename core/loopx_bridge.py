@@ -469,6 +469,7 @@ class LoopXEngineBridge:
         kind = self._detect_kind(directive)
         print(f"[LOOPX] vrsta izdelka: {kind}", flush=True)
         self._heal_fail_count = {}  # reset števca ponavljajočih napak za ta tek
+        self.last_reason = ""       # Zanka 2: zadnji razlog (za post-run review)
         for attempt in range(1, self.max_attempts + 1):
             self.update_loopx_state("RUNNING", attempt)
 
@@ -502,6 +503,7 @@ class LoopXEngineBridge:
                     self.project, directive, "FAILED",
                     traceback=f"ista napaka {error_type} po {self._heal_fail_count[error_type]} poskusih",
                 )
+                self.last_reason = f"ista napaka {error_type} po {self._heal_fail_count[error_type]} poskusih"
                 self._audit("failed")
                 return False
 
@@ -523,9 +525,11 @@ class LoopXEngineBridge:
             if attempt == self.max_attempts:
                 self.update_loopx_state("FAILED", attempt)
                 self.gbrain.record_task(self.project, directive, "FAILED", traceback=reason)
+                self.last_reason = reason
                 self._audit("failed")
                 return False
 
+        self.last_reason = reason
         self._audit("failed")
         return False
 

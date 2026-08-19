@@ -375,6 +375,17 @@ class MemoryConsolidator:
             conn.commit()
             return before is None
 
+    def store(self, theme: str, content: str, project: str = "", kind: str = "principle",
+              confidence: float = 0.5) -> bool:
+        """Javni vmesnik za vpis ene lekcije (npr. iz Zanke 2 post-run review).
+
+        Vrne True, če je bila lekcija NOVA (insert); False, če je posodobila obstoječo.
+        """
+        return self._upsert({
+            "theme": theme, "content": content, "project": project,
+            "kind": kind, "confidence": confidence,
+        })
+
     # ------------------------------------------------------------------ #
     #  Priklic (recall)
     # ------------------------------------------------------------------ #
@@ -453,7 +464,10 @@ class MemoryConsolidator:
                 "SELECT kind, COUNT(*) AS n FROM semantic_memories GROUP BY kind"
             ).fetchall()}
             cursor = conn.execute("SELECT last_task_id, last_run_at FROM consolidation_state WHERE id = 1").fetchone()
-            episodes = conn.execute("SELECT COUNT(*) AS n FROM task_history").fetchone()["n"]
+            try:
+                episodes = conn.execute("SELECT COUNT(*) AS n FROM task_history").fetchone()["n"]
+            except sqlite3.OperationalError:
+                episodes = 0  # task_history še ne obstaja (GBrainBridge ni bil inicializiran)
         return {
             "semantic_memories": total,
             "by_kind": by_kind,
