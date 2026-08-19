@@ -212,7 +212,16 @@ async function health(): Promise<Record<string, unknown>> {
   try {
     const p = resolveProvider(process.env);
     provider = p.name;
-    const r = await fetch(`${p.baseUrl}/models`, { signal: AbortSignal.timeout(2500) });
+    // Health preverba mora iti do /models z identiteto, ki jo uporabljamo za
+    // prave klike. Ponudniki na ključ (deepseek, openai) vmejo 401 brez
+    // `Authorization`, pa čeprav je ključ veljaven — zato ga dodamo kadar je
+    // zahtevan. Ollama ključa ne potrebuje, header pa ji ne škodi.
+    const headers: Record<string, string> = {};
+    if (p.apiKey) headers.Authorization = `Bearer ${p.apiKey}`;
+    const r = await fetch(`${p.baseUrl}/models`, {
+      headers,
+      signal: AbortSignal.timeout(2500),
+    });
     llmOnline = r.ok;
   } catch { /* offline */ }
   return {

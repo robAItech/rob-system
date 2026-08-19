@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -e
+
+# dev — kratka pot za zagon clauda: proxy :4010 + dashboard :8787 + claude.
+#
+# Enakovredno `./rob dev` in `dev.bat` — vse troje delegira na
+# `python core/dev_cli.py` (P4 orkestracija). Brez argumentov požene
+# `cmd_all` (proxy + dashboard v ozadju, potem claude v ospredju);
+# s `--serve` avtonomen zagon (Task Scheduler), z `--init` dry-run.
+#
+# Primeri:
+#   ./dev                       # proxy + dashboard + claude
+#   ./dev --init                # dry-run preverba (config, ključ, porta, PATH)
+#   ./dev --proxy-only          # samo LiteLLM na 4010
+#   ./dev --dashboard-only      # samo Command-Center na 8787
+#   ./dev --serve               # avtonomen zagon (ozadje, brez terminala)
+
+# Repo koren = direktorij te skripte (ne trdo-kodirana pot).
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+cd "$PROJECT_DIR" && python core/dev_cli.py "$@"

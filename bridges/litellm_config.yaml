@@ -1,21 +1,75 @@
 # ====================================================================
 # MODUL: bridges/litellm_config.yaml
 # FUNKCIJA: Končni neprebojni Hermes Anthropic -> DeepSeek Router
+#
+# Vrstični red je POMEMBEN: LiteLLM ujame PRVI model_name, ki se ujema.
+# Zato gredo ozki vzorci (pred časom) pred širšimi; "*" (catch-all) je zadnji.
+#
+# Modela:  deepseek-v4-pro   (zmogljiv, "težki" modeli: Opus, Fable, Max, reasoner)
+#           deepseek-v4-flash (hiter, "lahki" modeli: Sonnet, Haiku, privzeto)
+# =
 # ====================================================================
 
 model_list:
+  # ── VODILNI / NAJZMOGLJIVEJŠI (pro) ───────────────────────────────
+  # Fable 5 je najmočnejši v Claude 5 liniji → pro.
+  - model_name: "*fable*"
+    litellm_params:
+      model: anthropic/deepseek-v4-pro
+      api_base: "https://api.deepseek.com/anthropic"
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # Opus / claude-4-opus / claude-5-opus / claude-opus / "O" kod
   - model_name: "*opus*"
     litellm_params:
       model: anthropic/deepseek-v4-pro
       api_base: "https://api.deepseek.com/anthropic"
       api_key: os.environ/DEEPSEEK_API_KEY
 
+  # Razmišljujoči modeli → pro (zmogljiv za reasoning)
+  - model_name: "*reasoner*"
+    litellm_params:
+      model: anthropic/deepseek-v4-pro
+      api_base: "https://api.deepseek.com/anthropic"
+      api_key: os.environ/DEEPSEEK_API_KEY
+  - model_name: "*thinking*"
+    litellm_params:
+      model: anthropic/deepseek-v4-pro
+      api_base: "https://api.deepseek.com/anthropic"
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # Max / "max" (Claude "max" tier) → pro
+  - model_name: "*max*"
+    litellm_params:
+      model: anthropic/deepseek-v4-pro
+      api_base: "https://api.deepseek.com/anthropic"
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # ── SREDNJI / HITRI (flash) ────────────────────────────────────────
+  # Sonnet (Claude 3/3.5/4/5 Sonnet) → flash
   - model_name: "*sonnet*"
     litellm_params:
       model: anthropic/deepseek-v4-flash
       api_base: "https://api.deepseek.com/anthropic"
       api_key: os.environ/DEEPSEEK_API_KEY
 
+  # Haiku (Claude 3/3.5/4/4.5/5 Haiku) → flash (hiter, lahek)
+  - model_name: "*haiku*"
+    litellm_params:
+      model: anthropic/deepseek-v4-flash
+      api_base: "https://api.deepseek.com/anthropic"
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # ── GENERIČNI CLAUDE (še neznana generacija) ───────────────────────
+  # claude-3-*, claude-4-*, claude-5-*, claude-3-5-*, "claude-..." → pro
+  - model_name: "claude*"
+    litellm_params:
+      model: anthropic/deepseek-v4-pro
+      api_base: "https://api.deepseek.com/anthropic"
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # ── CATCH-ALL VAROVALKA ────────────────────────────────────────────
+  # Neznan model nikoli ne pade → privzeti lahek model.
   - model_name: "*"
     litellm_params:
       model: anthropic/deepseek-v4-flash

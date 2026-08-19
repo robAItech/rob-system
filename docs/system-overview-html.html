@@ -1,0 +1,267 @@
+<title>Sistemska karta Rob AI Studio</title>
+
+<header class="statusbar">
+  <div class="brand">
+    <span class="dot"></span>
+    <span class="bname">Rob AI Studio</span>
+    <span class="bsub">avtonomni inženirski stroj · sistemska karta</span>
+  </div>
+  <div class="stats">
+    <span class="stat ok"><b>6</b> agentov</span>
+    <span class="stat"><b>5</b> bridge-ov</span>
+    <span class="stat"><b>28</b> modulov</span>
+    <span class="stat ok"><i class="pulse"></i> DeepSeek</span>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <div class="kicker">pregled delovanja · 19. 8. 2026</div>
+    <h1>Dva izvedbena plasta,<br>eno izvedbeno jedro.</h1>
+    <p class="lede">Rob AI Studio je dogodkovno-zanjen (ledger-first) avtonomni stroj z dvema plastema: TS&nbsp;Hermes generira <em>produkte</em> iz navadne naloge, Python&nbsp;RSI/GStack avtonomno <em>gradi in samozdravljenje</em> module. Pod njima leži 28 podjetniških mikrostoritev.</p>
+  </section>
+
+  <section class="panel">
+    <div class="sidehead"><span class="n">01</span><h2>Agenti in role<br><small>src/agents · čisti reduktorji</small></h2></div>
+    <div class="content">
+      <p class="note">Agenti so <strong>čisti reduktorji</strong>: vhod <code>RunState</code> + <code>Event</code>, izhod <code>Command[]</code>. Nič I/O, ure ali okolja — vse zmožnosti (omrežje, disk, <code>cmd.exec</code>) so izključno v <code>Runner</code>. <code>tests/agent-purity.test.ts</code> to uveljavlja nad izvorno kodo.</p>
+      <table>
+        <thead><tr><th>Vloga</th><th>Datoteka</th><th>Odgovornost</th><th>V toku</th></tr></thead>
+        <tbody>
+          <tr><td class="role">planner</td><td><code>planner.ts</code></td><td>orkestrator: zapiše odločitev, posreduje workplan (seed korak), naroči LLM naj vrne <code>@file</code> bloke</td><td><span class="tag on">full+dash</span></td></tr>
+          <tr><td class="role">builder</td><td><code>builder.ts</code></td><td>razreže <code>@file</code> na poti → <code>fs.write</code>; brez blokov → <code>out/RESULT.md</code>; sproži <code>qa.decide verify</code></td><td><span class="tag on">full+dash</span></td></tr>
+          <tr><td class="role">qa</td><td><code>qa.ts</code></td><td>poganja <code>cmd.exec</code> (verify); exit&nbsp;0 → complete, sicer retry ≤ <code>maxFixPasses</code> → stuck</td><td><span class="tag on">full+dash</span></td></tr>
+          <tr><td class="role">screenshot</td><td><code>screenshot.ts</code></td><td>ob spletnem artefaktu zabeleži <em>namero</em> posnetka (ne zajema dejansko)</td><td><span class="tag on">full</span></td></tr>
+          <tr class="reg"><td class="role">architect</td><td><code>architect.ts</code></td><td>arhetip mejnika 1: odločitev + en LLM odgovor → <code>out/RESULT.md</code></td><td><span class="tag off">registriran</span></td></tr>
+          <tr class="reg"><td class="role">engineer</td><td><code>engineer.ts</code></td><td>zadnji LLM odgovor zapiše na disk in zaključi tek</td><td><span class="tag off">registriran</span></td></tr>
+        </tbody>
+      </table>
+      <p class="note"><code>agentsFor('dashboard') = [planner, builder, qa]</code> · <code>agentsFor('full') = [planner, builder, qa, screenshot]</code>. <code>architect</code>/<code>engineer</code> sta definirani, a nista vpleteni v aktivni tok.</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="sidehead"><span class="n">02</span><h2>RSI bridge-i<br><small>core/ · avtonomna gradnja modula</small></h2></div>
+    <div class="content">
+      <p class="note">Orkestrira jih <code>core/orchestrator.py</code> (<code>RobAIOrchestrator._phase</code>); poganjata <code>./rob build</code> in <code>POST /api/build</code>. To je <strong>en vodilni agent</strong> (<code>GSTACK-Architect</code>), ne vzporedna jata.</p>
+      <table>
+        <thead><tr><th>Vozlišče</th><th>Datoteka</th><th>Vloga v RSI zanki</th></tr></thead>
+        <tbody>
+          <tr><td class="role">GBRAIN</td><td><code>gbrain_bridge.py</code></td><td>trajni spomin SQLite (<code>.rob_ai/memory.db</code>): <code>task_history</code>, <code>blacklist_patterns</code>, <code>agent_memory_nodes</code>. Uči se iz napak.</td></tr>
+          <tr><td class="role">GRAPHIFY</td><td><code>graphify_bridge.py</code></td><td>AST sken → <code>.rob_ai/graph.json</code> (nodes/edges) + <code>render_context</code> (odvisnostni kontekst).</td></tr>
+          <tr><td class="role">GSTACK</td><td><code>gstack_bridge.py</code></td><td>arhitekturna specifikacija → manifest + <code>spec_hint</code> (blueprint + blacklist → LLM usmeritev).</td></tr>
+          <tr><td class="role">HERMES</td><td><code>hermes_bridge.py</code></td><td>ustvari ogrodje <code>actions/&lt;mod&gt;/</code> (schemas.py, &lt;mod&gt;.py, main.py, test).</td></tr>
+          <tr><td class="role">LOOPX</td><td><code>loopx_bridge.py</code></td><td>verifikacija + samozdravljenje: pytest → DeepSeek popravi → ≤5× → 100% zelen ali FAILED (brez rollback-a). Target-lock za sočasnost.</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Podpora: <code>DeepSeekLLMClient</code> (retry/backoff + model-fallback), <code>agenda.py</code> (čakalna vrsta), <code>audit.py</code> (revizijski dnevnik), <code>business.py</code> (glavna knjiga), <code>visual_qa.py</code> (Gemma 4 UI pregled).</p>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="sidehead"><span class="n">03</span><h2>Podjetniški moduli<br><small>actions/ · 22 prod. + 6 test</small></h2></div>
+    <div class="content">
+      <h3>Produkcijski (22)</h3>
+      <div class="chips">
+        <span>unified_gateway</span><span>nexus_command_deck</span><span>auth_vault</span>
+        <span>audit_trail</span><span>event_bus</span><span>task_queue</span><span>saga_orchestrator</span>
+        <span>deployment_manager</span><span>rsi_engine</span><span>schema_registry</span><span>api_versioning</span>
+        <span>cache_layer</span><span>circuit_breaker</span><span>rate_limiter</span><span>contract_testing</span>
+        <span>core_contracts</span><span>core_utils</span><span>observability_metrics</span><span>webhook_dispatcher</span>
+        <span>feature_flag</span><span>mailer</span><span>warehouse_inventory</span>
+      </div>
+      <h3>Testni / demonstracijski (6)</h3>
+      <div class="chips dim"><span>count_words</span><span>divide_safe</span><span>fizzbuzz</span><span>test</span><span>testna</span><span>master_test</span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="sidehead"><span class="n">04</span><h2>Orkestracija<br><small>kdo kaj poganja</small></h2></div>
+    <div class="content">
+      <div class="grid2">
+        <div class="card">
+          <div class="clabel">TS Hermes · produktni generator</div>
+          <p>Event-sourced zanka (<code>Ledger</code> → SQLite <code>.gstack-run.sqlite</code>). Stanje se <em>izpelje</em> iz dnevnika (<code>foldState</code>), nikoli iz mutirane spremenljivke. <code>provenance()</code> sledi vzročni verigi do artefakta.</p>
+          <ul class="tight">
+            <li>vstop: <code>bun run src/index.ts</code> ali <code>POST /api/run</code></li>
+            <li>ustavitev: run.complete/stuck · stepBudget · noProgressN · maxEventsPerRun</li>
+            <li>idempotenca: <code>UNIQUE (run_id, idem_key)</code> → replay = 0 klicev</li>
+            <li>varnost: <code>cmd.exec</code> allowlist + <code>execCwdRoot</code></li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="clabel">Python RSI/GStack · build modula</div>
+          <p>Zaprta samozdravitvena zanka. Dashboard in CLI delita <strong>isto</strong> jedro (<code>run_swarm.py</code> → <code>orchestrator</code> → gbrain → graphify → gstack → hermes → loopx).</p>
+          <ul class="tight">
+            <li>vstop: <code>./rob build</code> ali <code>POST /api/build</code></li>
+            <li>verifikacija: pytest → 100% zelen ali FAILED (brez rollback-a)</li>
+            <li>trajni spomin: GBRAIN blacklisti + črne liste</li>
+            <li>LLM: DeepSeek (<code>deepseek-chat</code>), retry + fallback</li>
+          </ul>
+        </div>
+      </div>
+      <h3>Vstopne točke</h3>
+      <div class="grid3">
+        <div class="card small"><div class="clabel">./rob</div><p>CLI motor — <code>dev</code>, <code>build</code>, <code>eval</code>, <code>review</code>, <code>dashboard</code>.</p></div>
+        <div class="card small"><div class="clabel">dev_cli.py</div><p>Orkestracija: LiteLLM proxy <code>:4010</code> + dashboard <code>:8787</code> + claude (rescue).</p></div>
+        <div class="card small"><div class="clabel">server.ts</div><p>Command-Center <code>:8787</code> + Gmail polling (vsakih 5 min → agenda).</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="sidehead"><span class="n">05</span><h2>Potek<br><small>flow chart</small></h2></div>
+    <div class="content">
+      <h3>Top-level — dve plasti, eno jedro</h3>
+      <pre class="mermaid">
+flowchart TD
+  A["Naročnik / naloga"] --> B{"kateri vhod?"}
+  B -->|"produkt (dokument, UI, skripta)"| C["TS Hermes · /api/run"]
+  B -->|"modul / koda"| D["Python RSI · /api/build"]
+  C --> E["planner → builder → qa → screenshot"]
+  D --> F["gbrain → graphify → gstack → hermes → loopx"]
+  E --> G["Artefakti out/*"]
+  F --> H["Modul actions/&lt;mod&gt;/ (100% zelen)"]
+  G --> I["28 podjetniških modulov"]
+  H --> I
+</pre>
+
+      <h3>Hermes runner zanka (event-sourced)</h3>
+      <pre class="mermaid">
+flowchart LR
+  A["Naloga (human)"] --> B["task.submitted"]
+  B --> C{"RUNNER zanka"}
+  C --> D["foldState → RunState"]
+  D --> E["reduce(agent, state, event) → Command"]
+  E --> F["execute ukaz"]
+  F --> G["nov dogodek"]
+  G -->|"akcionabilen"| C
+  F --> H["run.completed / stuck"]
+  D -.->|"providence"| H
+</pre>
+
+      <h3>RSI/GStack samozdravitvena zanka</h3>
+      <pre class="mermaid">
+flowchart TD
+  A["./rob build ali POST /api/build"] --> B["GBRAIN spomin + blacklisti"]
+  B --> C["GRAPHIFY AST → graph.json"]
+  C --> D["GSTACK manifest + spec_hint"]
+  D --> E["HERMES ogrodje actions/&lt;mod&gt;/"]
+  E --> F["LOOPX"]
+  F --> G{"pytest"}
+  G -->|"zelen"| H["100% VERIFIED GREEN · SHIPPED"]
+  G -->|"rdeč"| I["DeepSeek popravi (≤5×)"]
+  I --> F
+  I -->|"po 5 poskusih"| J["FAILED + blacklist"]
+</pre>
+    </div>
+  </section>
+
+  <footer>
+    <span>Trenutni LLM: DeepSeek (<code>deepseek-chat</code>) · ledger: <code>.gstack-run.sqlite</code> · spomin: <code>.rob_ai/memory.db</code></span>
+    <span>avtonomna produkcija · "boil the ocean, do it right, with tests"</span>
+  </footer>
+
+</main>
+
+<style>
+  :root{
+    --bg:#0d141d; --surface:#141d29; --surface2:#1a2533;
+    --ink:#e7eef6; --muted:#8fa1b5; --line:#253243;
+    --accent:#2ec2b0; --accent-ink:#06231d; --warn:#e0a73c;
+    --chip:#1a2533; --ok:#2ec2b0;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Sans",ui-sans-serif,system-ui,"Segoe UI",sans-serif;
+    line-height:1.6;font-size:16px;}
+  code{font-family:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+    font-size:.86em;background:var(--surface2);border:1px solid var(--line);
+    border-radius:4px;padding:1px 5px;color:var(--ink);}
+
+  .statusbar{position:sticky;top:0;z-index:10;display:flex;align-items:center;
+    justify-content:space-between;gap:18px;flex-wrap:wrap;padding:12px 26px;
+    background:rgba(13,20,29,.88);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);
+    box-shadow:0 0 0 0 rgba(46,194,176,.6);animation:pulse 2.4s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(46,194,176,.5)}70%{box-shadow:0 0 0 8px rgba(46,194,176,0)}100%{box-shadow:0 0 0 0 rgba(46,194,176,0)}}
+  .bname{font-weight:700;letter-spacing:.01em;}
+  .bsub{color:var(--muted);font-size:13px;}
+  .stats{display:flex;gap:8px;flex-wrap:wrap;}
+  .stat{font-size:13px;color:var(--muted);background:var(--surface);
+    border:1px solid var(--line);border-radius:20px;padding:5px 13px;}
+  .stat b{color:var(--ink);font-variant-numeric:tabular-nums;}
+  .stat.ok{color:var(--accent);border-color:rgba(46,194,176,.4);}
+  .stat.ok b{color:var(--accent);}
+  .pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:4px;}
+
+  .wrap{max-width:1040px;margin:0 auto;padding:0 26px 70px;display:flex;
+    flex-direction:column;gap:22px;}
+  .hero{padding:56px 6px 18px;}
+  .kicker{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);margin-bottom:16px;}
+  h1{margin:0 0 14px;font-size:clamp(30px,5vw,48px);line-height:1.06;
+    font-weight:700;letter-spacing:-.02em;text-wrap:balance;}
+  .lede{max-width:66ch;color:var(--muted);font-size:17px;margin:0;}
+  .lede em{color:var(--ink);font-style:normal;}
+
+  .panel{display:grid;grid-template-columns:210px 1fr;gap:24px;
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:28px 30px;}
+  .sidehead h2{margin:4px 0 0;font-size:20px;line-height:1.25;font-weight:700;
+    letter-spacing:-.01em;text-wrap:balance;}
+  .sidehead h2 small{display:block;font-family:"IBM Plex Mono",monospace;font-size:11.5px;
+    color:var(--muted);letter-spacing:.02em;margin-top:6px;font-weight:400;}
+  .sidehead .n{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent);
+    border:1px solid var(--line);border-radius:6px;padding:2px 8px;background:var(--surface2);}
+  .content{min-width:0;}
+  .content h3{margin:22px 0 10px;font-size:12.5px;text-transform:uppercase;
+    letter-spacing:.08em;color:var(--accent);font-weight:600;}
+  .content h3:first-child{margin-top:0;}
+  .note{font-size:14px;color:var(--muted);margin:10px 0 14px;line-height:1.6;}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin:6px 0 14px;}
+  th{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:11px;
+    text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+    border-bottom:1px solid var(--line);padding:7px 9px;}
+  td{padding:9px;border-bottom:1px solid var(--line);vertical-align:top;color:var(--ink);}
+  tbody tr:last-child td{border-bottom:none;}
+  tr.reg td{color:var(--muted);}
+  .role{font-weight:600;white-space:nowrap;color:var(--accent);}
+  .tag{font-family:"IBM Plex Mono",monospace;font-size:11px;border-radius:5px;padding:2px 7px;white-space:nowrap;}
+  .tag.on{background:rgba(46,194,176,.14);color:var(--accent);border:1px solid rgba(46,194,176,.35);}
+  .tag.off{background:var(--surface2);color:var(--muted);border:1px solid var(--line);}
+
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0 4px;}
+  .chips span{font-family:"IBM Plex Mono",monospace;font-size:12px;background:var(--accent);
+    color:var(--accent-ink);border-radius:6px;padding:4px 11px;font-weight:500;}
+  .chips.dim span{background:var(--surface2);color:var(--muted);border:1px solid var(--line);}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:10px;}
+  .card{background:var(--surface2);border:1px solid var(--line);border-radius:11px;padding:16px 18px;}
+  .card p{font-size:14px;color:var(--muted);margin:8px 0;}
+  .card.small p{font-size:13px;}
+  .clabel{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.03em;
+    color:var(--ink);font-weight:600;border-bottom:1px solid var(--line);padding-bottom:8px;}
+  ul.tight{margin:10px 0 0;padding-left:18px;font-size:13.5px;color:var(--muted);}
+  ul.tight li{margin:5px 0;}
+
+  .mermaid{margin:14px 0 26px;padding:18px;background:var(--surface2);
+    border:1px solid var(--line);border-radius:11px;overflow-x:auto;}
+
+  footer{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    color:var(--muted);font-size:12.5px;padding:6px 6px 0;
+    border-top:1px solid var(--line);padding-top:18px;}
+  footer code{font-size:.9em;}
+
+  @media (max-width:820px){
+    .panel{grid-template-columns:1fr;}
+    .grid2,.grid3{grid-template-columns:1fr;}
+    .statusbar{position:static;}
+    body{font-size:15px;}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>

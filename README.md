@@ -71,9 +71,9 @@ Sistem temelji na treh integriranih stebrih:
 - **5-stopenjsko samozdravljenje (Self-Healing Loop)** — če koda ne
   prestane preizkusa, engine zajame natančen STDOUT/STDERR traceback,
   ga posreduje LLM-u in v do 5 poskusih avtonomno odpravi napako.
-- **Zero-Downtime Rollback** — če koda po vseh poskusih ne doseže 100-%
-  zelene verifikacije, sistem izvede samodejni rollback na izvirno kodo.
-  Produkcijsko okolje nikoli ne ostane v porušenem stanju.
+- **Fail-safe beleženje napak** — če koda po vseh poskusih ne doseže 100-%
+  zelene verifikacije, se tek zaključi kot `FAILED` in napaka se zapiše v
+  GBRAIN blacklist (učenje za prihodnje teke). Avtomatskega rollback-a ni.
 - **Jedrnati CLI ukazi** — brez mikromanagementa. Sistem se krmili s
   kratkimi, direktnimi ukazi.
 
@@ -95,7 +95,7 @@ Rob AI Studio/
 ├── bridges/litellm_config.yaml       # DeepSeek proxy routing
 ├── scripts/                          # autostart.bat + register-autostart.ps1 (HKCU Run)
 ├── evaluate_autonomy.py              # P5 — SWE-bench stila samo-eval (rob eval)
-└── tests/                            # Pytest suite (79 testov)
+└── tests/                            # Pytest suite (364 testov)
 ```
 
 ## 🛠️ Hitra namestitev in zagon
@@ -120,7 +120,7 @@ Ustvarite datoteko `.env` v korenskem imeniku projekta:
 DEEPSEEK_API_KEY=vaš_deepseek_api_ključ
 ```
 
-### 3. Zagon Claude Code prek LiteLLM + DeepSeek (`rob dev`)
+### 3. Zagon Claude Code prek LiteLLM + DeepSeek (`./dev`)
 
 `Claude Code` privzeto kliče Anthropic API. Da ne kurimo dragih Anthropic
 tokenov, se projekt nasloni na enotno **Python orkestracijo** (`core/dev_cli.py`,
@@ -132,15 +132,15 @@ dvigne še **Command-Center dashboard**:
 - **Command-Center dashboard** na **:8787** via `bun run src/server.ts`
   (`/api/health` · `/api/ledger` · `/api/runs` · `POST /api/run`)
 
-Vse v enem ukazu — `rob dev` (dela na Windows, Linux in WSL):
+Vse v enem ukazu — `./dev` (dela na Windows, Linux in WSL):
 
 ```bash
-./rob dev                   # proxy :4010 + dashboard :8787 v ozadju, poveže claude;
+./dev                       # proxy :4010 + dashboard :8787 v ozadju, poveže claude;
                             # po izhodu sam ugasne samo kar je zagnal. Port 4000 se ne dotakne.
-./rob dev --init            # dry-run: preveri config, ključ, porta 4010/8787 in PATH.
-./rob dev --proxy-only      # samo LiteLLM na 4010 v ospredju.
-./rob dev --dashboard-only  # samo Command-Center (bun run src/server.ts) na 8787.
-./rob dev --claude-only     # samo claude ob že obstoječem proxyju na 4010.
+./dev --init                # dry-run: preveri config, ključ, porta 4010/8787 in PATH.
+./dev --proxy-only          # samo LiteLLM na 4010 v ospredju.
+./dev --dashboard-only      # samo Command-Center (bun run src/server.ts) na 8787.
+./dev --claude-only         # samo claude ob že obstoječem proxyju na 4010.
 ```
 
 Vsi načini delegirajo na isti Python modul `core/dev_cli.py`.
@@ -253,20 +253,22 @@ Primer:
 
 ## 🛡️ Kako deluje RSI samozdravstvena zanka
 
-Glavna varnostna komponenta projekta je `RSISelfHealingEngine`, ki izvede
-naslednji algoritem ob vsakem posegu v kodo:
+Jedro avtonomne gradnje je `LoopXEngineBridge` (`core/loopx_bridge.py`).
+RSI zanka (`_heal_loop`) deluje takole:
 
-1. **Baseline Check** — preveri, ali obstoječa koda prestane vse teste.
-   Če je osnova porušena, se postopek ustavi.
-2. **AST Parsing** — zgenerirano kodo preveri z Python `ast.parse()`.
-   Sintaktične napake se zavrnejo pred izvajanjem.
-3. **Izolirano testiranje** — koda se začasno zapiše v ciljni modul, nato
-   pa se v izoliranem procesu požene `pytest`.
-4. **Feedback Loop** — ob padcu kateregakoli testa engine ujame točen
-   traceback, ga posreduje LLM-u kot striktno navodilo za popravek ter
-   ponovi postopek (do 5 iteracij).
-5. **Lock ali Rollback** — ob 100-% zelenih testih se koda zaklene. Ob
-   neuspehu po 5 poskusih se sproži neposredni rollback na izvirnik.
+1. **Verifikacija** — po tipu izdelka (`_verify`): Python → pytest (sandbox)
+   + ruff; Markdown/HTML → strukturna preverba.
+2. **Zelen** — ob uspehu se v GBRAIN zapiše `VERIFIED GREEN` in zanka konča.
+3. **Rdeč → heal** — traceback se posreduje DeepSeek-u (`_heal_once`), ki vrne
+   popravke; ti se zapišejo v `actions/<mod>/` in verifikacija se ponovi.
+4. **Ponavljanje** — do 5 poskusov (`max_attempts`); enaka ponavljajoča se
+   napaka (≥ 3×, `REPEAT_ABORT_AFTER`) zgodaj prekine zanko.
+5. **Neuspeh** — tek se zaključi kot `FAILED`, napaka se zapiše v GBRAIN
+   blacklist (učenje). Avtomatskega rollback-a ni.
+
+Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
+`RSISelfHealingEngine` živi kot samostojen modul v
+`actions/enterprise_rsi_engine/`, ne kot jedro.
 
 ## 🧪 Testni standardi
 
