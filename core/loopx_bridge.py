@@ -304,10 +304,18 @@ class LoopXEngineBridge:
     @staticmethod
     def _detect_kind(directive: str) -> str:
         d = directive.lower()
+
+        # Celobesedno ujemanje (NE podniz): npr. "sporočilom" NE sme sprožiti
+        # "poročilo", "spletna stran" ne "spletni", itd.
+        def has_word(word: str) -> bool:
+            return re.search(rf"\b{re.escape(word)}\b", d) is not None
+
         # HTML najprej — HTML je lahko tudi »dokument«, zato ga prepoznamo prej.
-        if any(w in d for w in ("html", ".html", "spletna stran", "dashboard", "<html", "spletni")):
+        if any(has_word(w) for w in ("html", "dashboard", "spletni", "spletna")) \
+                or ".html" in d or "<html" in d or "spletna stran" in d:
             return "html"
-        if any(w in d for w in ("markdown", ".md", "predlog", "poročilo", "roadmap", "md datoteko", "markdown dokument")):
+        if any(has_word(w) for w in ("markdown", "predlog", "poročilo", "roadmap")) \
+                or ".md" in d or "md datoteko" in d or "markdown dokument" in d:
             return "markdown"
         return "python"  # privzeto: python modul / kaj drugega
 
@@ -348,8 +356,10 @@ class LoopXEngineBridge:
         cwd = Path.cwd()
         actions_abs = (cwd / "actions").resolve()
         target_name = self.target_dir.name  # e.g. 'sbtest' (zadnji segment)
-        vol = f"{actions_abs}:/work"
-        shell_cmd = f"cd /work && python -m pytest -v /work/{target_name}"
+        # Mount actions/ na /work/actions (NE /work), da `from actions.<mod> import X`
+        # — konvencija vseh modulskih testov — deluje tudi znotraj sandboxa.
+        vol = f"{actions_abs}:/work/actions"
+        shell_cmd = f"cd /work && python -m pytest -v /work/actions/{target_name}"
         # --tmpfs /tmp:noexec,nosuid,size=64m → pytest lahko piše temp v RAM,
         # ampak tam ne izvaja kode (noexec) in ni persistent (tmpfs). Koren OS
         # ostane --read-only. (name izpustimo --user, ker na Windows-host volume
