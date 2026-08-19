@@ -62,6 +62,18 @@ class LoopXEngineBridge:
         self.max_attempts = 5
         self.llm_calls = 0   # F5: števec LLM klicev za revizijo in cost-zavarovanje
         self._heal_fail_count: Dict[str, int] = {}   # error_type → štev ponovitev v teku
+        self._prompt_registry = None  # Zanka 3: lazy prompt-register (verzioniran prompt)
+
+    def _rsisystem_prompt(self) -> str:
+        """Zanka 3 — RSI prompt iz registra; ob napaki pade nazaj na konstanto."""
+        try:
+            if self._prompt_registry is None:
+                from core.prompt_registry import PromptRegistry
+                self._prompt_registry = PromptRegistry(self.gbrain.db_path)
+            active = self._prompt_registry.get_active("rsi_heal_system", RSI_PROMPT_SYSTEM)
+            return active or RSI_PROMPT_SYSTEM
+        except Exception:
+            return RSI_PROMPT_SYSTEM
 
     # ------------------------------------------------------------------ #
     #  Stanje zanke
@@ -248,7 +260,7 @@ class LoopXEngineBridge:
             response = asyncio.run(
                 self.llm.generate_completion(
                     prompt=prompt,
-                    system_prompt=RSI_PROMPT_SYSTEM,
+                    system_prompt=self._rsisystem_prompt(),
                     use_coder_model=True,
                 )
             )
