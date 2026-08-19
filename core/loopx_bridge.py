@@ -201,6 +201,22 @@ class LoopXEngineBridge:
                 "Naučeno iz prejšnjih poskusov (izogni se tem napakam):\n"
                 f"{pats}\n\n"
             )
+        # F4b — Zanka 1: konsolidiran spomin (semantične lekcije iz VSEH tekov,
+        # ne le tega projekta). Varno: ob kakršnikoli napaki lekcije preskočimo
+        # (nikoli ne blokiramo healinga zaradi spominskega priklica).
+        try:
+            from core.memory_consolidation import MemoryConsolidator
+            _consolidator = MemoryConsolidator(self.gbrain.db_path)
+            consolidated = _consolidator.recall(directive, project=self.project, limit=5)
+        except Exception:
+            consolidated = []
+        cons_note = ""
+        if consolidated:
+            lessons = "; ".join(f"{m['theme']}: {m['content'][:90]}" for m in consolidated)
+            cons_note = (
+                "Konsolidirane lekcije iz preteklih tekov (upoštevaj):\n"
+                f"{lessons}\n\n"
+            )
         # Graf-kontekst (graphify): LLM vidi dependency pregled za ciljni modul —
         # torej kje se nahaja in kdo ga uporablja. Varno: če render pade,
         # nadaljujemo brez njega (ne blokiramo healinga).
@@ -219,6 +235,7 @@ class LoopXEngineBridge:
             f"{directive[:3000]}\n\n"
             f"{spec_note}"
             f"{learned_note}"
+            f"{cons_note}"
             f"{graph_note}"
             "Razlog verifikacije (doseči je treba zelen):\n"
             f"{traceback[:8000]}\n\n"
