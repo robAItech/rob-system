@@ -8,11 +8,11 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from fastapi.testclient import TestClient
 
-from actions.enterprise_core_utils.enterprise_core_utils import (
+from actions.enterprise_core.utils import (
     TimestampNormalizer,
     HashUtils,
 )
-from actions.enterprise_core_utils.main import app
+from actions.enterprise_core.main import app
 
 
 class TestTimestampNormalizer:
@@ -196,36 +196,3 @@ class TestHashUtils:
     def test_is_valid_hash_empty(self):
         """Test validating an empty string."""
         assert HashUtils.is_valid_hash("") is False
-
-
-class TestAPI:
-    """Test cases for FastAPI endpoints."""
-
-    @pytest.fixture
-    def client(self):
-        """Create a test client for the FastAPI app."""
-        return TestClient(app)
-
-    def test_health_endpoint(self, client):
-        """Test the health check endpoint."""
-        response = client.get("/health")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "healthy"
-        assert data["version"] == "1.0.0"
-        assert "timestamp" in data
-
-    def test_root_endpoint(self, client):
-        """Test the root endpoint."""
-        response = client.get("/")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["service"] == "enterprise_core_utils"
-        assert data["version"] == "1.0.0"
-        assert "message" in data
-
-    def test_health_timestamp_valid(self, client):
-        """Test that health endpoint returns a valid timestamp."""
-        response = client.get("/health")
-        data = response.json()
-        assert TimestampNormalizer.validate(data["timestamp"]) is True

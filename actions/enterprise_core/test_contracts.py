@@ -11,8 +11,8 @@ from typing import Any, Dict, List
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from actions.enterprise_core_contracts.main import app
-from actions.enterprise_core_contracts.schemas import (
+from actions.enterprise_core.main import app
+from actions.enterprise_core.schemas import (
     BaseEntity,
     BaseEvent,
     ErrorResponse,
@@ -24,7 +24,7 @@ from actions.enterprise_core_contracts.schemas import (
     SuccessResponse,
     ValidationErrorResponse,
 )
-from actions.enterprise_core_contracts.enterprise_core_contracts import (
+from actions.enterprise_core.contracts import (
     create_success_response,
     create_error_response,
     create_validation_error_response,
@@ -616,7 +616,7 @@ class TestAPI:
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
-        assert data["service"] == "enterprise_core_contracts"
+        assert data["service"] == "enterprise_core"
         assert data["version"] == "1.0.0"
         assert data["status"] == "running"
 

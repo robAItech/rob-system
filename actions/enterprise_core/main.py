@@ -1,21 +1,21 @@
 """
-Enterprise Core Contracts - FastAPI Application.
+Enterprise Core — unified FastAPI application.
 
-This module provides a minimal FastAPI application with health check endpoint.
+Združuje nekdanja enterprise_core_contracts + enterprise_core_utils v en
+jedrni modul: skupni data contracts (DTO-ji) in utility funkcije.
 """
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from actions.enterprise_core_contracts.schemas import HealthResponse
+from actions.enterprise_core.schemas import HealthResponse
 
 app = FastAPI(
-    title="Enterprise Core Contracts",
-    description="Core data contracts and DTOs for the enterprise system",
+    title="Enterprise Core",
+    description="Core data contracts, DTOs and utility functions for the enterprise system",
     version="1.0.0",
 )
 
-# CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,7 +29,7 @@ app.add_middleware(
 async def health_check() -> HealthResponse:
     """
     Health check endpoint.
-    
+
     Returns:
         HealthResponse: Health check response
     """
@@ -43,12 +43,12 @@ async def health_check() -> HealthResponse:
 async def root() -> dict:
     """
     Root endpoint.
-    
+
     Returns:
         dict: Service information
     """
     return {
-        "service": "enterprise_core_contracts",
+        "service": "enterprise_core",
         "version": "1.0.0",
         "status": "running",
     }

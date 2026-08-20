@@ -7,7 +7,7 @@ It re-exports all schemas and provides helper functions for contract validation.
 
 from typing import Any, Dict, Optional
 
-from actions.enterprise_core_contracts.schemas import (
+from actions.enterprise_core.schemas import (
     BaseEntity,
     BaseEvent,
     ErrorResponse,
