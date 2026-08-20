@@ -27,9 +27,9 @@ Sistem temelji na treh integriranih stebrih:
 
 | Steber | Komponenta | Primarna vloga |
 |---|---|---|
-| **Možgani** | LLMBridge / GBrain / AST | Razumevanje konteksta, detekcija funkcijskih tarč, izračun kompleksnosti in generiranje optimiziranih rešitev. |
-| **Roke** | `./rob` CLI Swarm Engine | Avtonomna gradnja modulov, upravljanje datotečnega sistema, izvajanje testnih matrik in orkestracija delotokov. |
-| **Zavora** | `rsi_engine` + Pytest | Neprebojni zaščitni ščit (BehaviorGuard). Izvede AST validacijo, ujame trace-back ob padcu in vrne sistem v varno stanje ob neuspehu. |
+| **Možgani** | DeepSeek (LLM) + GBrain (spomin) + Graphify (AST) | Razumevanje konteksta, trajni spomin, odvisnostni graf kode in generiranje rešitev. |
+| **Roke** | `./rob` CLI + `run_swarm.py` (orchestrator) | Orkestracija gradnje: gbrain → graphify → gstack → hermes → loopx. |
+| **Zavora** | `LoopXEngineBridge` + Pytest | RSI samozdravljenje: pytest → DeepSeek popravi → ≤5× → 100% zelen ali FAILED + blacklist. |
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -38,25 +38,25 @@ Sistem temelji na treh integriranih stebrih:
                            │
                            ▼
 ┌──────────────────────────────────────────────────────────┐
-│             MOŽGANI: LLMBridge + Graphify + AST          │
+│         MOŽGANI: DeepSeek LLM + GBrain + Graphify        │
 └──────────────────────────┬───────────────────────────────┘
                            │
                            ▼
 ┌──────────────────────────────────────────────────────────┐
-│              ROKE: ./.rob Swarm Execution Engine         │
+│       ROKE: ./rob CLI + run_swarm.py (orchestrator)      │
 └──────────────────────────┬───────────────────────────────┘
                            │
                            ▼
 ┌──────────────────────────────────────────────────────────┐
-│     ZAVORA: RSI Closed-Loop + Pytest BehaviorGuard       │
+│            ZAVORA: LoopX (RSI) + Pytest                  │
 └──────────────┬─────────────────────────────┬─────────────┘
                │                             │
-     [❌ Pytest Pade / Traceback]      [✅ 100% ZELENO]
+     [❌ pytest pade / traceback]      [✅ 100% zelen]
                │                             │
                ▼                             ▼
 ┌──────────────────────────────┐  ┌────────────────────────┐
-│ Samodejno Samozdravljenje    │  │ Produkcijski Zaklep    │
-│ (Do 5 iteracij s feedbackom) │  │ in Dostava Stranki     │
+│ Samodejno Samozdravljenje    │  │ VERIFIED GREEN         │
+│ (Do 5 iteracij s feedbackom) │  │ (100% zelen, shipped)  │
 └──────────────────────────────┘  └────────────────────────┘
 ```
 
