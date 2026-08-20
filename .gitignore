@@ -59,7 +59,3 @@ legacy/count_words/
 # Runtime test build-i iz klikov (trajna agenda / testne naloge) — izven gita
 legacy/test/
 legacy/testna/
-
-# Odvečne lokalne mape (niso v gitu)
-app/
-demo/

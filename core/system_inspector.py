@@ -1,7 +1,14 @@
 import sqlite3
 import json
 import importlib
+import sys
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from core.actions_scan import list_action_modules
 
 def inspect_system_modules():
     print("=" * 80)
@@ -27,8 +34,8 @@ def inspect_system_modules():
 
     # 3. Pregled ustvarjenih avtonomnih modulov (actions/)
     print("\n🚀 3. AVTONOMNI SHIPPED MODULI (actions/):")
-    actions_dir = Path("actions")
-    actions = [d for d in actions_dir.iterdir() if d.is_dir() and not d.name.startswith("__")]
+    actions_dir = PROJECT_ROOT / "actions"
+    actions = [d for d in list_action_modules(actions_dir)]
     
     if not actions:
         print("  • Ni še generiranih modulov.")

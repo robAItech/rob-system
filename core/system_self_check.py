@@ -21,6 +21,7 @@ import json
 from core.gbrain_bridge import GBrainBridge
 from core.graphify_bridge import GraphifyBridge
 from core.llm_client import DeepSeekLLMClient
+from core.actions_scan import list_action_modules
 
 async def perform_self_check():
     print("=" * 80)
@@ -50,9 +51,8 @@ async def perform_self_check():
     graph = graphify.build_code_graph()
     total_nodes = len(graph.get("nodes", {}))
     
-    # Preštej shranjene module
-    actions_dir = PROJECT_ROOT / "actions"
-    actions = [d.name for d in actions_dir.iterdir() if d.is_dir() and not d.name.startswith("__")]
+    # Preštej shranjene module (izloči artefaktne/meta-mape, npr. .pytest_cache).
+    actions = [d.name for d in list_action_modules(PROJECT_ROOT / "actions")]
     
     # 4. LLM ARCHITECT REVIEW
     print("\n✨ [4/4] Pridobivam predloge za nadgradnjo od DeepSeek AI Arhitekta...")

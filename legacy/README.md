@@ -1,15 +1,17 @@
 # legacy/
 
-Arhivirani testni/demo moduli (refaktorizacija C). To **niso** produkcijski
-izdelki — so ostanki testiranja, demo-a in eval izzivov, ločeni od
-produkcijskega `actions/`, da ne onesnažujejo grafa, spomina in deploymenta.
+Arhivirani testni/demo moduli, ločeni od produkcijskega `actions/`, da ne
+onesnažujejo grafa, spomina in deploymenta. To **niso** produkcijski izdelki —
+so ostanki testiranja, demo-a in eval izzivov.
+
+Trenutno vsebuje samo še zadnji izvedeni modul:
 
 | Modul | Izvor |
 |---|---|
-| `demo_bug` | učni primer Zanke 1 (namerna napaka → konsolidacija) |
-| `master_test` | testni modul |
-| `test`, `testna` | Gmail testne naloge |
-| `count_words`, `divide_safe`, `fizzbuzz` | P5 eval izzivi |
+| `test` | Gmail testna naloga (zadnja izvedena agenda) |
 
-Ti moduli so izključeni iz AST grafa (`graphify_bridge`) in iz spominske
+Prejšnji moduli (`demo_bug`, `master_test`, `testna`, `count_words`,
+`divide_safe`, `fizzbuzz`) so bili izbrisani med čiščenjem starih artefaktov.
+
+Runtime moduli so izključeni iz AST grafa (`graphify_bridge`) in iz spominske
 konsolidacije (`memory_consolidation`).
