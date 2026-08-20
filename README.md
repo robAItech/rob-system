@@ -270,12 +270,12 @@ Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
 `RSISelfHealingEngine` živi kot samostojen modul v
 `actions/enterprise_rsi_engine/`, ne kot jedro.
 
-## 🔄 Devet zank (Zanke 1–9)
+## 🔄 Deset zank (Zanke 1–10)
 
 Poleg RSI samozdravljenja (ki popravlja MODULE `actions/*`) ima sistem štiri
 samorazvojne zanke (spomin, presoja, orkestracija, meta-evalvacija), štiri
-sposobnostne zanke (načrtovanje, koordinacija, napoved, raziskovanje) in eno
-zanko učenja uteži (RLAIF):
+sposobnostne zanke (načrtovanje, koordinacija, napoved, raziskovanje), eno
+zanko učenja uteži (RLAIF) in eno meta-zanko (avtonomija ciljev):
 
 | Zanka | Modul | Kaj dela |
 |---|---|---|
@@ -288,6 +288,7 @@ zanko učenja uteži (RLAIF):
 | **7 · napoved** | `core/world_model.py` | Svetovni model: iz lastnih trajektorij napove uspešnost, pričakovan LLM strošek in verjeten vzrok neuspeha. |
 | **8 · raziskovanje** | `core/fork.py` | Paralelni sprint: razišče N pristopov, vsakega oceni (world model + critic), vrne najboljšega. |
 | **9 · učenje uteži** | `core/rlaif.py` | RLAIF podatkovni cevovod: iz trajektorij izlušči (chosen, rejected) pare in izvozi JSONL (DPO) za fine-tuning. |
+| **10 · avtonomija** | `core/goal_autonomy.py` | Avtonomija ciljev: sistem iz svojih šibkih točk predlaga naslednjo nalogo; varni reverzibilni koraki se izvedejo samodejno. |
 
 ```bash
 ./rob consolidate      # Zanka 1: strdi epizode → semantične lekcije
@@ -299,9 +300,10 @@ zanko učenja uteži (RLAIF):
 ./rob predict "cilj"   # Zanka 7: napoved izida (uspešnost, LLM strošek, vzrok)
 ./rob fork "cilj"      # Zanka 8: paralelno raziskovanje pristopov
 ./rob rlaif            # Zanka 9: učenje preferenc (statistika / izvoz podatkov)
+./rob goals            # Zanka 10: avtonomija ciljev (predlaga naslednje naloge)
 ```
 
-Skupaj teh devet zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
+Skupaj teh deset zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
 
 ## 🧪 Testni standardi
 
