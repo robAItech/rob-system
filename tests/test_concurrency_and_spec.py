@@ -41,8 +41,8 @@ def test_gbrain_eksplicitni_tmp_db_path_ostane(tmp_path):
 def test_target_lock_blokira_drugi_build(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "actions" / "demo_service").mkdir(parents=True, exist_ok=True)
-    e1 = LoopXEngineBridge("demo_service")
-    e2 = LoopXEngineBridge("demo_service")
+    e1 = LoopXEngineBridge("demo_service", db_path=tmp_path / "memory.db")
+    e2 = LoopXEngineBridge("demo_service", db_path=tmp_path / "memory.db")
     assert e1._acquire_target_lock(timeout=0.2) is True
     assert e2._acquire_target_lock(timeout=0.2) is False  # already held
     e1._release_target_lock()
@@ -54,7 +54,7 @@ def test_execute_and_heal_sprosti_lock_v_finally(tmp_path, monkeypatch):
     """Tudi ob failu se lock na koncu sprosti."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "actions" / "demo_service").mkdir(parents=True, exist_ok=True)
-    e = LoopXEngineBridge("demo_service")
+    e = LoopXEngineBridge("demo_service", db_path=tmp_path / "memory.db")
     with mock.patch.object(e, "_acquire_target_lock", return_value=True):
         # _heal_loop mock-an → False; lock mora biti release.
         with mock.patch.object(e, "_heal_loop", return_value=False):
@@ -71,7 +71,7 @@ def _engine_tmp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "actions" / "svc").mkdir(parents=True, exist_ok=True)
     (tmp_path / "actions" / "svc" / "svc.py").write_text("def f():\n    return 1\n", encoding="utf-8")
-    e = LoopXEngineBridge("svc")
+    e = LoopXEngineBridge("svc", db_path=tmp_path / "memory.db")
     e.target_dir = (tmp_path / "actions" / "svc").resolve()
     return e
 

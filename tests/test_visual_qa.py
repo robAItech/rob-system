@@ -104,7 +104,7 @@ def _engine(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "actions" / "site").mkdir(parents=True, exist_ok=True)
     (tmp_path / "actions" / "site" / "index.html").write_text("<html></html>", encoding="utf-8")
-    e = LoopXEngineBridge("site")
+    e = LoopXEngineBridge("site", db_path=tmp_path / "memory.db")
     e.target_dir = (tmp_path / "actions" / "site").resolve()
     return e
 

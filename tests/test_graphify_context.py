@@ -81,7 +81,7 @@ def _engine_with_graph(tmp_path):
     (tmp_path / "actions" / "demo_service" / "demo_service.py").write_text(
         "def run():\n    return 1\n", encoding="utf-8"
     )
-    eng = LoopXEngineBridge("demo_service")
+    eng = LoopXEngineBridge("demo_service", db_path=tmp_path / "memory.db")
     eng.target_dir = (tmp_path / "actions" / "demo_service").resolve()
     return eng
 

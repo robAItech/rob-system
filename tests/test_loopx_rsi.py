@@ -61,7 +61,7 @@ def test_classify_error_povzame_tip(tmp_path, monkeypatch):
 def _navidezni_engine(tmp_path, monkeypatch) -> LoopXEngineBridge:
     """Inštanica LoopX v izoliranem tmp cwd."""
     monkeypatch.chdir(tmp_path)
-    engine = LoopXEngineBridge("demo_service")
+    engine = LoopXEngineBridge("demo_service", db_path=tmp_path / "memory.db")
     # Usmerimo target_dir v izolirano pot (ne pravo actions/)
     (tmp_path / "actions" / "demo_service").mkdir(parents=True, exist_ok=True)
     return engine

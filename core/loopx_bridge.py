@@ -5,7 +5,7 @@ import re
 import asyncio
 import shutil
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 from core.gbrain_bridge import GBrainBridge
 from core.graphify_bridge import GraphifyBridge
@@ -52,11 +52,12 @@ class LoopXEngineBridge:
     #    prekinitev (učenje iz ponavljajočih se napak, ne slepo kurjenje LLM).
     REPEAT_ABORT_AFTER = 3
 
-    def __init__(self, project: str):
+    def __init__(self, project: str, db_path: Optional[Path] = None):
         self.project = project
         self.target_dir = Path(f"actions/{project}")
         self.registry_file = Path(".loopx/registry.json")
-        self.gbrain = GBrainBridge()
+        # db_path (opcijsko) omogoča izolacijo testov od realne memory.db.
+        self.gbrain = GBrainBridge(db_path) if db_path else GBrainBridge()
         self.graphify = GraphifyBridge()
         self.llm = DeepSeekLLMClient()
         self.max_attempts = 5
