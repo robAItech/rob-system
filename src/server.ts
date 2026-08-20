@@ -490,6 +490,61 @@ function cityCoords(msg: string): { lat: number; lon: number; label: string } {
   return { lat: 45.967, lon: 14.296, label: 'Vrhnika' };
 }
 
+/** Google Gemini TTS → base64 avdio (WAV). Vrne null, če ni ključa/napake. */
+async function geminiTts(text: string, voice: string): Promise<{ mime: string; base64: string } | null> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  try {
+    const model = 'gemini-2.5-flash-preview-tts';
+    const body = {
+      contents: [{ parts: [{ text }] }],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+      },
+    };
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!r.ok) return null;
+    const j = await r.json() as Record<string, any>;
+    const part = (j.candidates?.[0]?.content?.parts ?? []).find((p: any) => p?.inlineData?.data);
+    if (!part?.inlineData?.data) return null;
+    return { mime: part.inlineData.mimeType || 'audio/wav', base64: part.inlineData.data };
+  } catch { return null; }
+}
+
+/** Spletno iskanje prek Gemini Google Search grounding (isti GEMINI_API_KEY). */
+async function webSearch(query: string): Promise<{ title: string; url: string; snippet: string }[]> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return [];
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ contents: [{ parts: [{ text: query }] }], tools: [{ googleSearch: {} }] }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!r.ok) return [];
+    const j = await r.json() as Record<string, any>;
+    const meta = j.candidates?.[0]?.groundingMetadata;
+    if (!meta) return [];
+    const chunks = (meta.groundingChunks ?? []) as any[];
+    const supports = (meta.groundingSupports ?? []) as any[];
+    return chunks.slice(0, 8).map((c, i) => {
+      const sup = supports.find((s: any) => (s.groundingChunkIndices || []).includes(i));
+      return {
+        title: c.web?.title || '',
+        url: c.web?.uri || '',
+        snippet: (sup?.segment?.text || '').slice(0, 220),
+      };
+    }).filter((x) => x.title || x.snippet);
+  } catch { return []; }
+}
+
 /** Neposredni pogovor z LLM (ROB) — z živim datumom/uro in (po potrebi) vremenom. */
 async function chat(message: string): Promise<string> {
   const p = resolveProvider(process.env);
@@ -506,6 +561,12 @@ async function chat(message: string): Promise<string> {
       live += w
         ? `\n\nŽIVI vremenski podatki za ${c.label} (vir Open-Meteo):\n${w}`
         : '\n\n(Vreme trenutno ni dosegljivo — povej, da je vir nedosegljiv.)';
+    }
+
+    // Spletno iskanje (živo) — vedno, da lahko ROB utemelji odgovor v spletu.
+    const results = await webSearch(message);
+    if (results.length) {
+      live += `\n\nŽIVI spletni zadetki za vprašanje:\n` + results.map((r, i) => `${i + 1}. ${r.title} — ${r.url}\n   ${r.snippet}`).join('\n');
     }
 
     const res = await llm.complete({
@@ -984,6 +1045,24 @@ const server = Bun.serve({
       } catch (e) {
         return json({ ok: false, error: String(e instanceof Error ? e.message : e) }, 500);
       }
+    }
+    // Google Gemini TTS (naravni glas → base64 avdio).
+    if (req.method === 'POST' && url.pathname === '/api/tts') {
+      const raw = await req.text().catch(() => '');
+      let body: { text?: unknown; voice?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const text = String(body.text || '').trim();
+      const voice = String(body.voice || 'Charon').trim();
+      if (!text) return json({ ok: false, error: 'text je prazen' }, 400);
+      const tts = await geminiTts(text, voice);
+      if (!tts) return json({ ok: false, error: 'TTS ni na voljo (GEMINI_API_KEY manjka?)' }, 500);
+      return json({ ok: true, voice, ...tts });
+    }
+    // Spletno iskanje (DuckDuckGo, brez ključa).
+    if (req.method === 'GET' && url.pathname === '/api/search') {
+      const q = (url.searchParams.get('q') || '').trim();
+      if (!q) return json({ ok: false, error: 'q je prazen' }, 400);
+      return json({ ok: true, results: await webSearch(q) });
     }
     // Zagon gstack skill-a (prek claude CLI, headless).
     if (req.method === 'POST' && url.pathname === '/api/skill') {

@@ -559,22 +559,44 @@
   }
   let voiceReply=true;
   let voices=[];
+  const GEMINI_VOICES=['Charon','Orus','Zephyr','Puck','Kore','Fenrir','Leda','Aoede'];
   function loadVoices(){
-    if(!('speechSynthesis' in window)) return;
-    voices=speechSynthesis.getVoices();
+    if('speechSynthesis' in window) voices=speechSynthesis.getVoices();
     const sel=document.getElementById('voice-select'); if(!sel) return;
-    sel.innerHTML=voices.map(v=>`<option value="${v.name}">${v.name} · ${v.lang}</option>`).join('');
-    const sl=voices.find(v=>v.lang&&v.lang.toLowerCase().startsWith('sl'));
-    if(sl) sel.value=sl.name;
+    const gemini=GEMINI_VOICES.map(v=>`<option value="g:${v}">Google · ${v}</option>`).join('');
+    const browser=voices.map(v=>`<option value="${v.name}">${v.name} · ${v.lang}</option>`).join('');
+    sel.innerHTML=gemini+browser;
+    sel.value='g:Charon';
   }
-  if('speechSynthesis' in window){ loadVoices(); speechSynthesis.onvoiceschanged=loadVoices; }
-  function speak(text){
+  loadVoices();
+  if('speechSynthesis' in window){ speechSynthesis.onvoiceschanged=loadVoices; }
+  async function speak(text){
+    const sel=document.getElementById('voice-select');
+    const val=sel?sel.value:'g:Charon';
+    if(val.startsWith('g:')){
+      // Strežniški Google Gemini TTS (naravni glas)
+      try{
+        const r=await fetch('/api/tts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,voice:val.slice(2)})});
+        const d=await r.json();
+        if(d.ok && d.base64){
+          const bin=atob(d.base64);
+          const arr=new Uint8Array(bin.length);
+          for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+          const blob=new Blob([arr],{type:d.mime||'audio/wav'});
+          const url=URL.createObjectURL(blob);
+          const a=new Audio(url);
+          a.onended=()=>URL.revokeObjectURL(url);
+          await a.play();
+          return;
+        }
+      }catch(e){}
+      // fallback → brskalnik TTS
+    }
     if(!('speechSynthesis' in window)) return;
     try{ speechSynthesis.cancel(); }catch(e){}
     const u=new SpeechSynthesisUtterance(text);
     u.lang='sl-SI'; u.rate=1.02; u.pitch=1;
-    const sel=document.getElementById('voice-select');
-    const v=voices.find(x=>x.name===(sel?sel.value:''));
+    const v=voices.find(x=>x.name===val);
     if(v) u.voice=v;
     speechSynthesis.speak(u);
   }
