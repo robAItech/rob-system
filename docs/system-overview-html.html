@@ -9,7 +9,7 @@
   <div class="stats">
     <span class="stat ok"><b>6</b> agentov</span>
     <span class="stat"><b>5</b> bridge-ov</span>
-    <span class="stat"><b>28</b> modulov</span>
+    <span class="stat"><b>18</b> modulov</span>
     <span class="stat ok"><i class="pulse"></i> DeepSeek</span>
   </div>
 </header>
@@ -17,9 +17,9 @@
 <main class="wrap">
 
   <section class="hero">
-    <div class="kicker">pregled delovanja · 19. 8. 2026</div>
+    <div class="kicker">pregled delovanja · 20. 8. 2026</div>
     <h1>Dva izvedbena plasta,<br>eno izvedbeno jedro.</h1>
-    <p class="lede">Rob AI Studio je dogodkovno-zanjen (ledger-first) avtonomni stroj z dvema plastema: TS&nbsp;Hermes generira <em>produkte</em> iz navadne naloge, Python&nbsp;RSI/GStack avtonomno <em>gradi in samozdravljenje</em> module. Pod njima leži 28 podjetniških mikrostoritev.</p>
+    <p class="lede">Rob AI Studio je dogodkovno-zanjen (ledger-first) avtonomni stroj z dvema plastema: TS&nbsp;Hermes generira <em>produkte</em> iz navadne naloge, Python&nbsp;RSI/GStack avtonomno <em>gradi in samozdravljenje</em> module. Pod njima leži 18 podjetniških mikrostoritev.</p>
   </section>
 
   <section class="panel">
@@ -60,19 +60,18 @@
   </section>
 
   <section class="panel">
-    <div class="sidehead"><span class="n">03</span><h2>Podjetniški moduli<br><small>actions/ · 22 prod. + 6 test</small></h2></div>
+    <div class="sidehead"><span class="n">03</span><h2>Podjetniški moduli<br><small>actions/ · 18 prod. + 1 test</small></h2></div>
     <div class="content">
-      <h3>Produkcijski (22)</h3>
+      <h3>Produkcijski (18)</h3>
       <div class="chips">
-        <span>unified_gateway</span><span>nexus_command_deck</span><span>auth_vault</span>
+        <span>api_gateway</span><span>nexus_command_deck</span><span>auth_vault</span>
         <span>audit_trail</span><span>event_bus</span><span>task_queue</span><span>saga_orchestrator</span>
-        <span>deployment_manager</span><span>rsi_engine</span><span>schema_registry</span><span>api_versioning</span>
-        <span>cache_layer</span><span>circuit_breaker</span><span>rate_limiter</span><span>contract_testing</span>
-        <span>core_contracts</span><span>core_utils</span><span>observability_metrics</span><span>webhook_dispatcher</span>
-        <span>feature_flag</span><span>mailer</span><span>warehouse_inventory</span>
+        <span>deployment_manager</span><span>rsi_engine</span><span>contract_schema_engine</span>
+        <span>cache_layer</span><span>circuit_breaker</span><span>rate_limiter</span><span>currency_converter</span>
+        <span>observability_metrics</span><span>feature_flag</span><span>mailer</span><span>warehouse_inventory</span>
       </div>
-      <h3>Testni / demonstracijski (6)</h3>
-      <div class="chips dim"><span>count_words</span><span>divide_safe</span><span>fizzbuzz</span><span>test</span><span>testna</span><span>master_test</span></div>
+      <h3>Testni / demonstracijski (1)</h3>
+      <div class="chips dim"><span>test</span></div>
     </div>
   </section>
 
@@ -123,7 +122,7 @@ flowchart TD
   D --> F["gbrain → graphify → gstack → hermes → loopx"]
   E --> G["Artefakti out/*"]
   F --> H["Modul actions/&lt;mod&gt;/ (100% zelen)"]
-  G --> I["28 podjetniških modulov"]
+  G --> I["18 podjetniških modulov"]
   H --> I
 </pre>
 
