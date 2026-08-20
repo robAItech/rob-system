@@ -29,7 +29,7 @@ Sistem temelji na treh integriranih stebrih:
 |---|---|---|
 | **Možgani** | LLMBridge / GBrain / AST | Razumevanje konteksta, detekcija funkcijskih tarč, izračun kompleksnosti in generiranje optimiziranih rešitev. |
 | **Roke** | `./rob` CLI Swarm Engine | Avtonomna gradnja modulov, upravljanje datotečnega sistema, izvajanje testnih matrik in orkestracija delotokov. |
-| **Zavora** | `enterprise_rsi_engine` + Pytest | Neprebojni zaščitni ščit (BehaviorGuard). Izvede AST validacijo, ujame trace-back ob padcu in vrne sistem v varno stanje ob neuspehu. |
+| **Zavora** | `rsi_engine` + Pytest | Neprebojni zaščitni ščit (BehaviorGuard). Izvede AST validacijo, ujame trace-back ob padcu in vrne sistem v varno stanje ob neuspehu. |
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -268,7 +268,7 @@ RSI zanka (`_heal_loop`) deluje takole:
 
 Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
 `RSISelfHealingEngine` živi kot samostojen modul v
-`actions/enterprise_rsi_engine/`, ne kot jedro.
+`actions/rsi_engine/`, ne kot jedro.
 
 ## 🔄 Deset zank (Zanke 1–10)
 
@@ -313,7 +313,7 @@ dokončano, dokler ne preteče celoten nabor testov.
 Za neposreden zagon testov posameznega modula:
 
 ```bash
-pytest actions/enterprise_rsi_engine
+pytest actions/rsi_engine
 ```
 
 Za zagon celotnega master suite-a:
