@@ -570,6 +570,19 @@
   }
   loadVoices();
   if('speechSynthesis' in window){ speechSynthesis.onvoiceschanged=loadVoices; }
+  function pcmToWav(pcm){
+    // 16-bit PCM, mono, 24000 Hz → WAV (dodaj 44-bajtno glavo)
+    const sr=24000, ch=1, bits=16;
+    const buf=new ArrayBuffer(44+pcm.length);
+    const v=new DataView(buf);
+    function s(o,str){for(let i=0;i<str.length;i++)v.setUint8(o+i,str.charCodeAt(i));}
+    s(0,'RIFF'); v.setUint32(4,36+pcm.length,true); s(8,'WAVE');
+    s(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,ch,true);
+    v.setUint32(24,sr,true); v.setUint32(28,sr*ch*bits/8,true); v.setUint16(32,ch*bits/8,true); v.setUint16(34,bits,true);
+    s(36,'data'); v.setUint32(40,pcm.length,true);
+    new Uint8Array(buf,44).set(pcm);
+    return new Uint8Array(buf);
+  }
   async function speak(text){
     const sel=document.getElementById('voice-select');
     const val=sel?sel.value:'g:Charon';
@@ -580,9 +593,11 @@
         const d=await r.json();
         if(d.ok && d.base64){
           const bin=atob(d.base64);
-          const arr=new Uint8Array(bin.length);
+          let arr=new Uint8Array(bin.length);
           for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
-          const blob=new Blob([arr],{type:d.mime||'audio/wav'});
+          let mime=d.mime||'audio/wav';
+          if(/L16|pcm/i.test(mime)){ arr=pcmToWav(arr); mime='audio/wav'; }
+          const blob=new Blob([arr],{type:mime});
           const url=URL.createObjectURL(blob);
           const a=new Audio(url);
           a.onended=()=>URL.revokeObjectURL(url);

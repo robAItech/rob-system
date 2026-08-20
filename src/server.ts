@@ -517,32 +517,49 @@ async function geminiTts(text: string, voice: string): Promise<{ mime: string; b
   } catch { return null; }
 }
 
-/** Spletno iskanje prek Gemini Google Search grounding (isti GEMINI_API_KEY). */
-async function webSearch(query: string): Promise<{ title: string; url: string; snippet: string }[]> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) return [];
+/** Iskanje po Wikipediji (brezplačno, brez ključa) — fallback. */
+async function wikiSearch(query: string): Promise<{ title: string; url: string; snippet: string }[]> {
   try {
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({ contents: [{ parts: [{ text: query }] }], tools: [{ googleSearch: {} }] }),
-      signal: AbortSignal.timeout(15000),
-    });
+    const url = `https://sl.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=8&srprop=snippet`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(7000) });
     if (!r.ok) return [];
     const j = await r.json() as Record<string, any>;
-    const meta = j.candidates?.[0]?.groundingMetadata;
-    if (!meta) return [];
-    const chunks = (meta.groundingChunks ?? []) as any[];
-    const supports = (meta.groundingSupports ?? []) as any[];
-    return chunks.slice(0, 8).map((c, i) => {
-      const sup = supports.find((s: any) => (s.groundingChunkIndices || []).includes(i));
-      return {
-        title: c.web?.title || '',
-        url: c.web?.uri || '',
-        snippet: (sup?.segment?.text || '').slice(0, 220),
-      };
-    }).filter((x) => x.title || x.snippet);
+    const hits = j.query?.search ?? [];
+    return (hits as any[]).map((h: any) => ({
+      title: h.title,
+      url: `https://sl.wikipedia.org/wiki/${encodeURIComponent(String(h.title).replace(/ /g, '_'))}`,
+      snippet: String(h.snippet || '').replace(/<[^>]+>/g, '').slice(0, 200),
+    }));
   } catch { return []; }
+}
+
+/** Spletno iskanje: Gemini Google Search grounding → fallback Wikipedia. */
+async function webSearch(query: string): Promise<{ title: string; url: string; snippet: string }[]> {
+  const key = process.env.GEMINI_API_KEY;
+  if (key) {
+    try {
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ parts: [{ text: query }] }], tools: [{ googleSearch: {} }] }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (r.ok) {
+        const j = await r.json() as Record<string, any>;
+        const meta = j.candidates?.[0]?.groundingMetadata;
+        if (meta) {
+          const chunks = (meta.groundingChunks ?? []) as any[];
+          const supports = (meta.groundingSupports ?? []) as any[];
+          const out = chunks.slice(0, 8).map((c, i) => {
+            const sup = supports.find((s: any) => (s.groundingChunkIndices || []).includes(i));
+            return { title: c.web?.title || '', url: c.web?.uri || '', snippet: (sup?.segment?.text || '').slice(0, 220) };
+          }).filter((x) => x.title || x.snippet);
+          if (out.length) return out;
+        }
+      }
+    } catch { /* fallback na Wikipedijo */ }
+  }
+  return wikiSearch(query);
 }
 
 /** Neposredni pogovor z LLM (ROB) — z živim datumom/uro in (po potrebi) vremenom. */
