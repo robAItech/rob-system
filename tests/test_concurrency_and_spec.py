@@ -153,7 +153,9 @@ def test_heal_loop_razlicne_napake_ne_pretrga(tmp_path, monkeypatch):
         e.max_attempts = 4
         r = e.execute_and_heal("build")
     assert r is False
-    assert e._heal_fail_count.get("ValueError", 0) <= 1  # zgo. prekinitev ni centralna
+    # Nobena posamezna napaka ne sme doseči praga za zgodnjo prekinitev
+    # (zanka teče do max_attempts, ker so napake RAZLIČNE).
+    assert all(n < e.repeat_abort_after for n in e._heal_fail_count.values())
 
 
 # ------------------------------------------------------------------ #
