@@ -490,31 +490,34 @@ function cityCoords(msg: string): { lat: number; lon: number; label: string } {
   return { lat: 45.967, lon: 14.296, label: 'Vrhnika' };
 }
 
-/** Google Gemini TTS → base64 avdio (WAV). Vrne null, če ni ključa/napake. */
+/** Google Gemini TTS → base64 avdio. Poskusi pro model, nato flash fallback. */
 async function geminiTts(text: string, voice: string): Promise<{ mime: string; base64: string } | null> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
-  try {
-    const model = 'gemini-3.1-flash-tts-preview';
-    const body = {
-      contents: [{ parts: [{ text }] }],
-      generationConfig: {
-        responseModalities: ['AUDIO'],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
-      },
-    };
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000),
-    });
-    if (!r.ok) return null;
-    const j = await r.json() as Record<string, any>;
-    const part = (j.candidates?.[0]?.content?.parts ?? []).find((p: any) => p?.inlineData?.data);
-    if (!part?.inlineData?.data) return null;
-    return { mime: part.inlineData.mimeType || 'audio/wav', base64: part.inlineData.data };
-  } catch { return null; }
+  const models = ['gemini-2.5-pro-preview-tts', 'gemini-3.1-flash-tts-preview'];
+  for (const model of models) {
+    try {
+      const body = {
+        contents: [{ parts: [{ text }] }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+        },
+      };
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!r.ok) continue;
+      const j = await r.json() as Record<string, any>;
+      const part = (j.candidates?.[0]?.content?.parts ?? []).find((p: any) => p?.inlineData?.data);
+      if (!part?.inlineData?.data) continue;
+      return { mime: part.inlineData.mimeType || 'audio/wav', base64: part.inlineData.data };
+    } catch { /* poskusi naslednji model */ }
+  }
+  return null;
 }
 
 /** Iskanje po Wikipediji (brezplačno, brez ključa) — fallback. */
@@ -585,8 +588,41 @@ async function webSearch(query: string): Promise<{ title: string; url: string; s
   return wikiSearch(query);
 }
 
+/** Ali je sporočilo NALOGA (izvedi) ali POGOVOR (odgovori). */
+function classifyMessage(message: string): 'task' | 'chat' {
+  const m = message.toLowerCase();
+  if (/(naloga|poslušaj|želim da|želim,|naredi|zgradi|ustvari|izvedi|deploy|build|zaženi|zapiši|pripravi|generiraj|ukaz|izdelaj|pripravi)/.test(m)) return 'task';
+  return 'chat';
+}
+
+/** Zabeleži nalogo v agendo in jo zažene v izvedbo (run_swarm --process-agenda). */
+async function handleTask(message: string): Promise<string> {
+  const kind = detectGmailKind(message);
+  try {
+    const proc = Bun.spawn({
+      cmd: ['python', '-c', `from core.agenda import add; import json; print(json.dumps(add(${JSON.stringify(message)}, kind=${JSON.stringify(kind)}, source='voice')))`],
+      cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    let item: Record<string, unknown> = {};
+    try { item = JSON.parse(out.trim() || '{}'); } catch { /* */ }
+    const target = String(item.target || '');
+    // Izvedba v ozadju (ne čakamo — dolg proces).
+    Bun.spawn({ cmd: ['python', 'run_swarm.py', '--process-agenda'], cwd: OUT_ROOT, stdio: ['ignore', 'ignore', 'ignore'], env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
+    return `Naloga zabeležena (target: ${target || 'v pripravi'}, tip: ${kind}) in zagnana v izvedbo. Spremljaj napredek v pogledu Agenda.`;
+  } catch (e) {
+    return `Naloga ni zabeležena: ${String(e instanceof Error ? e.message : e)}`;
+  }
+}
+
 /** Neposredni pogovor z LLM (ROB) — z živim datumom/uro in (po potrebi) vremenom. */
 async function chat(message: string): Promise<string> {
+  // Naloga → zabeleži + izvedi; pogovor → odgovori.
+  if (classifyMessage(message) === 'task') {
+    return handleTask(message);
+  }
   const p = resolveProvider(process.env);
   const ledger = new Ledger(DB_PATH);
   try {
