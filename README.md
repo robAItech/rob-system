@@ -270,11 +270,11 @@ Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
 `RSISelfHealingEngine` živi kot samostojen modul v
 `actions/enterprise_rsi_engine/`, ne kot jedro.
 
-## 🔄 Sedem zank (Zanke 1–7)
+## 🔄 Osem zank (Zanke 1–8)
 
 Poleg RSI samozdravljenja (ki popravlja MODULE `actions/*`) ima sistem štiri
-samorazvojne zanke (spomin, presoja, orkestracija, meta-evalvacija) in tri
-sposobnostne zanke (dolgoročno načrtovanje, multi-agent koordinacija, napoved izidov):
+samorazvojne zanke (spomin, presoja, orkestracija, meta-evalvacija) in štiri
+sposobnostne zanke (načrtovanje, koordinacija, napoved, raziskovanje):
 
 | Zanka | Modul | Kaj dela |
 |---|---|---|
@@ -285,6 +285,7 @@ sposobnostne zanke (dolgoročno načrtovanje, multi-agent koordinacija, napoved 
 | **5 · načrtovanje** | `core/task_planner.py` | Dolgoročno načrtovanje: LLM razbije kompleksen cilj na urejene podcilje in vsakega izvede skozi RSI (večkorakne naloge). |
 | **6 · koordinacija** | `core/team.py` | Multi-agent adversarial: planner → critic → builder → verifier; critic izzove načrt pred izvedbo. |
 | **7 · napoved** | `core/world_model.py` | Svetovni model: iz lastnih trajektorij napove uspešnost, pričakovan LLM strošek in verjeten vzrok neuspeha. |
+| **8 · raziskovanje** | `core/fork.py` | Paralelni sprint: razišče N pristopov, vsakega oceni (world model + critic), vrne najboljšega. |
 
 ```bash
 ./rob consolidate      # Zanka 1: strdi epizode → semantične lekcije
@@ -294,9 +295,10 @@ sposobnostne zanke (dolgoročno načrtovanje, multi-agent koordinacija, napoved 
 ./rob plan "cilj"      # Zanka 5: dekompozicija cilja na podcilje
 ./rob team "cilj"      # Zanka 6: multi-agent adversarial koordinacija
 ./rob predict "cilj"   # Zanka 7: napoved izida (uspešnost, LLM strošek, vzrok)
+./rob fork "cilj"      # Zanka 8: paralelno raziskovanje pristopov
 ```
 
-Skupaj teh sedem zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
+Skupaj teh osem zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
 
 ## 🧪 Testni standardi
 
