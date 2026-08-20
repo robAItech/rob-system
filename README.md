@@ -95,7 +95,7 @@ Rob AI Studio/
 ├── bridges/litellm_config.yaml       # DeepSeek proxy routing
 ├── scripts/                          # autostart.bat + register-autostart.ps1 (HKCU Run)
 ├── evaluate_autonomy.py              # P5 — SWE-bench stila samo-eval (rob eval)
-└── tests/                            # Pytest suite (364 testov)
+└── tests/                            # Pytest suite (394 testov)
 ```
 
 ## 🛠️ Hitra namestitev in zagon
