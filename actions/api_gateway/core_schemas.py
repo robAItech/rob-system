@@ -1,8 +1,10 @@
 """
-Enterprise Core Contracts - Schemas.
+Enterprise Core Contracts - Schemas (združeni v API Gateway).
 
-This module defines the core Pydantic models (DTOs), interfaces, and enums
-used throughout the system. This is a strict data layer with NO business logic.
+Definira jedrne Pydantic modele (DTO), interfase in enume, ki se uporabljajo
+povsod po sistemu. To je stroga podatkovna plast BREZ poslovne logike.
+
+Izvor: nekdanji samostojni modul ``core_contracts.schemas``.
 """
 
 from datetime import datetime
@@ -38,7 +40,7 @@ class EventTypeEnum(str, Enum):
 class BaseEvent(BaseModel):
     """
     Base event model for all system events.
-    
+
     Attributes:
         event_id: Unique identifier for the event
         event_type: Type of the event
@@ -72,7 +74,7 @@ class BaseEvent(BaseModel):
 class ErrorResponse(BaseModel):
     """
     Standard error response model.
-    
+
     Attributes:
         status: Status of the response (always 'error')
         error_code: Machine-readable error code
@@ -106,7 +108,7 @@ class ErrorResponse(BaseModel):
 class SuccessResponse(BaseModel):
     """
     Standard success response model.
-    
+
     Attributes:
         status: Status of the response (always 'success')
         data: Response data
@@ -122,7 +124,7 @@ class SuccessResponse(BaseModel):
 class ValidationErrorResponse(BaseModel):
     """
     Validation error response model.
-    
+
     Attributes:
         status: Status of the response (always 'error')
         error_code: Machine-readable error code (always 'VALIDATION_ERROR')
@@ -140,7 +142,7 @@ class ValidationErrorResponse(BaseModel):
 class PaginationParams(BaseModel):
     """
     Pagination parameters model.
-    
+
     Attributes:
         page: Page number (1-indexed)
         page_size: Number of items per page
@@ -156,7 +158,7 @@ class PaginationParams(BaseModel):
 class PaginatedResponse(BaseModel, Generic[T]):
     """
     Generic paginated response model.
-    
+
     Attributes:
         items: List of items
         total: Total number of items
@@ -185,7 +187,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
 class BaseEntity(BaseModel):
     """
     Base entity model for all system entities.
-    
+
     Attributes:
         id: Unique identifier
         created_at: When the entity was created
@@ -209,7 +211,7 @@ class BaseEntity(BaseModel):
 class HealthResponse(BaseModel):
     """
     Health check response model.
-    
+
     Attributes:
         status: Service status
         version: Service version

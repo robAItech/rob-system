@@ -6,9 +6,13 @@ from typing import List
 from actions.audit_trail.schemas import AuditRecordCreate, AuditRecord, AuditVerificationResult
 
 class AuditTrail:
-    def __init__(self):
+    def __init__(self, event_bus=None, topic: str = "audit"):
         self.chain: List[AuditRecord] = []
         self.lock = asyncio.Lock()
+        # Audit dogodki se asinhrono razpošiljajo naprej prek event_bus-a,
+        # namesto da bi bili zaprti v lastnem sink-u. Chain ostaja za integriteto.
+        self.event_bus = event_bus
+        self.topic = topic
 
     def _calculate_hash(self, prev_hash: str, timestamp: str, actor: str, action: str, target: str, payload_str: str) -> str:
         data = f"{prev_hash}|{timestamp}|{actor}|{action}|{target}|{payload_str}"
@@ -37,6 +41,11 @@ class AuditTrail:
                 hash=new_hash
             )
             self.chain.append(record)
+
+            # Razpošlji dogodek naprej (asinhroni potrošniki prek event_bus-a).
+            if self.event_bus is not None:
+                self.event_bus.publish(self.topic, record.model_dump())
+
             return record
 
     async def verify_chain(self) -> AuditVerificationResult:

@@ -2,6 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from actions.audit_trail.main import app, audit_trail
 from actions.audit_trail.schemas import AuditRecordCreate
+from actions.audit_trail.audit_trail import AuditTrail
+from actions.event_bus.event_bus import EventBus
 
 client = TestClient(app)
 
@@ -32,6 +34,21 @@ async def test_cryptographic_chaining_and_tamper_detection():
     assert verification_tampered.is_valid is False
     assert verification_tampered.broken_at_id == "evt_audit_2"
     assert "Data tampered" in verification_tampered.reason
+
+@pytest.mark.asyncio
+async def test_audit_event_published_to_event_bus():
+    # Audit dogodki morajo biti razposlani naprej prek event_bus-a.
+    bus = EventBus()
+    received = []
+    bus.subscribe("audit", lambda msg: received.append(msg))
+
+    trail = AuditTrail(event_bus=bus)
+    await trail.record_event(AuditRecordCreate(actor="admin", action="CREATE_USER", target="user_1"))
+
+    assert len(received) == 1
+    assert received[0].payload["actor"] == "admin"
+    assert received[0].payload["action"] == "CREATE_USER"
+
 
 def test_fastapi_audit_endpoints():
     # Zapis

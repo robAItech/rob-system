@@ -7,6 +7,8 @@ class MetricsRegistry:
     def __init__(self):
         # Format: {(method, endpoint, status): {"count": int, "total_time": float}}
         self.http_metrics: Dict[tuple, Dict[str, float]] = defaultdict(lambda: {"count": 0, "total_time": 0.0})
+        # Generični števci (centralni sink) — npr. cache_hits, cache_misses, ...
+        self.counters: Dict[str, float] = defaultdict(float)
         self.lock = asyncio.Lock()
 
     async def record_request(self, method: str, endpoint: str, status: int, duration_sec: float):
@@ -14,6 +16,20 @@ class MetricsRegistry:
             key = (method, endpoint, status)
             self.http_metrics[key]["count"] += 1
             self.http_metrics[key]["total_time"] += duration_sec
+
+    async def record_counter(self, name: str, delta: float = 1.0) -> None:
+        """
+        Zabeleži generični števec v centralni sink.
+
+        Drugi moduli (npr. cache_layer) s tem delegirajo svoje metrike sem,
+        namesto da bi vzdrževali lastne ločene logerje.
+
+        Args:
+            name: Ime števca (npr. "cache_hits").
+            delta: Inkrement (privzeto 1.0).
+        """
+        async with self.lock:
+            self.counters[name] += delta
 
     async def generate_prometheus_metrics(self) -> str:
         async with self.lock:
@@ -42,5 +58,6 @@ class MetricsRegistry:
             return MetricSnapshot(
                 total_requests=total_req,
                 error_count=total_err,
-                avg_latency_ms=round(avg_lat, 2)
+                avg_latency_ms=round(avg_lat, 2),
+                counters=dict(self.counters),
             )

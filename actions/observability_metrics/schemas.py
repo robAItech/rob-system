@@ -10,3 +10,4 @@ class MetricSnapshot(BaseModel):
     total_requests: int
     error_count: int
     avg_latency_ms: float
+    counters: Dict[str, float] = Field(default_factory=dict)

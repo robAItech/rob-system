@@ -7,6 +7,7 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def reset_registry():
     registry.http_metrics.clear()
+    registry.counters.clear()
 
 def test_metrics_middleware_and_snapshot():
     # 1. Simulacija zahtev skozi middleware

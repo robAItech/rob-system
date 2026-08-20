@@ -8,11 +8,9 @@ import pytest
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
-from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from actions.core_contracts.main import app
-from actions.core_contracts.schemas import (
+from actions.api_gateway.core_schemas import (
     BaseEntity,
     BaseEvent,
     ErrorResponse,
@@ -24,20 +22,13 @@ from actions.core_contracts.schemas import (
     SuccessResponse,
     ValidationErrorResponse,
 )
-from actions.core_contracts.contracts import (
+from actions.api_gateway.contracts import (
     create_success_response,
     create_error_response,
     create_validation_error_response,
     create_health_response,
     validate_event,
 )
-
-
-# Test client fixture
-@pytest.fixture
-def client():
-    """Create test client."""
-    return TestClient(app)
 
 
 # =============================================================================
@@ -593,41 +584,6 @@ class TestHelperFunctions:
                 event_type=EventTypeEnum.CREATED,
                 source="test",
             )
-
-
-# =============================================================================
-# API Tests
-# =============================================================================
-
-class TestAPI:
-    """Test FastAPI endpoints."""
-
-    def test_health_endpoint(self, client):
-        """Test health endpoint."""
-        response = client.get("/health")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ok"
-        assert data["version"] == "1.0.0"
-        assert "timestamp" in data
-
-    def test_root_endpoint(self, client):
-        """Test root endpoint."""
-        response = client.get("/")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["service"] == "core_contracts"
-        assert data["version"] == "1.0.0"
-        assert data["status"] == "running"
-
-    def test_health_endpoint_response_model(self, client):
-        """Test health endpoint response model."""
-        response = client.get("/health")
-        assert response.status_code == 200
-        # Validate response against HealthResponse model
-        health = HealthResponse(**response.json())
-        assert health.status == "ok"
-        assert health.version == "1.0.0"
 
 
 # =============================================================================

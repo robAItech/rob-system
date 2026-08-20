@@ -1,13 +1,13 @@
 """
-Enterprise Core Contracts - Core Module.
+Enterprise Core Contracts - helper funkcije (združene v API Gateway).
 
-This module provides the main functionality for the enterprise core contracts.
-It re-exports all schemas and provides helper functions for contract validation.
+Zagotavlja standardne tovarniške funkcije za gradnjo odgovorov in validacijo
+dogodkov. Izvor: nekdanji samostojni modul ``core_contracts.contracts``.
 """
 
 from typing import Any, Dict, Optional
 
-from actions.core_contracts.schemas import (
+from actions.api_gateway.core_schemas import (
     BaseEntity,
     BaseEvent,
     ErrorResponse,
@@ -27,11 +27,11 @@ def create_success_response(
 ) -> SuccessResponse:
     """
     Create a standard success response.
-    
+
     Args:
         data: Response data
         message: Optional success message
-    
+
     Returns:
         SuccessResponse: Standard success response
     """
@@ -45,12 +45,12 @@ def create_error_response(
 ) -> ErrorResponse:
     """
     Create a standard error response.
-    
+
     Args:
         error_code: Machine-readable error code
         message: Human-readable error message
         details: Additional error details
-    
+
     Returns:
         ErrorResponse: Standard error response
     """
@@ -67,11 +67,11 @@ def create_validation_error_response(
 ) -> ValidationErrorResponse:
     """
     Create a validation error response.
-    
+
     Args:
         errors: List of validation errors
         message: Error message
-    
+
     Returns:
         ValidationErrorResponse: Validation error response
     """
@@ -83,10 +83,10 @@ def create_health_response(
 ) -> HealthResponse:
     """
     Create a health check response.
-    
+
     Args:
         version: Service version
-    
+
     Returns:
         HealthResponse: Health check response
     """
@@ -96,10 +96,10 @@ def create_health_response(
 def validate_event(event: BaseEvent) -> bool:
     """
     Validate an event.
-    
+
     Args:
         event: Event to validate
-    
+
     Returns:
         bool: True if valid, False otherwise
     """

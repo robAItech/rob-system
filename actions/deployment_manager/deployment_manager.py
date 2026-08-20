@@ -4,9 +4,33 @@ from pathlib import Path
 from typing import Dict
 
 class DeploymentManager:
+    # Moduli, ki so samo CI/knjižnice in se NE deployajo kot runtime storitve.
+    # Npr. contract_testing je CDC validacija, ki teče v CI, ne kot uvicorn servis.
+    CI_ONLY_MODULES = {"contract_testing"}
+
     def __init__(self, base_dir: str = "."):
         self.base_dir = Path(base_dir)
         self.actions_dir = self.base_dir / "actions"
+
+    @classmethod
+    def _is_deployable(cls, d) -> bool:
+        """
+        Ali je direktorij veljaven deployabl modul.
+
+        Izloči:
+        - nedirektorije,
+        - skrite run-time artefakte (`.pytest_cache`, `.git`, ...),
+        - Python meta-mape (`__pycache__`, ...),
+        - CI-only module (ki se ne deployajo kot storitve).
+        """
+        if not d.is_dir():
+            return False
+        name = d.name
+        if name.startswith(".") or name.startswith("__"):
+            return False
+        if name in cls.CI_ONLY_MODULES:
+            return False
+        return True
 
     def get_services(self) -> Dict[str, int]:
         services = {}
@@ -20,14 +44,15 @@ class DeploymentManager:
 
         if self.actions_dir.exists():
             for d in sorted(self.actions_dir.iterdir()):
-                if d.is_dir() and not d.name.startswith("__"):
-                    if d.name in fixed_ports:
-                        services[d.name] = fixed_ports[d.name]
-                    else:
-                        while current_port in fixed_ports.values():
-                            current_port += 1
-                        services[d.name] = current_port
+                if not self._is_deployable(d):
+                    continue
+                if d.name in fixed_ports:
+                    services[d.name] = fixed_ports[d.name]
+                else:
+                    while current_port in fixed_ports.values():
                         current_port += 1
+                    services[d.name] = current_port
+                    current_port += 1
         return services
 
     def generate_docker_compose(self) -> str:

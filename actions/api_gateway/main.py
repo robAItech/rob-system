@@ -19,6 +19,7 @@ from actions.api_gateway.schemas import (
     WebhookEvent,
 )
 from actions.api_gateway.webhooks import WebhookDispatcher
+from actions.api_gateway.versioning import VersionManager, VersionValidationMiddleware
 
 app = FastAPI(
     title="Enterprise API Gateway",
@@ -28,6 +29,19 @@ app = FastAPI(
 
 gateway_router = GatewayRouter()
 dispatcher = WebhookDispatcher()
+
+# ── Versioning: združeni api_versioning ────────────────────────────────────────
+# Validacija Accept-Version glave velja samo za eksplicitno versionirane poti,
+# da routing/webhook poti ostanejo odprte.
+version_manager = VersionManager(
+    current_version="1.0.0",
+    supported_versions=["1.0.0", "1.1.0", "2.0.0"],
+)
+app.add_middleware(
+    VersionValidationMiddleware,
+    version_manager=version_manager,
+    protected_paths={"/version", "/protected"},
+)
 
 
 # ── Gateway: usmerjanje zahtevkov ────────────────────────────────────────────
@@ -158,3 +172,28 @@ async def get_delivery_result(event_id: str, endpoint_id: str):
     if not result:
         raise HTTPException(status_code=404, detail="Result not found or pending")
     return result
+
+
+# ── Versioning endpoints (združeni api_versioning) ─────────────────────────────
+@app.get("/version")
+async def get_version_info():
+    """
+    Get current API version information.
+    """
+    info = version_manager.get_version_info()
+    return {
+        "current_version": info["current_version"],
+        "supported_versions": info["supported_versions"],
+        "deprecated_versions": info["deprecated_versions"],
+    }
+
+
+@app.get("/protected")
+async def protected_endpoint(request: Request):
+    """
+    Versioned endpoint that requires a valid Accept-Version header.
+    """
+    return {
+        "message": "Access granted",
+        "api_version": request.state.api_version,
+    }

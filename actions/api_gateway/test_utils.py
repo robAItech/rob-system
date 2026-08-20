@@ -6,13 +6,11 @@ These tests provide 100% coverage of the utility classes and API endpoints.
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from fastapi.testclient import TestClient
 
-from actions.core_contracts.utils import (
+from actions.api_gateway.utils import (
     TimestampNormalizer,
     HashUtils,
 )
-from actions.core_contracts.main import app
 
 
 class TestTimestampNormalizer:

@@ -1,9 +1,11 @@
 """
-Core utility classes for enterprise applications.
+Core utility classes (združene v API Gateway).
 
-This module contains stateless utility classes:
-- TimestampNormalizer: Normalizes timestamps to ISO 8601 UTC format
-- HashUtils: Provides SHA256 hashing utilities
+Vsebuje stateless utility razrede:
+- TimestampNormalizer: Normalizira časovne žige v ISO 8601 UTC format
+- HashUtils: SHA256 hashing utility
+
+Izvor: nekdanji samostojni modul ``core_contracts.utils``.
 """
 
 import hashlib

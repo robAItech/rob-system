@@ -2,9 +2,12 @@ from fastapi import FastAPI, HTTPException, status
 from typing import List
 from actions.audit_trail.schemas import AuditRecordCreate, AuditRecord, AuditVerificationResult
 from actions.audit_trail.audit_trail import AuditTrail
+from actions.event_bus.event_bus import EventBus
 
 app = FastAPI(title="Rob AI Studio - Enterprise Audit Trail API")
-audit_trail = AuditTrail()
+# Audit dogodki gredo prek event_bus-a (asinhrona razpošiljava) v ostale storitve.
+audit_bus = EventBus()
+audit_trail = AuditTrail(event_bus=audit_bus)
 
 @app.post("/audit", status_code=status.HTTP_201_CREATED, response_model=AuditRecord)
 async def log_audit_event(request: AuditRecordCreate):

@@ -3,6 +3,7 @@ import asyncio
 from fastapi.testclient import TestClient
 from actions.cache_layer.main import app, cache
 from actions.cache_layer.cache_layer import CacheLayer
+from actions.observability_metrics.observability_metrics import MetricsRegistry
 
 client = TestClient(app)
 
@@ -41,6 +42,20 @@ async def test_ttl_expiration():
     assert await c.get("temp") == "data"
     await asyncio.sleep(0.15)
     assert await c.get("temp") is None
+
+@pytest.mark.asyncio
+async def test_cache_delegates_metrics_to_registry():
+    # Cache NE vzdržuje lastnega metrics loggerja — števci gredo v centralni sink.
+    reg = MetricsRegistry()
+    c = CacheLayer(metrics=reg)
+
+    await c.set("k", "v")
+    await c.get("k")        # hit
+    await c.get("missing")  # miss
+
+    assert reg.counters["cache_hits"] == 1
+    assert reg.counters["cache_misses"] == 1
+
 
 def test_fastapi_cache_endpoints():
     # 1. SET
