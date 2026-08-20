@@ -196,7 +196,7 @@ python evaluate_autonomy.py --dry-run                               # P5: strukt
 python evaluate_autonomy.py                                         # P5: SWE-bench stila samo-eval avtonomnosti
 ```
 
-Dosežene faze (roadmap je v dashboardu na `/roadmap`):
+Dosežene faze:
 
 | Faza | Zmogljivost |
 |---|---|

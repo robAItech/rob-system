@@ -716,16 +716,6 @@ const server = Bun.serve({
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
-    // Serviraj roadmap (strateški načrt) — samostojen HTML.
-    if (req.method === 'GET' && url.pathname === '/roadmap') {
-      const html = `${OUT_ROOT}/.rob_ai/roadmap.html`;
-      const file = Bun.file(html);
-      if (await file.exists()) {
-        return new Response(await file.text(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-      }
-      return json({ ok: false, error: 'roadmap.html manjka v .rob_ai/' }, 404);
-    }
-
     // API: health / ledger / runs / news
     if (req.method === 'GET' && url.pathname === '/api/health') return json(await health());
     if (req.method === 'GET' && url.pathname === '/api/ledger') return json({ events: readEvents() });
