@@ -270,11 +270,11 @@ Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
 `RSISelfHealingEngine` živi kot samostojen modul v
 `actions/enterprise_rsi_engine/`, ne kot jedro.
 
-## 🔄 Pet zank (Zanke 1–5)
+## 🔄 Šest zank (Zanke 1–6)
 
 Poleg RSI samozdravljenja (ki popravlja MODULE `actions/*`) ima sistem štiri
-samorazvojne zanke (spomin, presoja, orkestracija, meta-evalvacija) in eno
-sposobnostno zanko (dolgoročno načrtovanje):
+samorazvojne zanke (spomin, presoja, orkestracija, meta-evalvacija) in dve
+sposobnostni zanki (dolgoročno načrtovanje, multi-agent koordinacija):
 
 | Zanka | Modul | Kaj dela |
 |---|---|---|
@@ -283,6 +283,7 @@ sposobnostno zanko (dolgoročno načrtovanje):
 | **3 · orkestracija** | `core/self_improve.py` + `core/prompt_registry.py` + `core/tuning.py` | RSI nase: samorazvoj **promptov** (guard + regresijski testi + rollback) in **parametrov** (`max_attempts`, `repeat_abort_after` — z mejami + rollback). |
 | **4 · meta-evalvacija** | `core/meta_eval.py` | Meri, ali izboljšave dejansko pomagajo (uspešnost, povp. LLM klici); ob regresiji **avtomatsko povrne** prompt + parametre. |
 | **5 · načrtovanje** | `core/task_planner.py` | Dolgoročno načrtovanje: LLM razbije kompleksen cilj na urejene podcilje in vsakega izvede skozi RSI (večkorakne naloge). |
+| **6 · koordinacija** | `core/team.py` | Multi-agent adversarial: planner → critic → builder → verifier; critic izzove načrt pred izvedbo. |
 
 ```bash
 ./rob consolidate      # Zanka 1: strdi epizode → semantične lekcije
@@ -290,9 +291,10 @@ sposobnostno zanko (dolgoročno načrtovanje):
 ./rob tune             # Zanka 3: samorazvoj parametrov (max_attempts, repeat_abort_after)
 ./rob meta             # Zanka 4: trenutne metrike (uspešnost, povp. LLM klici)
 ./rob plan "cilj"      # Zanka 5: dekompozicija cilja na podcilje
+./rob team "cilj"      # Zanka 6: multi-agent adversarial koordinacija
 ```
 
-Skupaj teh pet zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
+Skupaj teh šest zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
 
 ## 🧪 Testni standardi
 
