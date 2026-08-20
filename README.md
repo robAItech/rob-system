@@ -270,11 +270,11 @@ Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
 `RSISelfHealingEngine` živi kot samostojen modul v
 `actions/enterprise_rsi_engine/`, ne kot jedro.
 
-## 🔄 Štiri samorazvojne zanke (Zanke 1–4)
+## 🔄 Pet zank (Zanke 1–5)
 
 Poleg RSI samozdravljenja (ki popravlja MODULE `actions/*`) ima sistem štiri
-samorazvojne zanke, ki izboljšujejo NJEGA SAMEGA — spomin, presojo, orkestracijo
-in meta-evalvacijo:
+samorazvojne zanke (spomin, presoja, orkestracija, meta-evalvacija) in eno
+sposobnostno zanko (dolgoročno načrtovanje):
 
 | Zanka | Modul | Kaj dela |
 |---|---|---|
@@ -282,15 +282,17 @@ in meta-evalvacijo:
 | **2 · presoja** | `core/run_review.py` | Post-run samoevalvacija: klasificira VZROK izida na nivoju odločitve (`spec_mismatch`/`llm_error`/…), ne le testa. |
 | **3 · orkestracija** | `core/self_improve.py` + `core/prompt_registry.py` + `core/tuning.py` | RSI nase: samorazvoj **promptov** (guard + regresijski testi + rollback) in **parametrov** (`max_attempts`, `repeat_abort_after` — z mejami + rollback). |
 | **4 · meta-evalvacija** | `core/meta_eval.py` | Meri, ali izboljšave dejansko pomagajo (uspešnost, povp. LLM klici); ob regresiji **avtomatsko povrne** prompt + parametre. |
+| **5 · načrtovanje** | `core/task_planner.py` | Dolgoročno načrtovanje: LLM razbije kompleksen cilj na urejene podcilje in vsakega izvede skozi RSI (večkorakne naloge). |
 
 ```bash
 ./rob consolidate      # Zanka 1: strdi epizode → semantične lekcije
 ./rob improve          # Zanka 3: samorazvoj promptov (predlog → guard → test → promocija)
 ./rob tune             # Zanka 3: samorazvoj parametrov (max_attempts, repeat_abort_after)
 ./rob meta             # Zanka 4: trenutne metrike (uspešnost, povp. LLM klici)
+./rob plan "cilj"      # Zanka 5: dekompozicija cilja na podcilje
 ```
 
-Skupaj te štiri zanke zaprejo "sistem izboljšuje lastno hitrost izboljševanja".
+Skupaj teh pet zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
 
 ## 🧪 Testni standardi
 
