@@ -1,0 +1,892 @@
+<title>Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#04070d;
+    --bg-grid:rgba(53,214,224,.028);
+    --surface:#0a111c;
+    --surface2:#0e1726;
+    --line:#152338;
+    --line-strong:#243a54;
+    --ink:#d8e6f5;
+    --muted:#7c93ab;
+    --faint:#486077;
+    --accent:#35d6e0;
+    --accent-2:#8ee9f2;
+    --accent-soft:rgba(53,214,224,.13);
+    --good:#3fd6a4;
+    --good-soft:rgba(63,214,164,.12);
+    --warn:#f0b543;
+    --warn-soft:rgba(240,181,67,.12);
+    --crit:#f25c6e;
+    --crit-soft:rgba(242,92,110,.13);
+    --font-display:"Chakra Petch",ui-sans-serif,system-ui,sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:
+      linear-gradient(var(--bg-grid) 1px,transparent 1px),
+      linear-gradient(90deg,var(--bg-grid) 1px,transparent 1px),
+      var(--bg);
+    background-size:34px 34px;
+    color:var(--ink);
+    font-family:var(--font-mono);
+    font-size:13px;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--accent-soft);}
+
+  .app{display:grid;grid-template-columns:216px 1fr;grid-template-rows:58px 1fr 38px;height:100vh;min-width:0;}
+
+  .sidebar{grid-column:1;grid-row:1/4;border-right:1px solid var(--line);background:linear-gradient(180deg,var(--surface),var(--bg));display:flex;flex-direction:column;padding:18px 14px;gap:6px;overflow-y:auto;}
+  .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px;border-bottom:1px solid var(--line);margin-bottom:10px;}
+  .brand .mark{width:30px;height:30px;border-radius:6px;display:grid;place-items:center;border:1px solid var(--accent);background:var(--accent-soft);box-shadow:0 0 18px var(--accent-soft), inset 0 0 8px rgba(53,214,224,.15);color:var(--accent);font-family:var(--font-display);font-weight:700;font-size:14px;}
+  .brand .name{font-family:var(--font-display);font-weight:600;font-size:14.5px;letter-spacing:.02em;line-height:1.1;}
+  .brand .sub{font-size:10px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;}
+
+  .nav-label{font-family:var(--font-display);font-size:10px;color:var(--faint);letter-spacing:.16em;text-transform:uppercase;padding:8px 10px 4px;}
+  .nav{display:flex;flex-direction:column;gap:3px;}
+  .nav button{display:flex;align-items:center;gap:11px;width:100%;background:transparent;border:1px solid transparent;border-radius:5px;color:var(--muted);font-family:var(--font-display);font-weight:500;font-size:13.5px;letter-spacing:.02em;padding:9px 11px;cursor:pointer;text-align:left;transition:color .18s,background .18s,border-color .18s;}
+  .nav button svg{width:16px;height:16px;flex:0 0 16px;stroke:currentColor;}
+  .nav button:hover{color:var(--ink);background:var(--surface2);}
+  .nav button.active{color:var(--accent);background:var(--accent-soft);border-color:var(--accent);box-shadow:inset 2px 0 0 var(--accent);}
+  .sidebar .spacer{flex:1;}
+  .sysbox{margin-top:12px;border:1px solid var(--line);border-radius:6px;background:var(--surface);padding:11px 12px;}
+  .sysbox .lbl{font-size:9.5px;color:var(--faint);letter-spacing:.14em;text-transform:uppercase;font-family:var(--font-display);margin-bottom:7px;}
+  .sysbox .row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);padding:2.5px 0;}
+  .sysbox .row b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums;}
+
+  .hud{grid-column:2;grid-row:1;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--line);background:rgba(10,17,28,.7);backdrop-filter:blur(8px);}
+  .hud .title{font-family:var(--font-display);font-weight:600;font-size:14px;letter-spacing:.03em;}
+  .hud .crumb{color:var(--faint);font-family:var(--font-mono);font-size:11.5px;}
+  .hud .spacer{flex:1;}
+  .hud .stat{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:20px;padding:5px 12px;}
+  .hud .stat b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums;}
+  .hud .stat .dot{width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 8px var(--good);}
+  .hud .clock{font-family:var(--font-mono);color:var(--accent);font-size:12.5px;border:1px solid var(--line);border-radius:5px;padding:5px 11px;background:var(--surface);font-variant-numeric:tabular-nums;}
+
+  .views{grid-column:2;grid-row:2;overflow:auto;padding:22px;min-width:0;}
+  .view{display:none;}
+  .view.active{display:block;animation:fade .28s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .view-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:16px;}
+  .view-head h1{font-family:var(--font-display);font-weight:600;font-size:20px;margin:0;letter-spacing:.01em;}
+  .view-head .meta{font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;}
+
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;}
+  .kpi{position:relative;border:1px solid var(--line);border-radius:6px;background:linear-gradient(180deg,var(--surface),var(--bg));padding:15px 16px;overflow:hidden;}
+  .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent);opacity:.7;}
+  .kpi .k{font-family:var(--font-display);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
+  .kpi .v{font-family:var(--font-mono);font-size:30px;font-weight:700;letter-spacing:-.01em;color:var(--ink);margin:7px 0 3px;font-variant-numeric:tabular-nums;line-height:1;}
+  .kpi .d{font-size:10.5px;color:var(--faint);letter-spacing:.02em;}
+  .kpi.good::after{background:var(--good);}
+  .kpi.warn::after{background:var(--warn);}
+
+  .grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:14px;}
+  .panel{border:1px solid var(--line);border-radius:7px;background:var(--surface);position:relative;}
+  .panel .phead{display:flex;align-items:center;justify-content:space-between;padding:11px 15px;border-bottom:1px solid var(--line);}
+  .panel .ptitle{font-family:var(--font-display);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+  .panel .ptag{font-size:10px;color:var(--accent);border:1px solid var(--accent);border-radius:10px;padding:1px 8px;}
+  .panel .pbody{padding:14px 15px;}
+  .panel.bracket::before,.panel.bracket::after{content:"";position:absolute;width:10px;height:10px;border:1px solid var(--line-strong);}
+  .panel.bracket::before{left:-1px;top:-1px;border-right:0;border-bottom:0;border-top-left-radius:7px;}
+  .panel.bracket::after{right:-1px;top:-1px;border-left:0;border-bottom:0;border-top-right-radius:7px;}
+
+  /* ── Obsidian graf ───────────────────────────────────── */
+  .graph-stage{display:flex;overflow:hidden;height:370px;background:radial-gradient(ellipse at 38% center,#0a1826 0%,#050a14 100%);}
+  .graph-wrap{flex:1;min-width:0;height:100%;position:relative;}
+  .graph-wrap canvas{display:block;width:100%;height:100%;cursor:crosshair;}
+  .agent-statusbar{flex:0 0 250px;display:flex;flex-direction:column;justify-content:center;gap:16px;padding:18px 26px;}
+  .agent-state{font-family:var(--font-display);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap;}
+  .agent-state b{color:var(--accent);font-weight:600;}
+  .wave{display:flex;align-items:center;gap:3px;height:40px;}
+  .wave i{width:4px;border-radius:2px;background:linear-gradient(180deg,var(--accent-2),var(--accent));height:6px;transition:height .12s ease;opacity:.85;}
+  .agent-readout{display:flex;flex-direction:column;gap:8px;font-size:12px;color:var(--muted);}
+  .agent-readout b{color:var(--ink);font-weight:500;}
+  .graph-tip{position:fixed;display:none;pointer-events:none;background:rgba(10,17,28,.96);border:1px solid var(--accent);border-radius:6px;padding:9px 12px;z-index:60;max-width:240px;font-size:11.5px;}
+  .graph-tip .tn{font-family:var(--font-display);font-weight:600;color:var(--ink);font-size:13px;}
+  .graph-tip .tg{display:inline-block;font-family:var(--font-display);font-size:9px;letter-spacing:.1em;text-transform:uppercase;border-radius:4px;padding:1px 6px;margin:3px 0 6px;}
+  .graph-tip .td{color:var(--muted);font-family:var(--font-mono);font-size:11px;}
+  .kpi{cursor:pointer;transition:border-color .15s;} .kpi:hover{border-color:var(--accent);}
+  .art,.agent{cursor:pointer;}
+  .feed .line{cursor:pointer;} .feed .line:hover .m{color:var(--ink);}
+  #view-agenda tbody tr{cursor:pointer;} #view-agenda tbody tr:hover td{background:var(--surface2);}
+
+  .feed{display:flex;flex-direction:column;gap:1px;font-size:12px;}
+  .feed .line{display:grid;grid-template-columns:58px 72px 1fr;gap:12px;padding:6px 0;border-bottom:1px solid var(--line);}
+  .feed .line:first-child .m{color:var(--ink);}
+  .feed .line:last-child{border-bottom:0;}
+  .feed .t{color:var(--faint);font-variant-numeric:tabular-nums;}
+  .feed .s{font-family:var(--font-display);font-weight:600;letter-spacing:.04em;}
+  .feed .m{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .s-ok{color:var(--good);} .s-warn{color:var(--warn);} .s-crit{color:var(--crit);} .s-run{color:var(--accent);}
+
+  .convo-wrap{display:grid;grid-template-columns:1fr 250px;gap:14px;align-items:start;}
+  .terminal{border:1px solid var(--line);border-radius:7px;background:var(--bg);display:flex;flex-direction:column;height:calc(100vh - 150px);min-height:420px;}
+  .terminal .thead{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--line);font-size:10.5px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;font-family:var(--font-display);}
+  .terminal .thead .tdot{width:9px;height:9px;border-radius:50%;}
+  .terminal .tbody{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px;font-size:12.5px;}
+  .convo-line{display:flex;gap:10px;max-width:88%;}
+  .convo-line .who{font-family:var(--font-display);font-weight:600;font-size:10px;letter-spacing:.08em;text-transform:uppercase;flex:0 0 auto;padding-top:1px;}
+  .convo-line.you .who{color:var(--accent);}
+  .convo-line.ai .who{color:var(--good);}
+  .convo-line .msg{color:var(--ink);}
+  .convo-line.ai .msg{color:var(--muted);}
+  .convo-line.you{align-self:flex-end;flex-direction:row-reverse;text-align:right;}
+  .terminal .tfoot{display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line);}
+  .terminal .prompt{color:var(--accent);font-weight:700;}
+  .terminal input{flex:1;background:transparent;border:0;outline:0;color:var(--ink);font-family:var(--font-mono);font-size:13px;}
+  .terminal input::placeholder{color:var(--faint);}
+  .terminal .tbtn{background:transparent;border:1px solid var(--line);border-radius:5px;color:var(--muted);cursor:pointer;padding:7px 12px;font-family:var(--font-display);font-size:12px;letter-spacing:.03em;}
+  .terminal .tbtn:hover{color:var(--accent);border-color:var(--accent);}
+  .terminal .tbtn.mic:hover{color:var(--warn);border-color:var(--warn);}
+  .voice-panel{display:flex;flex-direction:column;gap:11px;}
+  .voice-panel .vcard{border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:13px 15px;}
+  .voice-panel .vcard .lbl{font-family:var(--font-display);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;}
+  .voice-panel .vcard .big{font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:4px;}
+  .voice-panel .vcard .sml{font-size:11px;color:var(--muted);line-height:1.5;}
+  .voice-panel .vcard select{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:6px;color:var(--ink);font-family:var(--font-mono);font-size:12px;padding:8px 10px;outline:0;margin-top:6px;}
+  .voice-panel .vcard select:focus{border-color:var(--accent);}
+
+  /* ── GBRAIN skills ──────────────────────────────────── */
+  .skill-group{margin-bottom:18px;}
+  .skill-cat{font-family:var(--font-display);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:9px;}
+  .skill-chips{display:flex;flex-wrap:wrap;gap:7px;}
+  .skill{background:var(--surface2);border:1px solid var(--line);border-radius:5px;color:var(--accent);font-family:var(--font-mono);font-size:12px;padding:7px 12px;cursor:pointer;transition:border-color .15s,background .15s,color .15s;}
+  .skill:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2);}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{font-family:var(--font-display);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);font-weight:500;}
+  td{padding:11px 12px;border-bottom:1px solid var(--line);color:var(--ink);vertical-align:top;}
+  tr:last-child td{border-bottom:0;}
+  td.mono{font-family:var(--font-mono);color:var(--muted);font-size:12px;}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-display);font-weight:600;font-size:10.5px;letter-spacing:.04em;border-radius:10px;padding:2.5px 9px;border:1px solid;}
+  .pill::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;}
+  .pill.run{color:var(--accent);border-color:var(--accent);background:var(--accent-soft);}
+  .pill.done{color:var(--good);border-color:var(--good);background:var(--good-soft);}
+  .pill.pend{color:var(--warn);border-color:var(--warn);background:var(--warn-soft);}
+
+  .arts{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;}
+  .art{border:1px solid var(--line);border-radius:6px;background:var(--surface2);padding:13px 14px;position:relative;transition:border-color .18s;}
+  .art:hover{border-color:var(--line-strong);}
+  .art .an{font-family:var(--font-mono);font-size:13px;color:var(--ink);margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .art .am{font-size:10.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;}
+  .art .type{position:absolute;top:12px;right:12px;font-family:var(--font-display);font-size:9px;letter-spacing:.1em;color:var(--accent);border:1px solid var(--line-strong);border-radius:4px;padding:1px 6px;text-transform:uppercase;}
+
+  .agents{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;}
+  .agent{border:1px solid var(--line);border-radius:6px;background:var(--surface2);padding:14px 15px;}
+  .agent .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}
+  .agent .role{font-family:var(--font-display);font-weight:600;font-size:14px;color:var(--ink);}
+  .agent .file{font-family:var(--font-mono);font-size:10.5px;color:var(--faint);}
+  .agent .desc{font-size:11.5px;color:var(--muted);line-height:1.5;min-height:34px;}
+  .agent .tag{display:inline-block;font-family:var(--font-display);font-size:9px;letter-spacing:.1em;text-transform:uppercase;border-radius:4px;padding:2px 7px;margin-top:9px;}
+  .tag.on{color:var(--accent);background:var(--accent-soft);border:1px solid var(--accent);}
+  .tag.off{color:var(--faint);background:transparent;border:1px solid var(--line);}
+  .section-sub{font-family:var(--font-display);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:22px 0 10px;}
+
+  .statusbar{grid-column:2;grid-row:3;display:flex;align-items:center;gap:16px;padding:0 20px;border-top:1px solid var(--line);background:rgba(10,17,28,.7);font-size:11px;color:var(--muted);}
+  .statusbar .live{display:flex;align-items:center;gap:7px;color:var(--good);}
+  .statusbar .live .dot{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 9px var(--good);animation:pulse 2.2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .statusbar .spacer{flex:1;}
+  .statusbar .sync{color:var(--faint);}
+  .statusbar .sync b{color:var(--muted);font-weight:500;}
+  .export{position:relative;}
+  .export button{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:5px;color:var(--ink);font-family:var(--font-display);font-size:12px;letter-spacing:.03em;padding:6px 13px;cursor:pointer;}
+  .export button:hover{border-color:var(--accent);color:var(--accent);}
+  .export .menu{position:absolute;bottom:34px;right:0;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px;display:none;min-width:150px;z-index:20;}
+  .export.open .menu{display:block;}
+  .export .menu span{display:block;padding:7px 11px;border-radius:4px;color:var(--muted);font-size:12px;cursor:pointer;}
+  .export .menu span:hover{color:var(--accent);background:var(--surface2);}
+
+  .toast{position:fixed;bottom:52px;right:20px;background:var(--surface);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:10px 15px;font-size:12px;opacity:0;transform:translateY(8px);transition:.25s;z-index:50;font-family:var(--font-mono);box-shadow:0 8px 30px rgba(0,0,0,.4);}
+  .toast.show{opacity:1;transform:none;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(2,4,10,.7);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:100;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--surface);border:1px solid var(--accent);border-radius:10px;padding:22px;width:min(480px,92vw);box-shadow:0 20px 60px rgba(0,0,0,.5);}
+  .modal-head{font-family:var(--font-display);font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;}
+  .modal-head b{color:var(--accent);}
+  .modal input{width:100%;background:var(--surface2);border:1px solid var(--line);border-radius:6px;color:var(--ink);font-family:var(--font-mono);font-size:13px;padding:11px 13px;outline:0;margin-bottom:16px;}
+  .modal input:focus{border-color:var(--accent);}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;}
+  .modal.art-modal{width:min(860px,94vw);max-height:92vh;display:flex;flex-direction:column;}
+  .art-frame-wrap{flex:1;min-height:380px;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:16px;background:#fff;}
+  .art-frame-wrap iframe{width:100%;height:100%;border:0;}
+  .dbtn{background:transparent;border:1px solid var(--line);border-radius:5px;color:var(--muted);cursor:pointer;padding:7px 12px;font-family:var(--font-display);font-size:12px;letter-spacing:.03em;text-decoration:none;display:inline-flex;align-items:center;}
+  .dbtn:hover{color:var(--accent);border-color:var(--accent);}
+
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr;}
+    .sidebar{grid-column:1;grid-row:1;flex-direction:row;align-items:center;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:10px 14px;}
+    .brand{padding:0;border:0;margin:0 14px 0 0;}
+    .brand .sub,.nav-label,.sysbox{display:none;}
+    .nav{flex-direction:row;}
+    .hud{grid-column:1;grid-row:2;}
+    .views{grid-column:1;grid-row:3;}
+    .statusbar{grid-column:1;grid-row:4;}
+    .kpis{grid-template-columns:repeat(2,1fr);}
+    .grid2,.agents,.arts,.convo-wrap{grid-template-columns:1fr;}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">R</div>
+      <div>
+        <div class="name">ROB AI STUDIO</div>
+        <div class="sub">command center</div>
+      </div>
+    </div>
+
+    <div class="nav-label">Operacije</div>
+    <nav class="nav">
+      <button class="active" data-view="command" onclick="show('command')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".5" fill="currentColor"/></svg>
+        Command Center
+      </button>
+      <button data-view="pogovor" onclick="show('pogovor')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Pogovor
+      </button>
+      <button data-view="agenda" onclick="show('agenda')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        Agenda
+      </button>
+      <button data-view="artifacts" onclick="show('artifacts')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
+        Artefakti
+      </button>
+      <button data-view="gbrain" onclick="show('gbrain')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+        GBRAIN
+      </button>
+      <button data-view="agents" onclick="show('agents')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10"/><path d="M9 3h6M9 21h6M3 9v6M21 9v6"/></svg>
+        Agenti
+      </button>
+    </nav>
+
+    <div class="spacer"></div>
+
+    <div class="sysbox">
+      <div class="lbl">Sistem</div>
+      <div class="row"><span>LLM</span><b>DeepSeek</b></div>
+      <div class="row"><span>Uptime</span><b>3.2 d</b></div>
+      <div class="row"><span>Moduli</span><b>18</b></div>
+      <div class="row"><span>Agenti</span><b>6</b></div>
+    </div>
+  </aside>
+
+  <header class="hud">
+    <span class="title">Command Center</span>
+    <span class="crumb" id="crumb">/ pregled</span>
+    <span class="spacer"></span>
+    <span class="stat"><span class="dot"></span><span>LLM <b>live</b></span></span>
+    <span class="stat"><span>Moduli <b>18</b></span></span>
+    <span class="stat"><span>Agenti <b>6</b></span></span>
+    <span class="clock" id="clock">--:--:--</span>
+  </header>
+
+  <main class="views">
+
+    <!-- COMMAND CENTER -->
+    <section class="view active" id="view-command">
+      <div class="view-head"><h1>Pregled sistema</h1><span class="meta">most · živo</span></div>
+
+      <div class="kpis">
+        <div class="kpi good" onclick="show('artifacts')" title="Odpri Artefakti"><div class="k">Zeleni moduli</div><div class="v" id="kpi-modules">18<em style="font-style:normal;color:var(--accent)">/18</em></div><div class="d">100% pokritost</div></div>
+        <div class="kpi" onclick="show('agents')" title="Odpri Agenti"><div class="k">Aktivni agenti</div><div class="v">6</div><div class="d">4 v toku · 2 registrirana</div></div>
+        <div class="kpi" onclick="show('agenda')" title="Odpri Agenda"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">17</div><div class="d">GBRAIN task_history</div></div>
+        <div class="kpi warn" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">259</div><div class="d">blacklist vzorcev</div></div>
+        <div class="kpi" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">AST vozlišča</div><div class="v" id="kpi-nodes">158</div><div class="d">GRAPHIFY graf</div></div>
+      </div>
+
+      <div class="panel bracket">
+        <div class="phead"><span class="ptitle">AI Agent · sistemski graf</span><span class="ptag" id="agent-tag">POSLUŠA</span></div>
+        <div class="graph-stage">
+          <div class="graph-wrap">
+            <canvas id="graph-canvas"></canvas>
+          </div>
+          <div class="agent-statusbar">
+            <span class="agent-state">stanje: <b id="agent-state-text">poslušam</b></span>
+            <div class="wave" id="wave"></div>
+            <div class="agent-readout">
+              <span>vozlišč <b>29</b></span>
+              <span>povezav <b>27</b></span>
+              <span>kanal <b>voice / terminal</b></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="phead"><span class="ptitle">Živi dogodki</span><span class="ptag">STREAM</span></div>
+        <div class="pbody feed" id="feed"></div>
+      </div>
+    </section>
+
+    <!-- POGOVOR -->
+    <section class="view" id="view-pogovor">
+      <div class="view-head"><h1>Pogovor</h1><span class="meta">voice · terminal</span></div>
+
+      <div class="convo-wrap">
+        <div class="terminal">
+          <div class="thead"><span class="tdot" style="background:var(--crit)"></span><span class="tdot" style="background:var(--warn)"></span><span class="tdot" style="background:var(--good)"></span> &nbsp;rob-terminal · povezan</div>
+          <div class="tbody" id="convo">
+            <div class="convo-line ai"><span class="who">ROB</span><span class="msg">Pozdravljen. Jaz sem ROB — govori mi prek terminala ali glasu. Kaj naj izvedem?</span></div>
+            <div class="convo-line you"><span class="who">TI</span><span class="msg">stanje sistema?</span></div>
+            <div class="convo-line ai"><span class="who">ROB</span><span class="msg">Vse zeleno — 18 modulov, 6 agentov aktivnih, agenda ima 3 naročila.</span></div>
+          </div>
+          <div class="tfoot">
+            <span class="prompt">›</span>
+            <input id="convo-input" type="text" placeholder="Vnesi ukaz ali govori ..." onkeydown="if(event.key==='Enter')sendMessage()">
+            <button class="tbtn mic" onclick="sendVoice()" title="Glas">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3"/></svg>
+            </button>
+            <button class="tbtn" id="voice-toggle" onclick="toggleVoiceReply()" title="Glasovni odgovor (vklopi/izklopi)" style="color:var(--accent)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+            </button>
+            <button class="tbtn" onclick="sendMessage()">Pošlji</button>
+          </div>
+        </div>
+
+        <div class="voice-panel">
+          <div class="vcard"><div class="lbl">Glasovni kanal</div><div class="big">Voice</div><div class="sml">Pogovor lahko vodiš z glasom — agent posluša in odgovarja govorno.</div>
+            <div class="lbl" style="margin-top:12px">Glas odgovora</div>
+            <select id="voice-select" onchange="speak('Pozdravljen, to je moj glas.')"></select>
+          </div>
+          <div class="vcard"><div class="lbl">Terminal kanal</div><div class="big">CLI</div><div class="sml">Isti pogovor deluje prek terminala (<code>./rob dev</code>), ena sama seja.</div></div>
+          <div class="vcard"><div class="lbl">Izvoz pogovora</div><div class="big">vsi formati</div><div class="sml">Dnevnik pogovora izvoziš kot JSON / CSV / MD / HTML / PNG.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AGENDA -->
+    <section class="view" id="view-agenda">
+      <div class="view-head"><h1>Agenda</h1><span class="meta">čakalna vrsta naročil · agenda.json</span></div>
+      <div class="panel">
+        <div class="phead"><span class="ptitle">Naročila</span><span class="ptag">3 aktivna</span></div>
+        <div class="pbody" style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>Status</th><th>Naloga</th><th>Target</th><th>Tip</th><th>Vir</th><th>Čas</th></tr></thead>
+            <tbody id="agenda-body"><tr><td colspan="6" style="color:var(--faint)">nalaganje …</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ARTEFAKTI -->
+    <section class="view" id="view-artifacts">
+      <div class="view-head"><h1>Artefakti</h1><span class="meta">moduli + izdelki · out/</span></div>
+      <div class="arts" id="arts"><div style="color:var(--faint)">nalaganje …</div></div>
+    </section>
+
+    <!-- GBRAIN -->
+    <section class="view" id="view-gbrain">
+      <div class="view-head"><h1>GBRAIN · skills</h1><span class="meta">54 gstack skillov · direktni zagon</span></div>
+      <div id="skills"></div>
+    </section>
+
+    <!-- AGENTI -->
+    <section class="view" id="view-agents">
+      <div class="view-head"><h1>Agenti</h1><span class="meta">src/agents · čisti reduktorji</span></div>
+
+      <div class="section-sub">Izvedbeni agenti · TypeScript</div>
+      <div class="agents" id="agents-ts">
+        <div class="agent"><div class="top"><span class="role">planner</span><span class="file">planner.ts</span></div><div class="desc">Orkestrator: zapiše odločitev, posreduje workplan in naroči LLM @file bloke.</div><span class="tag on">v toku · full+dash</span></div>
+        <div class="agent"><div class="top"><span class="role">builder</span><span class="file">builder.ts</span></div><div class="desc">Razreže @file na poti, piše na disk, sproži qa.verify.</div><span class="tag on">v toku · full+dash</span></div>
+        <div class="agent"><div class="top"><span class="role">qa</span><span class="file">qa.ts</span></div><div class="desc">Poganja cmd.exec verify; exit 0 → complete, sicer retry do maxFixPasses.</div><span class="tag on">v toku · full+dash</span></div>
+        <div class="agent"><div class="top"><span class="role">screenshot</span><span class="file">screenshot.ts</span></div><div class="desc">Ob spletnem artefaktu zabeleži namero posnetka.</div><span class="tag on">v toku · full</span></div>
+        <div class="agent"><div class="top"><span class="role">architect</span><span class="file">architect.ts</span></div><div class="desc">Arhetip mejnika: odločitev + en LLM odgovor.</div><span class="tag off">registriran</span></div>
+        <div class="agent"><div class="top"><span class="role">engineer</span><span class="file">engineer.ts</span></div><div class="desc">Zadnji LLM odgovor zapiše na disk in zaključi tek.</div><span class="tag off">registriran</span></div>
+      </div>
+
+      <div class="section-sub">RSI bridge-i · Python</div>
+      <div class="agents" id="agents-bridge">
+        <div class="agent"><div class="top"><span class="role">GBRAIN</span><span class="file">gbrain_bridge.py</span></div><div class="desc">Trajni spomin SQLite — uči se iz napak.</div><span class="tag on">aktivno</span></div>
+        <div class="agent"><div class="top"><span class="role">GRAPHIFY</span><span class="file">graphify_bridge.py</span></div><div class="desc">AST sken → graph.json + odvisnostni kontekst.</div><span class="tag on">aktivno</span></div>
+        <div class="agent"><div class="top"><span class="role">GSTACK</span><span class="file">gstack_bridge.py</span></div><div class="desc">Arhitekturna spec → manifest + spec_hint.</div><span class="tag on">aktivno</span></div>
+        <div class="agent"><div class="top"><span class="role">HERMES</span><span class="file">hermes_bridge.py</span></div><div class="desc">Ustvari ogrodje actions/&lt;mod&gt;/.</div><span class="tag on">aktivno</span></div>
+        <div class="agent"><div class="top"><span class="role">LOOPX</span><span class="file">loopx_bridge.py</span></div><div class="desc">Verifikacija + samozdravljenje do 100% zelen.</div><span class="tag on">aktivno</span></div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="statusbar">
+    <span class="live"><span class="dot"></span>povezano</span>
+    <span>spomin: <b style="color:var(--ink)">.rob_ai/memory.db</b></span>
+    <span class="spacer"></span>
+    <span class="sync">zadnja sinhronizacija <b id="last-sync">—</b></span>
+    <div class="export" id="export">
+      <button onclick="document.getElementById('export').classList.toggle('open')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 8l5 5 5-5M5 21h14"/></svg>
+        Izvoz podatkov
+      </button>
+      <div class="menu">
+        <span onclick="exportData('json')">JSON</span>
+        <span onclick="exportData('csv')">CSV</span>
+        <span onclick="exportData('md')">Markdown</span>
+        <span onclick="exportData('html')">HTML</span>
+        <span onclick="exportData('png')">PNG (snapshot)</span>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<div class="graph-tip" id="graph-tip"></div>
+<div class="toast" id="toast"></div>
+<div class="modal-overlay" id="skill-modal">
+  <div class="modal">
+    <div class="modal-head">Zagon skill-a <b id="skill-name">—</b></div>
+    <input id="skill-input" type="text" placeholder="Kaj naj izvedem? (npr. pregledaj to idejo ...)" onkeydown="if(event.key==='Enter')submitSkill()">
+    <div class="modal-actions">
+      <button class="tbtn" onclick="closeSkill()">Prekliči</button>
+      <button class="tbtn" onclick="submitSkill()" style="border-color:var(--accent);color:var(--accent)">Zaženi</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="art-modal">
+  <div class="modal art-modal">
+    <div class="modal-head">Dokument · <b id="art-name">—</b></div>
+    <div class="art-frame-wrap"><iframe id="art-frame" src="about:blank"></iframe></div>
+    <div class="modal-actions">
+      <a class="dbtn" id="dl-orig" href="#" target="_blank">Izvirnik</a>
+      <a class="dbtn" id="dl-word" href="#" target="_blank">Word</a>
+      <a class="dbtn" id="dl-pdf" href="#" target="_blank">PDF</a>
+      <a class="dbtn" id="dl-html" href="#" target="_blank">HTML</a>
+      <button class="dbtn" onclick="closeArtifact()">Zapri</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Navigacija ────────────────────────────────────────────────────
+  const crumbs = {command:'/ pregled', pogovor:'/ pogovor', agenda:'/ agenda', artifacts:'/ artefakti', gbrain:'/ gbrain', agents:'/ agenti'};
+  function show(view){
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
+    document.getElementById('view-'+view).classList.add('active');
+    document.getElementById('crumb').textContent = crumbs[view] || '/';
+  }
+
+  // ── AI agent (govorno stanje + waveform) ─────────────────────────
+  let speaking=false;
+  function setSpeaking(on){
+    speaking=on;
+    document.getElementById('agent-tag').textContent = on?'GOVORI':'POSLUŠA';
+    document.getElementById('agent-state-text').textContent = on?'govorim':'poslušam';
+    document.getElementById('agent-tag').style.color = on?'var(--good)':'var(--accent)';
+  }
+  const BARS=22;
+  function buildWave(){const w=document.getElementById('wave');for(let i=0;i<BARS;i++){const b=document.createElement('i');w.appendChild(b);}}
+  function animateWave(){document.querySelectorAll('#wave i').forEach((b,i)=>{b.style.height=(speaking?6+Math.random()*36:5+Math.random()*9)+'px';});}
+  setInterval(animateWave,120);
+
+  // ── GBRAIN skills ────────────────────────────────────────────────
+  const SKILLS=[
+    {cat:'Načrtovanje', items:['office-hours','plan-ceo-review','plan-eng-review','plan-design-review','plan-devex-review','autoplan','design-consultation','plan-tune','spec']},
+    {cat:'Implementacija / pregled', items:['review','codex','investigate','design-review','design-shotgun','design-html','devex-review','qa','qa-only','scrape','skillify']},
+    {cat:'Ship / deploy', items:['ship','land-and-deploy','canary','landing-report','document-release','document-generate','setup-deploy','gstack-upgrade']},
+    {cat:'Operacije / spomin', items:['context-save','context-restore','learn','retro','health','benchmark','benchmark-models','cso','setup-gbrain','sync-gbrain']},
+    {cat:'Browser / agenti', items:['browse','open-gstack-browser','setup-browser-cookies','pair-agent']},
+    {cat:'iOS QA', items:['ios-qa','ios-fix','ios-design-review','ios-clean','ios-sync']},
+    {cat:'Varnost / orodja', items:['careful','freeze','guard','unfreeze','make-pdf','diagram']},
+    {cat:'Router', items:['gstack']},
+  ];
+  function renderSkills(){
+    document.getElementById('skills').innerHTML = SKILLS.map(g=>
+      `<div class="skill-group"><div class="skill-cat">${g.cat}</div><div class="skill-chips">${
+        g.items.map(s=>`<button class="skill" onclick="runSkill('${s}')">/${s}</button>`).join('')
+      }</div></div>`
+    ).join('');
+  }
+  let currentSkill=null;
+  function runSkill(name){
+    currentSkill=name;
+    document.getElementById('skill-name').textContent='/'+name;
+    document.getElementById('skill-input').value='';
+    document.getElementById('skill-modal').classList.add('open');
+    document.getElementById('skill-input').focus();
+  }
+  function closeSkill(){
+    document.getElementById('skill-modal').classList.remove('open');
+  }
+  async function submitSkill(){
+    const inp=document.getElementById('skill-input');
+    const prompt=inp.value.trim();
+    if(!currentSkill) return;
+    closeSkill();
+    setSpeaking(true);
+    toast('Zagon /'+currentSkill+(prompt?' · «'+prompt.slice(0,40)+'»':''));
+    try{
+      const r=await fetch('/api/skill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skill:currentSkill,prompt})});
+      const d=await r.json();
+      toast('/'+currentSkill+(d.ok?' · izveden':' · napaka: '+(d.error||('exit '+d.exit))));
+    }catch(e){
+      toast('/'+currentSkill+' · API nedosegljiv');
+    }
+    setSpeaking(false);
+  }
+
+  // ── Pogovor (živo: /api/chat + glasovni vnos) ───────────────────
+  const REPLIES=[
+    'Razumem. Pregledujem 18 modulov — vse zeleno.',
+    'Zaganjam gradnjo modula prek RSI zanke (gbrain → loopx).',
+    'Agenda: 3 naročila, 1 v teku, 2 čakata.',
+    'Samozdravljenje končano — 0 odprtih napak.',
+    'GBRAIN spomin sinhroniziran. 259 vzorcev naučenih.',
+    'Ukaz izveden. Arhiviram v ledger.',
+  ];
+  function addLine(who,msg){
+    const el=document.createElement('div');
+    el.className='convo-line '+who;
+    el.innerHTML=`<span class="who">${who==='you'?'TI':'ROB'}</span><span class="msg"></span>`;
+    el.querySelector('.msg').textContent=msg;
+    const box=document.getElementById('convo');
+    box.appendChild(el); box.scrollTop=box.scrollHeight;
+  }
+  let voiceReply=true;
+  let voices=[];
+  function loadVoices(){
+    if(!('speechSynthesis' in window)) return;
+    voices=speechSynthesis.getVoices();
+    const sel=document.getElementById('voice-select'); if(!sel) return;
+    sel.innerHTML=voices.map(v=>`<option value="${v.name}">${v.name} · ${v.lang}</option>`).join('');
+    const sl=voices.find(v=>v.lang&&v.lang.toLowerCase().startsWith('sl'));
+    if(sl) sel.value=sl.name;
+  }
+  if('speechSynthesis' in window){ loadVoices(); speechSynthesis.onvoiceschanged=loadVoices; }
+  function speak(text){
+    if(!('speechSynthesis' in window)) return;
+    try{ speechSynthesis.cancel(); }catch(e){}
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='sl-SI'; u.rate=1.02; u.pitch=1;
+    const sel=document.getElementById('voice-select');
+    const v=voices.find(x=>x.name===(sel?sel.value:''));
+    if(v) u.voice=v;
+    speechSynthesis.speak(u);
+  }
+  function toggleVoiceReply(){
+    voiceReply=!voiceReply;
+    const b=document.getElementById('voice-toggle');
+    if(b) b.style.color=voiceReply?'var(--accent)':'var(--muted)';
+    toast(voiceReply?'Glasovni odgovor: VKLOPLJEN':'Glasovni odgovor: IZKLOPLJEN');
+  }
+  async function processInput(text){
+    setSpeaking(true);
+    let reply;
+    try{
+      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
+      const d=await r.json();
+      reply=d.ok?d.reply:('napaka: '+(d.error||''));
+    }catch(e){
+      reply=REPLIES[Math.floor(Math.random()*REPLIES.length)]; // offline fallback
+    }
+    addLine('ai',reply);
+    setSpeaking(false);
+    if(voiceReply) speak(reply);
+  }
+  function sendMessage(){
+    const inp=document.getElementById('convo-input');
+    const t=inp.value.trim(); if(!t) return;
+    addLine('you',t); inp.value='';
+    processInput(t);
+  }
+  function sendVoice(){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){ addLine('ai','Glasovni vnos ni podprt v tem brskalniku. Uporabi Chrome/Edge ali terminal.'); return; }
+    const rec=new SR();
+    rec.lang='sl-SI'; rec.interimResults=false; rec.maxAlternatives=1;
+    let got=false;
+    setSpeaking(true); toast('🎤 Poslušam ...');
+    rec.onresult=(e)=>{
+      got=true;
+      const text=(e.results[0][0].transcript||'').trim();
+      if(text){ addLine('you','🎤 '+text); processInput(text); }
+    };
+    rec.onerror=(e)=>{
+      setSpeaking(false);
+      if(e.error==='not-allowed'||e.error==='service-not-allowed'){
+        addLine('ai','🎤 Mikrofon blokiran — glas potrebuje varno povezavo (HTTPS ali localhost). Odpri http://localhost:8787/command ali nastavi HTTPS.');
+      }else{
+        toast('Voice napaka: '+e.error);
+      }
+    };
+    rec.onend=()=>{ if(!got) setSpeaking(false); };
+    rec.start();
+  }
+
+  // ── Živo stanje (mock) ──────────────────────────────────────────
+  const state={
+    tasks:17, errors:259, nodes:158,
+    events:[
+      {t:'20:41:02',s:'BUILD',c:'s-run',m:'contract_schema_engine → 47 testov zelenih'},
+      {t:'20:39:17',s:'HEAL', c:'s-ok', m:'auto-popravek rate_limiter (window drift)'},
+      {t:'20:37:44',s:'AGENT',c:'s-run',m:'planner → 2 koraka v workplan'},
+      {t:'20:35:09',s:'WARN', c:'s-warn',m:'agenda: repeat naloga rearmed'},
+      {t:'20:31:55',s:'SHIP', c:'s-ok', m:'api_gateway + contract_schema_engine → master'},
+      {t:'20:28:12',s:'FAIL', c:'s-crit',m:'visual_qa timeout (retry 2/5)'},
+      {t:'20:24:40',s:'SYNC', c:'s-ok', m:'GBRAIN spomin konsolidiran (12 lekcij)'},
+    ]
+  };
+  const EVENT_POOL=[
+    {s:'BUILD',c:'s-run',m:'gradnja modula → zelen'},
+    {s:'HEAL', c:'s-ok', m:'samozdravljenje uspešno'},
+    {s:'AGENT',c:'s-run',m:'planner → nov workplan'},
+    {s:'SHIP', c:'s-ok', m:'modul SHIPPED na master'},
+    {s:'SYNC', c:'s-ok', m:'GBRAIN/GRAPHIFY sinhronizacija'},
+    {s:'WARN', c:'s-warn',m:'agenda: ponavljajoča naloga'},
+    {s:'FAIL', c:'s-crit',m:'verify timeout (retry)'},
+  ];
+  function now(){const d=new Date();const p=n=>String(n).padStart(2,'0');return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
+  function renderEvents(){
+    document.getElementById('feed').innerHTML=state.events.map(e=>
+      `<div class="line"><span class="t">${e.t}</span><span class="s ${e.c}">${e.s}</span><span class="m">${e.m}</span></div>`
+    ).join('');
+  }
+  function render(){
+    document.getElementById('kpi-tasks').textContent=state.tasks;
+    document.getElementById('kpi-errors').textContent=state.errors;
+    document.getElementById('kpi-nodes').textContent=state.nodes;
+    renderEvents();
+    document.getElementById('last-sync').textContent=now();
+  }
+  function refresh(){
+    if(live){ render(); return; }
+    if(Math.random()<0.45) state.tasks++;
+    if(Math.random()<0.15) state.errors++;
+    if(Math.random()<0.2)  state.nodes+=Math.floor(Math.random()*3);
+    state.events.unshift(Object.assign({t:now()},EVENT_POOL[Math.floor(Math.random()*EVENT_POOL.length)]));
+    state.events=state.events.slice(0,10);
+    render();
+  }
+
+  // ── Živi podatki iz API (server.ts) ─────────────────────────────
+  let live = false;
+  function fmtTs(ts){ if(!ts) return ''; const d=new Date(ts*1000); const p=n=>String(n).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes()); }
+  function renderAgenda(items){
+    const body=document.getElementById('agenda-body'); if(!body) return;
+    const st={pending:['pend','čaka'],running:['run','v teku'],done:['done','končano'],failed:['crit','napaka']};
+    body.innerHTML=items.length?items.map(i=>{
+      const s=st[i.status]||['pend',i.status||'?'];
+      return `<tr><td><span class="pill ${s[0]}">${s[1]}</span></td><td>${(i.goal||'').replace(/</g,'&lt;')}</td><td class="mono">${i.target||''}</td><td class="mono">${i.kind||''}</td><td class="mono">${i.source||''}</td><td class="mono">${fmtTs(i.updated_at)}</td></tr>`;
+    }).join(''):'<tr><td colspan="6" style="color:var(--faint)">agenda prazna</td></tr>';
+  }
+  function renderArtifacts(list){
+    const g=document.getElementById('arts'); if(!g) return;
+    g.innerHTML=list.length?list.map(a=>`<div class="art" data-path="${a.path}" data-name="${a.name}"><span class="type">${a.kind==='modul'?'modul':a.type}</span><div class="an">${a.name}</div><div class="am"><span>${a.type||''}</span><span>${a.kind||''}</span></div></div>`).join(''):'<div style="color:var(--faint)">ni artefaktov</div>';
+  }
+  function openArtifact(path, name){
+    document.getElementById('art-name').textContent=name;
+    document.getElementById('art-frame').src='/api/view?path='+encodeURIComponent(path);
+    document.getElementById('dl-orig').href='/api/artifact?path='+encodeURIComponent(path);
+    document.getElementById('dl-word').href='/api/export?path='+encodeURIComponent(path)+'&format=docx';
+    document.getElementById('dl-pdf').href='/api/export?path='+encodeURIComponent(path)+'&format=pdf';
+    document.getElementById('dl-html').href='/api/view?path='+encodeURIComponent(path);
+    document.getElementById('art-modal').classList.add('open');
+  }
+  function closeArtifact(){
+    document.getElementById('art-modal').classList.remove('open');
+    document.getElementById('art-frame').src='about:blank';
+  }
+  function renderAgents(list){
+    const ts=document.getElementById('agents-ts');
+    const br=document.getElementById('agents-bridge');
+    if(!ts || !br) return;
+    const card=x=>`<div class="agent"><div class="top"><span class="role">${x.role}</span><span class="file">${x.file}</span></div><div class="desc">${x.desc||''}</div><span class="tag on">${x.group==='agent'?'v toku':'aktivno'}</span></div>`;
+    ts.innerHTML=list.filter(x=>x.group==='agent').map(card).join('');
+    br.innerHTML=list.filter(x=>x.group==='bridge').map(card).join('');
+  }
+  async function loadLive(){
+    try{
+      const r=await fetch('/api/metrics');
+      if(r.ok){ const m=await r.json(); if(m.tasks!==undefined){
+        state.tasks=m.tasks; state.errors=m.errors; state.nodes=m.nodes; live=true;
+        document.getElementById('kpi-modules').innerHTML=`${m.modules}<em style="font-style:normal;color:var(--accent)">/${m.modules}</em>`;
+      }}
+    }catch(e){}
+    try{
+      const r=await fetch('/api/agenda');
+      if(r.ok){ const a=await r.json(); if(a.items) renderAgenda(a.items); }
+    }catch(e){}
+    try{
+      const r=await fetch('/api/artifacts');
+      if(r.ok){ const a=await r.json(); if(a.artifacts) renderArtifacts(a.artifacts); }
+    }catch(e){}
+    try{
+      const r=await fetch('/api/agents');
+      if(r.ok){ const a=await r.json(); if(a.agents) renderAgents(a.agents); }
+    }catch(e){}
+    render();
+  }
+
+  // ── Izvoz ───────────────────────────────────────────────────────
+  function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2200);}
+  function download(name,content,type){const b=new Blob([content],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();URL.revokeObjectURL(a.href);toast('Izvoz: '+name);document.getElementById('export').classList.remove('open');}
+  function snapshot(){return{generated_at:new Date().toISOString(),system:{agents:6,bridges:5,modules:18,tasks:state.tasks,auto_healed:state.errors,ast_nodes:state.nodes},events:state.events};}
+  function exportData(fmt){
+    const s=snapshot();
+    if(fmt==='json'){download('dashboard.json',JSON.stringify(s,null,2),'application/json');}
+    else if(fmt==='csv'){download('dashboard.csv','time,status,message\n'+s.events.map(e=>`${e.t},${e.s},"${e.m}"`).join('\n'),'text/csv');}
+    else if(fmt==='md'){const L=['# Command Center — izvoz','',`- agenti: **${s.system.agents}**`,`- moduli: **${s.system.modules}**`,`- taski: **${s.system.tasks}**`,'','| Čas | Status | Dogodek |','|---|---|---|'];s.events.forEach(e=>L.push(`| ${e.t} | ${e.s} | ${e.m} |`));download('dashboard.md',L.join('\n'),'text/markdown');}
+    else if(fmt==='html'){const rows=s.events.map(e=>`<tr><td>${e.t}</td><td>${e.s}</td><td>${e.m}</td></tr>`).join('');download('dashboard.html',`<!doctype html><meta charset="utf-8"><title>Command Center</title><body style="background:#04070d;color:#d8e6f5;font-family:monospace"><h1>Command Center — izvoz</h1><p>agenti ${s.system.agents} · moduli ${s.system.modules} · taski ${s.system.tasks}</p><table style="border-collapse:collapse"><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #243a54">Čas</th><th style="text-align:left;padding:6px;border-bottom:1px solid #243a54">Status</th><th style="text-align:left;padding:6px;border-bottom:1px solid #243a54">Dogodek</th></tr>${rows}</table></body>`,'text/html');}
+    else if(fmt==='png'){const c=document.createElement('canvas');c.width=800;c.height=420;const x=c.getContext('2d');x.fillStyle='#04070d';x.fillRect(0,0,800,420);x.strokeStyle='#35d6e0';x.strokeRect(16,16,768,388);x.fillStyle='#d8e6f5';x.font='700 30px monospace';x.fillText('COMMAND CENTER — SNAPSHOT',40,64);x.fillStyle='#35d6e0';x.font='16px monospace';x.fillText(`agenti ${s.system.agents}   moduli ${s.system.modules}   taski ${s.system.tasks}   avto-healed ${s.system.auto_healed}`,40,104);x.fillStyle='#7c93ab';x.font='14px monospace';s.events.slice(0,10).forEach((e,i)=>x.fillText(`${e.t}  ${e.s.padEnd(6)} ${e.m}`,40,140+i*24));c.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='dashboard.png';a.click();URL.revokeObjectURL(a.href);toast('Izvoz: dashboard.png');document.getElementById('export').classList.remove('open');});}
+  }
+
+  // ── Obsidian interaktivni graf ──────────────────────────────────
+  const GRAPH_NODES=[
+    ...['api_gateway','nexus_command_deck','auth_vault','audit_trail','event_bus','task_queue','saga_orchestrator','deployment_manager','rsi_engine','contract_schema_engine','cache_layer','circuit_breaker','rate_limiter','currency_converter','observability_metrics','feature_flag','mailer','warehouse_inventory'].map(n=>({id:n,label:n,g:'m'})),
+    ...['planner','builder','qa','screenshot','architect','engineer'].map(n=>({id:n,label:n,g:'a'})),
+    ...['gbrain','graphify','gstack','hermes','loopx'].map(n=>({id:n,label:n,g:'b'})),
+  ];
+  const GRAPH_EDGES=[
+    ['api_gateway','auth_vault'],['api_gateway','rate_limiter'],['api_gateway','circuit_breaker'],
+    ['api_gateway','observability_metrics'],['api_gateway','event_bus'],['api_gateway','contract_schema_engine'],
+    ['event_bus','saga_orchestrator'],['event_bus','task_queue'],['event_bus','audit_trail'],
+    ['saga_orchestrator','task_queue'],['observability_metrics','cache_layer'],['observability_metrics','circuit_breaker'],
+    ['deployment_manager','api_gateway'],['deployment_manager','observability_metrics'],['rsi_engine','deployment_manager'],
+    ['contract_schema_engine','currency_converter'],['currency_converter','warehouse_inventory'],
+    ['planner','builder'],['builder','qa'],['qa','screenshot'],['qa','loopx'],
+    ['gbrain','graphify'],['graphify','gstack'],['gstack','hermes'],['hermes','loopx'],
+    ['planner','gbrain'],['loopx','rsi_engine'],
+  ];
+  const GRAPH_COLORS={m:'#35d6e0',a:'#3fd6a4',b:'#f0b543'};
+  let hoverNode=null, pinned=null;
+  const mouse={x:-1e4,y:-1e4};
+  let tipX=-1e4, tipY=-1e4;
+  function groupLabel(g){return g==='m'?'modul':g==='a'?'agent':'bridge';}
+  function nodePath(n){return n.g==='m'?`actions/${n.id}/`:n.g==='a'?`src/agents/${n.id}.ts`:`core/${n.id}_bridge.py`;}
+  function showTip(n,x,y){
+    const t=document.getElementById('graph-tip'); if(!t) return;
+    const col=GRAPH_COLORS[n.g];
+    t.innerHTML=`<div class="tn">${n.id}</div><span class="tg" style="color:${col};border:1px solid ${col}">${groupLabel(n.g)}</span><div class="td">${nodePath(n)}</div>`;
+    t.style.display='block'; t.style.left=(x+16)+'px'; t.style.top=(y+16)+'px';
+  }
+  function hideTip(){const t=document.getElementById('graph-tip'); if(t) t.style.display='none';}
+
+  let graphReady=false;
+  function positionNodes(){
+    const c=document.getElementById('graph-canvas'); if(!c) return;
+    const W=c.width, H=c.height, cx=W/2, cy=H/2, N=GRAPH_NODES.length;
+    GRAPH_NODES.forEach((n,i)=>{
+      const a=(i/N)*Math.PI*2-Math.PI/2;
+      const r=Math.min(W,H)*0.44*(0.82+(i%4)*0.06);
+      n.hx=cx+Math.cos(a)*r; n.hy=cy+Math.sin(a)*r;
+      n.x=n.hx; n.y=n.hy; n.p=Math.random()*6.28;
+    });
+  }
+  function initGraph(){
+    const c=document.getElementById('graph-canvas'); if(!c) return;
+    c.width=800; c.height=370;
+    positionNodes();
+    if(graphReady) return;
+    graphReady=true;
+    const W=c.width, H=c.height;
+    function toLogical(e){const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*(W/r.width),y:(e.clientY-r.top)*(H/r.height)};}
+    c.addEventListener('mousemove',e=>{const p=toLogical(e);mouse.x=p.x;mouse.y=p.y;tipX=e.clientX;tipY=e.clientY;});
+    c.addEventListener('mouseleave',()=>{mouse.x=-1e4;mouse.y=-1e4;hideTip();});
+    c.addEventListener('click',()=>{if(hoverNode){pinned=pinned===hoverNode?null:hoverNode;}});
+    requestAnimationFrame(loop);
+  }
+  async function loadGraph(){
+    try{
+      const r=await fetch('/api/graph');
+      if(r.ok){
+        const g=await r.json();
+        if(g.nodes && g.nodes.length){
+          GRAPH_NODES.length=0;
+          g.nodes.forEach(n=>GRAPH_NODES.push({id:n.id,label:n.label,g:n.group}));
+          GRAPH_EDGES.length=0;
+          (g.edges||[]).forEach(e=>GRAPH_EDGES.push(e));
+          initGraph();
+        }
+      }
+    }catch(e){}
+  }
+
+  function loop(t){
+    const c=document.getElementById('graph-canvas'); if(!c) return;
+    const x=c.getContext('2d'); const W=c.width,H=c.height;
+    x.clearRect(0,0,W,H);
+
+    GRAPH_NODES.forEach(n=>{
+      n.x=n.hx+Math.sin(t/900+n.p)*6;
+      n.y=n.hy+Math.cos(t/1150+n.p)*6;
+    });
+
+    hoverNode=null;
+    for(const n of GRAPH_NODES){const dx=n.x-mouse.x,dy=n.y-mouse.y;if(dx*dx+dy*dy<19*19){hoverNode=n;break;}}
+
+    const focus=hoverNode||pinned;
+    const focusSet=new Set();
+    if(focus){focusSet.add(focus.id);GRAPH_EDGES.forEach(([a,b])=>{if(a===focus.id||b===focus.id){focusSet.add(a);focusSet.add(b);}});}
+    const dim=!!focus;
+    const shown=hoverNode||pinned;
+    if(shown){ showTip(shown, tipX, tipY); } else { hideTip(); }
+
+    GRAPH_EDGES.forEach(([a,b])=>{
+      const na=GRAPH_NODES.find(n=>n.id===a), nb=GRAPH_NODES.find(n=>n.id===b);
+      if(!na||!nb) return;
+      const lit=focus&&(a===focus.id||b===focus.id);
+      x.beginPath();x.moveTo(na.x,na.y);x.lineTo(nb.x,nb.y);
+      x.strokeStyle=lit?'rgba(142,233,242,.9)':(dim?'rgba(53,214,224,.08)':'rgba(53,214,224,.22)');
+      x.lineWidth=lit?1.6:1;x.stroke();
+    });
+
+    GRAPH_NODES.forEach(n=>{
+      const isFocus=focus&&n.id===focus.id;
+      const isNeighbor=focus&&focusSet.has(n.id);
+      const lit=isFocus||isNeighbor;
+      const r=isFocus?6:(lit?4.2:3);
+      x.beginPath();x.arc(n.x,n.y,r,0,7);
+      x.fillStyle=GRAPH_COLORS[n.g];
+      x.globalAlpha=dim&&!lit?0.18:0.9;
+      x.shadowColor=GRAPH_COLORS[n.g];x.shadowBlur=lit?14:6;
+      x.fill();x.shadowBlur=0;x.globalAlpha=1;
+      if(lit){
+        x.fillStyle='rgba(216,230,245,.9)';
+        x.font='9px "JetBrains Mono", monospace';
+        x.textAlign='center';
+        x.fillText(n.label,n.x,n.y-r-5);
+      }
+    });
+
+    requestAnimationFrame(loop);
+  }
+
+  // ── Klikabilnost (artefakti / agenti / dogodki / agenda) ────────
+  function itemToast(label, detail){
+    toast(label+' — '+detail);
+    setSpeaking(true); setTimeout(()=>setSpeaking(false),800);
+  }
+  document.addEventListener('click', e=>{
+    const art=e.target.closest('.art');
+    if(art){ openArtifact(art.dataset.path, art.dataset.name); return; }
+    const ag=e.target.closest('.agent');
+    if(ag){ itemToast(ag.querySelector('.role').textContent, ag.querySelector('.file').textContent); return; }
+    const line=e.target.closest('.feed .line');
+    if(line){ itemToast(line.querySelector('.s').textContent, line.querySelector('.m').textContent); return; }
+    const tr=e.target.closest('#view-agenda tbody tr');
+    if(tr){ itemToast(tr.cells[1].textContent, 'target: '+tr.cells[2].textContent); return; }
+  });
+
+  // ── Zagon ───────────────────────────────────────────────────────
+  function tick(){const d=new Date();const p=n=>String(n).padStart(2,'0');document.getElementById('clock').textContent=p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
+  tick(); setInterval(tick,1000);
+  buildWave(); renderSkills(); initGraph();
+  render(); setInterval(refresh,3800);
+  loadLive(); setInterval(loadLive,10000);
+  loadGraph();
+</script>

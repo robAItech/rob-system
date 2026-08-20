@@ -59,3 +59,6 @@ legacy/count_words/
 # Runtime test build-i iz klikov (trajna agenda / testne naloge) — izven gita
 legacy/test/
 legacy/testna/
+
+# Self-signed TLS cert (lokalno generiran — NE commitaj privatnega ključa)
+certs/

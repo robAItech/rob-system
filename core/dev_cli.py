@@ -27,6 +27,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+import ssl
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Tuple
 
@@ -116,12 +117,17 @@ def which(cmd: str) -> Optional[Path]:
 
 
 def _http_ok(url: str, token: Optional[str] = None, timeout: float = HEALTH_TIMEOUT) -> bool:
-    """GET url → True če status 200. Opcijski Bearer glava."""
+    """GET url → True če status 200. Opcijski Bearer glava. HTTPS → tolerira self-signed."""
     req = urllib.request.Request(url, headers={})
     if token:
         req.add_header("Authorization", f"Bearer {token}")
+    ctx = None
+    if url.startswith("https://"):
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
             return resp.status == 200
     except Exception:
         return False
@@ -289,7 +295,7 @@ def cmd_dashboard_only(cfg: Config) -> int:
     if not bun:
         print("[NAP] 'bun' ni na PATH.")
         return 1
-    print(f"[DASH] Command-Center v OSPREDJU na http://127.0.0.1:{DASH_PORT} (Ctrl+C za izhod)...")
+    print(f"[DASH] Command-Center v OSPREDJU na https://127.0.0.1:{DASH_PORT} (Ctrl+C za izhod)...")
     return _run_foreground([str(bun), "run", "src/server.ts"], cfg, cwd=cfg.root)
 
 
@@ -339,7 +345,7 @@ def _spawn(cmd: List[str], cfg: Config, extra_env: Optional[dict] = None,
 def cmd_all(cfg: Config, args: Sequence[str]) -> int:
     """Privzeti način: proxy + dashboard v ozadju, potem claude; cleanup."""
     proxy_base = f"http://127.0.0.1:{PORT}"
-    dash_url = f"http://127.0.0.1:{DASH_PORT}"
+    dash_url = f"https://127.0.0.1:{DASH_PORT}"
 
     litellm = which("litellm")
     if not litellm:
@@ -407,7 +413,7 @@ def cmd_serve(cfg: Config) -> int:
     za remote dostop (če ni nameščen → opozorilo, ne fail).
     """
     proxy_base = f"http://127.0.0.1:{PORT}"
-    dash_url = f"http://127.0.0.1:{DASH_PORT}"
+    dash_url = f"https://127.0.0.1:{DASH_PORT}"
 
     litellm = which("litellm")
     if not litellm:

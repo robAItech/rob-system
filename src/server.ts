@@ -317,6 +317,140 @@ async function listEditable(): Promise<Record<string, unknown>[]> {
   return out.sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
+/** Sistemske metrike iz GBRAIN (memory.db) + GRAPHIFY (graph.json) + actions/. */
+async function systemMetrics(): Promise<Record<string, unknown>> {
+  const script = `
+import sqlite3, json, os
+from pathlib import Path
+root = os.environ.get('OUT_ROOT') or '.'
+db = Path(root) / '.rob_ai' / 'memory.db'
+tasks = errors = 0
+if db.exists():
+    try:
+        conn = sqlite3.connect(db)
+        tasks = conn.execute('SELECT COUNT(*) FROM task_history').fetchone()[0]
+        errors = conn.execute('SELECT COUNT(*) FROM blacklist_patterns').fetchone()[0]
+        conn.close()
+    except Exception: pass
+graph = Path(root) / '.rob_ai' / 'graph.json'
+nodes = 0
+if graph.exists():
+    try: nodes = len(json.loads(graph.read_text(encoding='utf-8')).get('nodes', {}))
+    except Exception: pass
+mods = []
+actions = Path(root) / 'actions'
+if actions.exists():
+    mods = sorted(d.name for d in actions.iterdir() if d.is_dir() and not d.name.startswith('.') and not d.name.startswith('__'))
+print(json.dumps({'tasks': tasks, 'errors': errors, 'nodes': nodes, 'modules': len(mods), 'module_names': mods}))
+`;
+  try {
+    const proc = Bun.spawn({
+      cmd: ['python', '-c', script],
+      cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    return JSON.parse(out.trim() || '{}');
+  } catch {
+    return { tasks: 0, errors: 0, nodes: 0, modules: 0, module_names: [] };
+  }
+}
+
+/** Opisi agentov/bridge-ov (prikažejo se na dashboardu). */
+const AGENT_DESCS: Record<string, { group: string; desc: string }> = {
+  planner:    { group: 'agent',  desc: 'Orkestrator: zapiše odločitev, workplan, @file bloke.' },
+  builder:    { group: 'agent',  desc: 'Razreže @file na poti, piše na disk, sproži qa.verify.' },
+  qa:         { group: 'agent',  desc: 'Poganja cmd.exec verify; retry do maxFixPasses.' },
+  screenshot: { group: 'agent',  desc: 'Ob spletnem artefaktu zabeleži namero posnetka.' },
+  architect:  { group: 'agent',  desc: 'Arhetip mejnika: odločitev + en LLM odgovor.' },
+  engineer:   { group: 'agent',  desc: 'Zadnji LLM odgovor zapiše na disk, zaključi tek.' },
+  gbrain:   { group: 'bridge', desc: 'Trajni spomin SQLite — uči se iz napak.' },
+  graphify: { group: 'bridge', desc: 'AST sken → graph.json + kontekst.' },
+  gstack:   { group: 'bridge', desc: 'Arhitekturna spec → manifest + spec_hint.' },
+  hermes:   { group: 'bridge', desc: 'Ustvari ogrodje actions/<mod>/.' },
+  loopx:    { group: 'bridge', desc: 'Verifikacija + samozdravljenje do 100% zelen.' },
+};
+
+/** Agenti (src/agents/*.ts) + bridge-i (core/*_bridge.py) — iz datotečnega sistema. */
+async function listAgents(): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  try {
+    const glob = new Bun.Glob('*.ts');
+    for await (const f of glob.scan({ cwd: `${OUT_ROOT}/src/agents`, onlyFiles: true })) {
+      const name = f.replace(/\.ts$/, '');
+      const d = AGENT_DESCS[name] || { group: 'agent', desc: '' };
+      out.push({ id: name, role: name, label: name, file: `${name}.ts`, group: d.group, desc: d.desc });
+    }
+  } catch { /* src/agents morda ne obstaja */ }
+  try {
+    const glob = new Bun.Glob('*_bridge.py');
+    for await (const f of glob.scan({ cwd: `${OUT_ROOT}/core`, onlyFiles: true })) {
+      const name = f.replace(/_bridge\.py$/, '');
+      const d = AGENT_DESCS[name] || { group: 'bridge', desc: '' };
+      out.push({ id: name, role: name.toUpperCase(), label: name.toUpperCase(), file: f, group: d.group, desc: d.desc });
+    }
+  } catch { /* core morda ne obstaja */ }
+  return out;
+}
+
+/** Reprezentativne povezave v sistemskem grafu. */
+const GRAPH_EDGES: [string, string][] = [
+  ['api_gateway','auth_vault'],['api_gateway','rate_limiter'],['api_gateway','circuit_breaker'],
+  ['api_gateway','observability_metrics'],['api_gateway','event_bus'],['api_gateway','contract_schema_engine'],
+  ['event_bus','saga_orchestrator'],['event_bus','task_queue'],['event_bus','audit_trail'],
+  ['saga_orchestrator','task_queue'],['observability_metrics','cache_layer'],['observability_metrics','circuit_breaker'],
+  ['deployment_manager','api_gateway'],['deployment_manager','observability_metrics'],['rsi_engine','deployment_manager'],
+  ['contract_schema_engine','currency_converter'],['currency_converter','warehouse_inventory'],
+  ['planner','builder'],['builder','qa'],['qa','screenshot'],['qa','loopx'],
+  ['gbrain','graphify'],['graphify','gstack'],['gstack','hermes'],['hermes','loopx'],
+  ['planner','gbrain'],['loopx','rsi_engine'],
+];
+
+/** Sistemski graf: moduli (actions/) + agenti (src/agents/) + bridge-i (core/). */
+async function systemGraph(): Promise<Record<string, unknown>> {
+  const modules = await listEditable();
+  const agents = await listAgents();
+  const nodes = [
+    ...modules.map((m) => ({ id: m.name, label: m.name, group: 'm' })),
+    ...agents.map((a) => ({ id: a.id, label: a.label, group: a.group === 'bridge' ? 'b' : 'a' })),
+  ];
+  return { nodes, edges: GRAPH_EDGES };
+}
+
+/** Združen seznam artefaktov: moduli (actions/) + izdelki (out/), vsak s potjo za prenos. */
+async function listArtifacts(): Promise<Record<string, unknown>[]> {
+  const editable = await listEditable();
+  const mods = await listModules();
+  const actions = editable.map((m) => ({
+    name: m.name, kind: 'modul', type: m.type,
+    path: `actions/${m.name}/${m.artefact || m.type}`,
+  }));
+  const outs = mods.map((m) => ({ name: m.name, kind: 'izdelek', type: m.ext, path: m.path }));
+  return [...actions, ...outs];
+}
+
+/** Neposredni pogovor z LLM (ROB) — brez Hermes pipeline-a. */
+async function chat(message: string): Promise<string> {
+  const p = resolveProvider(process.env);
+  const ledger = new Ledger(DB_PATH);
+  try {
+    const cache = new LLMCache(ledger.db);
+    const llm = new OpenAICompatibleProvider(p.name, { baseUrl: p.baseUrl, apiKey: p.apiKey, cache });
+    const res = await llm.complete({
+      provider: p.name, model: p.model, attempt: 0,
+      messages: [
+        { role: 'system', content: 'Ti si ROB, avtonomni inženirski stroj za Rob AI Studio. Odgovarjaj kratko in tehnično, v slovenščini.' },
+        { role: 'user', content: message },
+      ],
+      temperature: 0.3, maxTokens: 500,
+    });
+    return res.text;
+  } finally {
+    ledger.close();
+  }
+}
+
 /** Skromen razčlenjevalnik Markdown → odstavki Worda (naslovi, kulice, navaden tekst). */
 async function toDocxBuffer(md: string): Promise<Uint8Array> {
   const lines = md.replace(/\r/g, '').split('\n');
@@ -699,8 +833,21 @@ async function gmailToAgenda(): Promise<{ added: number }> {
   return { added };
 }
 
+// HTTPS (self-signed) za glasovni vnos prek LAN. Če certa ni → pade nazaj na HTTP.
+const TLS_KEY = `${OUT_ROOT}/certs/key.pem`;
+const TLS_CERT = `${OUT_ROOT}/certs/cert.pem`;
+async function tlsOptions(): Promise<Record<string, unknown>> {
+  const k = Bun.file(TLS_KEY), c = Bun.file(TLS_CERT);
+  if (await k.exists() && await c.exists()) {
+    return { tls: { key: await k.text(), cert: await c.text() } };
+  }
+  return {};
+}
+
+const tls = await tlsOptions();
 const server = Bun.serve({
   port: PORT,
+  ...tls,
   async fetch(req) {
     const url = new URL(req.url);
 
@@ -713,6 +860,13 @@ const server = Bun.serve({
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       const html = await Bun.file(`${OUT_ROOT}/out/Dashboard.html`).text().catch(() => null)
         ?? await Bun.file('out/Dashboard.html').text();
+      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+
+    // Novi Command Center (futuristični) — servira command-center-mockup.html.
+    if (req.method === 'GET' && url.pathname === '/command') {
+      const html = await Bun.file(`${OUT_ROOT}/command-center-mockup.html`).text().catch(() => null)
+        ?? await Bun.file('command-center-mockup.html').text();
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 
@@ -729,6 +883,58 @@ const server = Bun.serve({
     // "Popravi to" — RSI module (actions/<name>/), ki jih uporabnik lahko uredi.
     if (req.method === 'GET' && url.pathname === '/api/editable') {
       return json({ editable: await listEditable() });
+    }
+    // Sistemske metrike (GBRAIN tasks/blacklist + GRAPHIFY nodes + moduli).
+    if (req.method === 'GET' && url.pathname === '/api/metrics') {
+      return json(await systemMetrics());
+    }
+    // Agenti + bridge-i (iz src/agents/ in core/).
+    if (req.method === 'GET' && url.pathname === '/api/agents') {
+      return json({ agents: await listAgents() });
+    }
+    // Sistemski graf (vozlišča + povezave).
+    if (req.method === 'GET' && url.pathname === '/api/graph') {
+      return json(await systemGraph());
+    }
+    // Združeni artefakti (moduli + izdelki) s potmi za prenos.
+    if (req.method === 'GET' && url.pathname === '/api/artifacts') {
+      return json({ artifacts: await listArtifacts() });
+    }
+    // Pogovor z ROB (neposredni LLM).
+    if (req.method === 'POST' && url.pathname === '/api/chat') {
+      const raw = await req.text().catch(() => '');
+      let body: { message?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const message = String(body.message || '').trim();
+      if (!message) return json({ ok: false, error: 'sporočilo je prazno' }, 400);
+      try {
+        const reply = await chat(message);
+        return json({ ok: true, reply });
+      } catch (e) {
+        return json({ ok: false, error: String(e instanceof Error ? e.message : e) }, 500);
+      }
+    }
+    // Zagon gstack skill-a (prek claude CLI, headless).
+    if (req.method === 'POST' && url.pathname === '/api/skill') {
+      const raw = await req.text().catch(() => '');
+      let body: { skill?: unknown; prompt?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const skill = String(body.skill || '').trim().replace(/^\/+/, '');
+      const prompt = String(body.prompt || '').trim();
+      if (!skill) return json({ ok: false, error: 'skill je prazen' }, 400);
+      try {
+        const proc = Bun.spawn({
+          cmd: ['claude', '-p', '/' + skill, ...(prompt ? [prompt] : []), '--print'],
+          cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+        });
+        const out = await new Response(proc.stdout).text();
+        const err = await new Response(proc.stderr).text();
+        const code = await proc.exited;
+        return json({ ok: code === 0, skill, exit: code, log: (out + err).slice(0, 4000) });
+      } catch (e) {
+        return json({ ok: false, skill, error: String(e instanceof Error ? e.message : e) }, 500);
+      }
     }
 
     // API: ogled vsebine modula (Markdown → HTML ali surov HTML)
