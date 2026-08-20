@@ -49,6 +49,9 @@ elif [ "$1" == "plan" ]; then
 elif [ "$1" == "team" ]; then
     # Zanka 6 — multi-agent adversarial koordinacija (plan → critique → build → verify).
     cd "$PROJECT_DIR" && python core/team.py --run "$2" --project "${3:-demo}"
+elif [ "$1" == "predict" ]; then
+    # Zanka 7 — svetovni model: napoved izida (uspešnost, LLM strošek, vzrok).
+    cd "$PROJECT_DIR" && python core/world_model.py --predict "$2" --project "${3:-}"
 elif [ "$1" == "deploy" ]; then
     # Zagon python skripte, ki naredi POST request na naš novi manager
     cd "$PROJECT_DIR" && source venv/bin/activate && python3 -c "
