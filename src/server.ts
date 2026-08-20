@@ -495,7 +495,7 @@ async function geminiTts(text: string, voice: string): Promise<{ mime: string; b
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
   try {
-    const model = 'gemini-2.5-flash-preview-tts';
+    const model = 'gemini-3.1-flash-tts-preview';
     const body = {
       contents: [{ parts: [{ text }] }],
       generationConfig: {
@@ -533,8 +533,31 @@ async function wikiSearch(query: string): Promise<{ title: string; url: string; 
   } catch { return []; }
 }
 
-/** Spletno iskanje: Gemini Google Search grounding → fallback Wikipedia. */
+/** Pravo Google iskanje prek Serper.dev (potrebuje SERPER_API_KEY). */
+async function serperSearch(query: string): Promise<{ title: string; url: string; snippet: string }[]> {
+  const key = process.env.SERPER_API_KEY;
+  if (!key) return [];
+  try {
+    const r = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-KEY': key },
+      body: JSON.stringify({ q: query, gl: 'si', hl: 'sl', num: 8 }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) return [];
+    const j = await r.json() as Record<string, any>;
+    return ((j.organic ?? []) as any[]).slice(0, 8).map((o: any) => ({
+      title: o.title || '',
+      url: o.link || '',
+      snippet: (o.snippet || '').slice(0, 220),
+    }));
+  } catch { return []; }
+}
+
+/** Spletno iskanje: Serper (Google) → Gemini grounding → Wikipedia. */
 async function webSearch(query: string): Promise<{ title: string; url: string; snippet: string }[]> {
+  const serper = await serperSearch(query);
+  if (serper.length) return serper;
   const key = process.env.GEMINI_API_KEY;
   if (key) {
     try {
