@@ -61,6 +61,7 @@ _STOPWORDS = {
 _PROBE_PROJECTS = frozenset({
     "_loopx_probe", "test_matrix", "test_sum2", "quicktest", "healtest",
     "test", "testna", "demo_service", "svc",
+    "master_test", "demo_bug", "count_words", "divide_safe", "fizzbuzz",
 })
 _PROBE_PREFIXES = ("_", "test_")
 

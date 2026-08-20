@@ -17,17 +17,23 @@ def test_full_repos_integrity():
         assert (path / "pyproject.toml").exists(), f"Repozitorij repos/{r} nima pyproject.toml"
 
 def test_bridges_and_llm_instantiation():
-    gbrain = GBrainBridge()
-    task_id = gbrain.record_task("master_test", "Unit testing LLM integration", "VERIFIED GREEN", "", "pass")
-    assert task_id > 0
+    import shutil
+    probe = "_suite_probe"  # prehodno ime (interno); master_test je v legacy/
+    try:
+        gbrain = GBrainBridge()
+        task_id = gbrain.record_task(probe, "Unit testing LLM integration", "VERIFIED GREEN", "", "pass")
+        assert task_id > 0
 
-    llm = DeepSeekLLMClient()
-    extracted = llm.extract_code_block("```python\nx = 1\n```")
-    assert extracted == "x = 1"
+        llm = DeepSeekLLMClient()
+        extracted = llm.extract_code_block("```python\nx = 1\n```")
+        assert extracted == "x = 1"
 
-    hermes = HermesBuilderBridge("master_test")
-    hermes.write_initial_stubs_if_missing()
-    assert Path("actions/master_test/schemas.py").exists()
+        hermes = HermesBuilderBridge(probe)
+        hermes.write_initial_stubs_if_missing()
+        assert Path(f"actions/{probe}/schemas.py").exists()
+    finally:
+        # Ne puščaj stubs v actions/ (čisto produkcijsko ime).
+        shutil.rmtree(f"actions/{probe}", ignore_errors=True)
 
 def test_all_actions_pytest_coverage():
     actions_dir = Path("actions")
@@ -39,9 +45,8 @@ def test_all_actions_pytest_coverage():
     def _is_valid_module(d) -> bool:
         if not d.is_dir():
             return False
-        if d.name.startswith(".") or d.name.startswith("__"):
-            return False
-        if d.name == "master_test":
+        # Preskoči skrite (.) in interne (_) mape (npr. __pycache__, _suite_probe).
+        if d.name.startswith(".") or d.name.startswith("_"):
             return False
         return True
 

@@ -12,7 +12,7 @@ class GraphifyBridge:
         graph: Dict[str, Any] = {"nodes": {}, "edges": []}
         
         for py_file in self.root_dir.glob("**/*.py"):
-            if any(p in py_file.parts for p in ["venv", ".pytest_cache", "repos", ".git"]):
+            if any(p in py_file.parts for p in ["venv", ".pytest_cache", "repos", ".git", "legacy"]):
                 continue
 
             rel_path = str(py_file.relative_to(self.root_dir))
