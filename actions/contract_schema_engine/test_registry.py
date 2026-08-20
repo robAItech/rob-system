@@ -2,8 +2,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from actions.schema_registry.schema_registry import SchemaRegistry
-from actions.schema_registry.main import app
+from actions.contract_schema_engine.registry import SchemaRegistry
+from actions.contract_schema_engine.main import app
 
 client = TestClient(app)
 
@@ -60,7 +60,7 @@ class TestSchemaRegistryAPI:
         # Clear registry before each test
         app.state.registry = SchemaRegistry()
         # Override the global registry reference
-        import actions.schema_registry.main as main_module
+        import actions.contract_schema_engine.main as main_module
         main_module.registry = app.state.registry
 
     def test_register_schema_endpoint(self):

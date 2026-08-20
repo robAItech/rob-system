@@ -3,8 +3,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from actions.contract_testing.contract_testing import ContractManager
-from actions.contract_testing.main import app
+from actions.contract_schema_engine.contracts import ContractManager
+from actions.contract_schema_engine.main import app
 
 client = TestClient(app)
 

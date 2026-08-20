@@ -5,8 +5,9 @@ from typing import Dict
 
 class DeploymentManager:
     # Moduli, ki so samo CI/knjižnice in se NE deployajo kot runtime storitve.
-    # Npr. contract_testing je CDC validacija, ki teče v CI, ne kot uvicorn servis.
-    CI_ONLY_MODULES = {"contract_testing"}
+    # Trenutno prazen — contract_testing je bil združen v contract_schema_engine,
+    # ki je runtime storitev (JSON Schema validacija). Mehanizem ostaja za prihodnost.
+    CI_ONLY_MODULES = set()
 
     def __init__(self, base_dir: str = "."):
         self.base_dir = Path(base_dir)

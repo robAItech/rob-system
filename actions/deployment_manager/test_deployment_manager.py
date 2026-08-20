@@ -39,20 +39,22 @@ async def test_deployment_manager_logic(mock_env):
     assert "old" not in updated_gw
 
 @pytest.mark.asyncio
-async def test_get_services_excludes_artifacts_and_ci_only(tmp_path):
+async def test_get_services_excludes_artifacts_and_ci_only(tmp_path, monkeypatch):
     # Artefaktne mape (skrite / __) in CI-only moduli se NE smejo deployati.
     actions = tmp_path / "actions"
     actions.mkdir()
     (actions / "api_gateway").mkdir()
-    (actions / "contract_testing").mkdir()  # CI-only
+    (actions / "ci_only_demo").mkdir()       # CI-only (vidno prek monkeypatch)
     (actions / ".pytest_cache").mkdir()      # skrit artefakt
     (actions / "__pycache__").mkdir()        # Python meta-mapa
+
+    monkeypatch.setattr(DeploymentManager, "CI_ONLY_MODULES", {"ci_only_demo"})
 
     mgr = DeploymentManager(base_dir=str(tmp_path))
     services = mgr.get_services()
 
     assert "api_gateway" in services
-    assert "contract_testing" not in services
+    assert "ci_only_demo" not in services
     assert ".pytest_cache" not in services
     assert "__pycache__" not in services
 
