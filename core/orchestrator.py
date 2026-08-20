@@ -87,3 +87,18 @@ class RobAIOrchestrator:
         print("✅ [F2] Avtonomni delovnik končan."
               f" spec={'ZELEN' if ok_spec else 'X'} / implement={'ZELEN' if ok_impl else 'X'}")
         return ok_impl
+
+    @staticmethod
+    def run_decomposed(project: str, goal: str, max_steps: int = 8) -> dict:
+        """Zanka 5 — dolgoročno načrtovanje: razbij cilj na podcilje in izvedi
+        vsakega skozi RSI zanko. Vrne povzetek (ne samo bool), da je napredek
+        viden po korakih.
+        """
+        from core.task_planner import TaskPlanner
+        planner = TaskPlanner()
+        print(f"🧩 [Z5] Dekompozicija cilja: '{goal}'")
+        return planner.execute(
+            goal,
+            executor=lambda subgoal: RobAIOrchestrator._phase(project, subgoal, "podcilj"),
+            max_steps=max_steps,
+        )
