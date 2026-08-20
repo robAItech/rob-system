@@ -270,11 +270,11 @@ Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
 `RSISelfHealingEngine` živi kot samostojen modul v
 `actions/enterprise_rsi_engine/`, ne kot jedro.
 
-## 🔄 Šest zank (Zanke 1–6)
+## 🔄 Sedem zank (Zanke 1–7)
 
 Poleg RSI samozdravljenja (ki popravlja MODULE `actions/*`) ima sistem štiri
-samorazvojne zanke (spomin, presoja, orkestracija, meta-evalvacija) in dve
-sposobnostni zanki (dolgoročno načrtovanje, multi-agent koordinacija):
+samorazvojne zanke (spomin, presoja, orkestracija, meta-evalvacija) in tri
+sposobnostne zanke (dolgoročno načrtovanje, multi-agent koordinacija, napoved izidov):
 
 | Zanka | Modul | Kaj dela |
 |---|---|---|
@@ -284,6 +284,7 @@ sposobnostni zanki (dolgoročno načrtovanje, multi-agent koordinacija):
 | **4 · meta-evalvacija** | `core/meta_eval.py` | Meri, ali izboljšave dejansko pomagajo (uspešnost, povp. LLM klici); ob regresiji **avtomatsko povrne** prompt + parametre. |
 | **5 · načrtovanje** | `core/task_planner.py` | Dolgoročno načrtovanje: LLM razbije kompleksen cilj na urejene podcilje in vsakega izvede skozi RSI (večkorakne naloge). |
 | **6 · koordinacija** | `core/team.py` | Multi-agent adversarial: planner → critic → builder → verifier; critic izzove načrt pred izvedbo. |
+| **7 · napoved** | `core/world_model.py` | Svetovni model: iz lastnih trajektorij napove uspešnost, pričakovan LLM strošek in verjeten vzrok neuspeha. |
 
 ```bash
 ./rob consolidate      # Zanka 1: strdi epizode → semantične lekcije
@@ -292,9 +293,10 @@ sposobnostni zanki (dolgoročno načrtovanje, multi-agent koordinacija):
 ./rob meta             # Zanka 4: trenutne metrike (uspešnost, povp. LLM klici)
 ./rob plan "cilj"      # Zanka 5: dekompozicija cilja na podcilje
 ./rob team "cilj"      # Zanka 6: multi-agent adversarial koordinacija
+./rob predict "cilj"   # Zanka 7: napoved izida (uspešnost, LLM strošek, vzrok)
 ```
 
-Skupaj teh šest zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
+Skupaj teh sedem zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
 
 ## 🧪 Testni standardi
 
