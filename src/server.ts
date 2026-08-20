@@ -430,20 +430,91 @@ async function listArtifacts(): Promise<Record<string, unknown>[]> {
   return [...actions, ...outs];
 }
 
-/** Neposredni pogovor z LLM (ROB) — brez Hermes pipeline-a. */
+/** Trenutni datum/čas v slovenščini (živo, lokalni čas strežnika). */
+function nowContext(): string {
+  const d = new Date();
+  const days = ['nedelja', 'ponedeljek', 'torek', 'sreda', 'četrtek', 'petek', 'sobota'];
+  const months = ['januar', 'februar', 'marec', 'april', 'maj', 'junij', 'julij', 'avgust', 'september', 'oktober', 'november', 'december'];
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${days[d.getDay()]}, ${d.getDate()}. ${months[d.getMonth()]} ${d.getFullYear()} ob ${hh}:${mm}`;
+}
+
+/** WMO vremenski kod → slovenski opis. */
+function weatherCode(n: number): string {
+  if (n === 0) return 'jasno';
+  if (n <= 2) return 'delno oblačno';
+  if (n === 3) return 'oblačno';
+  if (n <= 48) return 'megla';
+  if (n <= 57) return 'rosenje';
+  if (n <= 67) return 'dež';
+  if (n <= 77) return 'sneg';
+  if (n <= 82) return 'plohe';
+  if (n <= 86) return 'snežne plohe';
+  if (n <= 95) return 'nevihta';
+  return 'močna nevihta';
+}
+
+/** Živo vreme iz Open-Meteo (brez API ključa). */
+async function weatherFor(lat: number, lon: number): Promise<string | null> {
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,weather_code&forecast_days=2&timezone=Europe%2FLjubljana`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return null;
+    const j = await r.json() as Record<string, any>;
+    const c = j.current ?? {};
+    let s = `Trenutno ${Math.round(c.temperature_2m ?? 0)}°C, ${weatherCode(c.weather_code ?? 0)}, veter ${Math.round(c.wind_speed_10m ?? 0)} km/h, vlaga ${c.relative_humidity_2m}%.`;
+    const t = (j.hourly?.time ?? []) as string[];
+    const tmp = (j.hourly?.temperature_2m ?? []) as number[];
+    const prec = (j.hourly?.precipitation_probability ?? []) as number[];
+    const codes = (j.hourly?.weather_code ?? []) as number[];
+    s += ' Napoved po 3h:';
+    for (let i = 0; i < t.length && i < 27; i += 3) {
+      s += ` ${t[i].slice(11, 16)} ${Math.round(tmp[i] ?? 0)}°C/${prec[i] ?? 0}% ${weatherCode(codes[i] ?? 0)};`;
+    }
+    return s;
+  } catch { return null; }
+}
+
+/** Razpozna mesto iz sporočila (privzeto Vrhnika). */
+function cityCoords(msg: string): { lat: number; lon: number; label: string } {
+  const m = msg.toLowerCase();
+  const cities: Record<string, [number, number]> = {
+    'ljubljan': [46.056, 14.506], 'maribor': [46.555, 15.646], 'kranj': [46.239, 14.356],
+    'celje': [46.231, 15.260], 'koper': [45.548, 13.730], 'novo mesto': [45.804, 15.169],
+    'postojn': [45.774, 14.215], 'logatec': [45.918, 14.229], 'idrij': [46.002, 14.027],
+  };
+  for (const [k, c] of Object.entries(cities)) {
+    if (m.includes(k)) return { lat: c[0], lon: c[1], label: k };
+  }
+  return { lat: 45.967, lon: 14.296, label: 'Vrhnika' };
+}
+
+/** Neposredni pogovor z LLM (ROB) — z živim datumom/uro in (po potrebi) vremenom. */
 async function chat(message: string): Promise<string> {
   const p = resolveProvider(process.env);
   const ledger = new Ledger(DB_PATH);
   try {
     const cache = new LLMCache(ledger.db);
     const llm = new OpenAICompatibleProvider(p.name, { baseUrl: p.baseUrl, apiKey: p.apiKey, cache });
+
+    let live = `Danes je ${nowContext()} (živi lokalni čas strežnika).`;
+    const wantsWeather = /(vreme|dež|napoved|temperatura|stopinje|sneg|sonce|veter|nevih|mraz|toplo|oblač|°c|°)/i.test(message);
+    if (wantsWeather) {
+      const c = cityCoords(message);
+      const w = await weatherFor(c.lat, c.lon);
+      live += w
+        ? `\n\nŽIVI vremenski podatki za ${c.label} (vir Open-Meteo):\n${w}`
+        : '\n\n(Vreme trenutno ni dosegljivo — povej, da je vir nedosegljiv.)';
+    }
+
     const res = await llm.complete({
       provider: p.name, model: p.model, attempt: 0,
       messages: [
-        { role: 'system', content: 'Ti si ROB, avtonomni inženirski stroj za Rob AI Studio. Odgovarjaj kratko in tehnično, v slovenščini.' },
-        { role: 'user', content: message },
+        { role: 'system', content: 'Ti si ROB, avtonomni inženirski stroj za Rob AI Studio. Odgovarjaj kratko in tehnično, v slovenščini. Uporabljaj SAMO podane žive podatke (datum/ura/vreme) — ničesar ne izmišljuj.' },
+        { role: 'user', content: `${live}\n\nVprašanje uporabnika: ${message}` },
       ],
-      temperature: 0.3, maxTokens: 500,
+      temperature: 0.2, maxTokens: 700,
     });
     return res.text;
   } finally {
