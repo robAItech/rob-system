@@ -5,7 +5,7 @@ Core GatewayRouter implementation for the Enterprise Unified Gateway.
 import logging
 from typing import Any, Callable, Dict, Optional
 
-from actions.enterprise_unified_gateway.schemas import RoutePayload, RouteResponse
+from actions.enterprise_api_gateway.schemas import RoutePayload, RouteResponse
 
 logger = logging.getLogger(__name__)
 

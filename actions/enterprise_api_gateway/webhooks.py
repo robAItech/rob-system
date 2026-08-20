@@ -6,7 +6,7 @@ import httpx
 import random
 from typing import Dict, List, Optional
 from datetime import datetime
-from actions.enterprise_webhook_dispatcher.schemas import WebhookEndpoint, WebhookEvent, DeliveryResult, DeliveryAttempt, WebhookStatus
+from actions.enterprise_api_gateway.schemas import WebhookEndpoint, WebhookEvent, DeliveryResult, DeliveryAttempt, WebhookStatus
 
 class EnterpriseWebhookDispatcher:
     def __init__(self):

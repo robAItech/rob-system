@@ -7,9 +7,9 @@ from typing import Any, Dict
 import pytest
 from fastapi.testclient import TestClient
 
-from actions.enterprise_unified_gateway.enterprise_unified_gateway import GatewayRouter
-from actions.enterprise_unified_gateway.main import app, gateway_router
-from actions.enterprise_unified_gateway.schemas import RoutePayload, RouteResponse
+from actions.enterprise_api_gateway.gateway import GatewayRouter
+from actions.enterprise_api_gateway.main import app, gateway_router
+from actions.enterprise_api_gateway.schemas import RoutePayload, RouteResponse
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
-        assert data["service"] == "enterprise_unified_gateway"
+        assert data["service"] == "enterprise_api_gateway"
 
 
 class TestGatewayRouter:

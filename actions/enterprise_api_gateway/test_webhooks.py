@@ -2,9 +2,9 @@ import pytest
 import asyncio
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
-from actions.enterprise_webhook_dispatcher.main import app, dispatcher
-from actions.enterprise_webhook_dispatcher.enterprise_webhook_dispatcher import EnterpriseWebhookDispatcher
-from actions.enterprise_webhook_dispatcher.schemas import WebhookEndpoint, WebhookEvent, WebhookStatus
+from actions.enterprise_api_gateway.main import app, dispatcher
+from actions.enterprise_api_gateway.webhooks import EnterpriseWebhookDispatcher
+from actions.enterprise_api_gateway.schemas import WebhookEndpoint, WebhookEvent, WebhookStatus
 
 client = TestClient(app)
 
