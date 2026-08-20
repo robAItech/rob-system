@@ -5,8 +5,11 @@
 
 FROM python:3.11-slim
 
-# pytest je vnaprej nameščen (zgradba z omrežjem → runtime brez omrežja).
-RUN pip install --no-cache-dir pytest
+# pytest + FastAPI (za TestClient) + httpx + pytest-asyncio — vnaprej nameščeni
+# (zgradba z omrežjem → runtime brez omrežja). Brez fastapi/httpx bi sandbox
+# vrgel "No module named 'fastapi'"; brez pytest-asyncio bi async testi
+# (@pytest.mark.asyncio) padli, ker se korutine ne bi izvedle.
+RUN pip install --no-cache-dir pytest fastapi httpx pytest-asyncio
 
 # Ne-root uporabnik za varnost v kontejnerju.
 RUN adduser --disabled-password --uid 1000 sandbox

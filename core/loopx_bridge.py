@@ -295,10 +295,17 @@ class LoopXEngineBridge:
 
     @staticmethod
     def _classify_error(traceback: str) -> str:
-        """Povzame tip napake (ExceptionName) iz tracebacka, sicer 'UNKNOWN'."""
-        m = re.search(r"\n(\w+Error|\w+Exception):", traceback)
+        """Povzame tip napake (ExceptionName) iz tracebacka, sicer 'UNKNOWN'.
+
+        Prepozna tudi pytest assert neuspehe ('assert X == Y'), ki nimajo
+        eksplicitnega 'AssertionError:' vzorca.
+        """
+        tb = traceback or ""
+        m = re.search(r"\b(\w+(?:Error|Exception))\b", tb)
         if m:
             return m.group(1)
+        if "assert" in tb.lower():
+            return "AssertionError"
         return "UNKNOWN"
 
     # F1 — prepozna vrsto izdelka iz direktive: python | markdown | html

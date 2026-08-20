@@ -294,8 +294,13 @@ class MemoryConsolidator:
 
     @staticmethod
     def _classify_error(traceback: str) -> str:
-        m = re.search(r"\n(\w+Error|\w+Exception):", traceback or "")
-        return m.group(1) if m else "UNKNOWN"
+        tb = traceback or ""
+        m = re.search(r"\b(\w+(?:Error|Exception))\b", tb)
+        if m:
+            return m.group(1)
+        if "assert" in tb.lower():
+            return "AssertionError"
+        return "UNKNOWN"
 
     @staticmethod
     def _is_failure(ep: Dict[str, Any]) -> bool:
