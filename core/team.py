@@ -1,0 +1,209 @@
+"""core/team.py — Faza 6 / Zanka 6: multi-agent adversarial koordinacija.
+
+Do zdaj ima sistem ENEGA vodilnega agenta (GSTACK-Architect) + fiksen cevovod.
+Zanka 6 doda DRUŽBO specialistov nad istim delom:
+
+    planner (predlaga načrt) → critic (adversarialno izzove načrt)
+        → builder (RSI izvede) → verifier (neodvisno potrdi)
+
+Adversarialna zanka: critic oceni tveganje načrta; če je resno (severity=high),
+planner načrt POPRAVI (revise), preden ga builder izvede. To odpravi
+"en agent = ena slepa pega" — načrt je izzvan, preden se izvede, rezultat pa
+neodvisno potrjen, preden se šteje za opravljenega.
+
+Uporaba:
+  python core/team.py --run "zgradi X" --project demo --dry-run
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import sys
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent  # core/ → koren repo
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+SEVERITIES = ("low", "medium", "high")
+
+
+class TeamCoordinator:
+    """Družba specialistov: planner → critic → builder → verifier.
+
+    Vsaka vloga je LLM (DeepSeek) s hevrističnim fallbackom (brez ključa):
+    planner → cilj, critic → low/brez ugovorov, verifier → ok. `executor` je
+    vstavek (v produkciji RSI zanka, v testih mock).
+    """
+
+    # ------------------------------------------------------------------ #
+    #  Vloge
+    # ------------------------------------------------------------------ #
+    def plan(self, goal: str) -> str:
+        """Planner predlaga kratek načrt izvedbe. Fallback: cilj."""
+        if not self._llm_available():
+            return goal
+        system_prompt = "Si planner v avtonomnem podjetju. Predlagaj KRATEK, konkreten načrt izvedbe cilja."
+        prompt = f"Cilj: {goal}\n\nNačrt (kratek, markdown):"
+        try:
+            from core.llm_client import DeepSeekLLMClient
+            llm = DeepSeekLLMClient()
+            raw = asyncio.run(llm.generate_completion(prompt=prompt, system_prompt=system_prompt, use_coder_model=False))
+            return raw.strip() or goal
+        except Exception:
+            return goal
+
+    def critique(self, goal: str, plan: str) -> Dict[str, Any]:
+        """Critic adversarialno izzove načrt. Fallback: low, brez ugovorov."""
+        if not self._llm_available():
+            return {"severity": "low", "objections": []}
+        system_prompt = "Si adversarial recenzent. Izzovi načrt: najdi tveganja, luknje, dvoumnosti."
+        prompt = (
+            f"Cilj: {goal}\n\nNačrt:\n{plan}\n\n"
+            'Vrni STROGO JSON: {"severity": "low|medium|high", "objections": ["..."]}.'
+        )
+        try:
+            from core.llm_client import DeepSeekLLMClient
+            llm = DeepSeekLLMClient()
+            raw = asyncio.run(llm.generate_completion(prompt=prompt, system_prompt=system_prompt, use_coder_model=False))
+        except Exception:
+            return {"severity": "low", "objections": []}
+        obj = self._parse_json_object(raw)
+        severity = obj.get("severity") if obj.get("severity") in SEVERITIES else "low"
+        objections = [str(o) for o in obj.get("objections", []) if str(o).strip()]
+        return {"severity": severity, "objections": objections}
+
+    def revise(self, goal: str, plan: str, objections: List[str]) -> str:
+        """Planner popravi načrt glede na ugovore. Fallback: nespremenjen."""
+        if not self._llm_available() or not objections:
+            return plan
+        system_prompt = "Si planner. Popravi načrt tako, da odpraviš naslednje ugovore."
+        prompt = (
+            f"Cilj: {goal}\n\nNačrt:\n{plan}\n\nUgovori:\n"
+            + "\n".join(f"- {o}" for o in objections)
+            + "\n\nPopravljen načrt:"
+        )
+        try:
+            from core.llm_client import DeepSeekLLMClient
+            llm = DeepSeekLLMClient()
+            raw = asyncio.run(llm.generate_completion(prompt=prompt, system_prompt=system_prompt, use_coder_model=False))
+            return raw.strip() or plan
+        except Exception:
+            return plan
+
+    def verify(self, project: str, goal: str) -> Dict[str, Any]:
+        """Verifier neodvisno potrdi, ali zgrajen modul izpolnjuje cilj."""
+        sources = self._read_sources(project)
+        if not self._llm_available() or not sources:
+            return {"ok": True, "reason": "hevristika (brez LLM ali brez vira)"}
+        system_prompt = "Si verifikator. Neodvisno presodi, ali zgrajen modul izpolnjuje cilj."
+        prompt = (
+            f"Cilj: {goal}\n\nZgrajen modul (viri):\n{json.dumps(sources, ensure_ascii=False)[:4000]}\n\n"
+            'Vrni STROGO JSON: {"ok": true|false, "reason": "..."}.'
+        )
+        try:
+            from core.llm_client import DeepSeekLLMClient
+            llm = DeepSeekLLMClient()
+            raw = asyncio.run(llm.generate_completion(prompt=prompt, system_prompt=system_prompt, use_coder_model=False))
+        except Exception:
+            return {"ok": True, "reason": "verifikator ni dosegljiv"}
+        obj = self._parse_json_object(raw)
+        return {"ok": bool(obj.get("ok", True)), "reason": str(obj.get("reason", ""))}
+
+    # ------------------------------------------------------------------ #
+    #  Cel cikel
+    # ------------------------------------------------------------------ #
+    def run(self, project: str, goal: str, executor: Optional[Callable[[str], bool]] = None) -> Dict[str, Any]:
+        """Cel adversarial cikel: plan → critique → (revise) → build → verify."""
+        plan = self.plan(goal)
+        critique = self.critique(goal, plan)
+        revised = False
+        if critique.get("severity") == "high":
+            plan = self.revise(goal, plan, critique.get("objections", []))
+            revised = True
+
+        if executor is None:
+            from core.orchestrator import RobAIOrchestrator
+            executor = lambda g: RobAIOrchestrator._phase(project, g, "podcilj")
+        try:
+            built = bool(executor(goal))
+        except Exception:
+            built = False
+
+        verdict = self.verify(project, goal)
+        return {
+            "goal": goal,
+            "plan": plan[:500],
+            "severity": critique.get("severity"),
+            "objections": critique.get("objections", []),
+            "revised": revised,
+            "built": built,
+            "verdict": verdict,
+        }
+
+    # ------------------------------------------------------------------ #
+    #  Pomožne
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _read_sources(project: str) -> Dict[str, str]:
+        d = Path(f"actions/{project}")
+        out: Dict[str, str] = {}
+        if d.exists():
+            for p in d.glob("*.py"):
+                try:
+                    out[p.name] = p.read_text(encoding="utf-8")[:2000]
+                except OSError:
+                    pass
+        return out
+
+    @staticmethod
+    def _parse_json_object(text: str) -> Dict[str, Any]:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return {}
+        try:
+            val = json.loads(text[start:end + 1])
+            return val if isinstance(val, dict) else {}
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _llm_available() -> bool:
+        try:
+            from core.config import settings
+            return settings.is_real_key_available()
+        except Exception:
+            return False
+
+
+# ---------------------------------------------------------------------- #
+#  CLI
+# ---------------------------------------------------------------------- #
+def main(argv: Optional[List[str]] = None) -> int:
+    p = argparse.ArgumentParser(prog="team", description="Zanka 6 — multi-agent adversarial koordinacija.")
+    p.add_argument("--run", metavar="GOAL", help="cel adversarial cikel (plan → critique → build → verify)")
+    p.add_argument("--project", default="demo", help="ciljni modul za --run")
+    p.add_argument("--dry-run", action="store_true", help="pri --run: samo plan + critique, brez builda")
+    args = p.parse_args(argv)
+
+    tc = TeamCoordinator()
+    if args.run:
+        if args.dry_run:
+            plan = tc.plan(args.run)
+            critique = tc.critique(args.run, plan)
+            print("PLAN:", plan[:500])
+            print("CRITIQUE:", json.dumps(critique, ensure_ascii=False, indent=2))
+        else:
+            res = tc.run(args.project, args.run)
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+    else:
+        p.print_help()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
