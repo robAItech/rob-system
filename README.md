@@ -118,6 +118,8 @@ Ustvarite datoteko `.env` v korenskem imeniku projekta:
 
 ```
 DEEPSEEK_API_KEY=vaš_deepseek_api_ključ
+GEMINI_API_KEY=vaš_gemini_api_ključ    # TTS (naravni glas) + spletno iskanje — https://aistudio.google.com/apikey
+SERPER_API_KEY=vaš_serper_api_ključ    # (opcijsko) pravo Google iskanje — https://serper.dev
 ```
 
 ### 3. Zagon Claude Code prek LiteLLM + DeepSeek (`./dev`)
@@ -129,8 +131,9 @@ zahtevke na **cenejši DeepSeek API** z vašim `DEEPSEEK_API_KEY`. Poleg proxyja
 dvigne še **Command-Center dashboard**:
 
 - **Proxy LiteLLM na :4010** (lasten, izoliran)
-- **Command-Center dashboard** na **:8787** via `bun run src/server.ts`
-  (`/api/health` · `/api/ledger` · `/api/runs` · `POST /api/run`)
+- **Command-Center dashboard** na **:8787 (HTTPS)** via `bun run src/server.ts`
+  — futuristični temni UI z glasovnim pogovorom (voice + TTS), živim spletnim
+  iskanjem, agendo, artefakti, agenti in sistemskim grafom
 
 Vse v enem ukazu — `./dev` (dela na Windows, Linux in WSL):
 
@@ -209,11 +212,14 @@ Dosežene faze:
 | **F6** | Poslovni avtomat: ideja → predlog → glavna knjiga (prilivi/stranke) |
 | **P5** | SWE-bench stila samo-eval avtonomnosti — `evaluate_autonomy.py` meri prehod rate (`rob eval`), ne blokira CI |
 
-Dashboard poleg modulov in zgodovine izvedb ponuja še **Agenda** (dodaj
-čakajoče naloge) in **Poslovanje** (glavna knjiga podjetja) v plošči
-**Moduli / Naloge**, ter Google integracije (Drive/Email/Calendar) — ti
-zahtevajo autorizacijo (`client_secret.json`, redirect
-`http://localhost:8787/api/google/oauth2callback`).
+Command-Center dashboard ponuja poglede: **Command Center** (pregled + obsidian
+graf), **Pogovor** (glasovni vnos + TTS odgovor, izbira glasu Charon/Orus/...),
+**Agenda**, **Artefakti** (pregled dokumenta + prenos Word/PDF/HTML), **GBRAIN**
+(54 gstack skillov) in **Agenti**. ROB razume razliko med pogovorom in nalogo:
+nalogo zabeleži v agendo in izvede, pogovor odgovori z živim kontekstom
+(datum/ura + vreme + splet). Google integracije (Drive/Email/Calendar) zahtevajo
+autorizacijo (`client_secret.json`, redirect
+`https://localhost:8787/api/google/oauth2callback`).
 
 ## 💻 Navodila za uporabo CLI (`./rob`)
 
