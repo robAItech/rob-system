@@ -4,7 +4,7 @@ from collections import OrderedDict
 from typing import Any, Optional, Dict
 from actions.cache_layer.schemas import CacheStats
 
-class EnterpriseCacheLayer:
+class CacheLayer:
     def __init__(self, max_size: int = 1000):
         self.max_size = max_size
         self.cache: OrderedDict[str, Dict[str, Any]] = OrderedDict()

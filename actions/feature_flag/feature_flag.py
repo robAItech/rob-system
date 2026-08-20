@@ -3,7 +3,7 @@ import asyncio
 from typing import Dict, Optional
 from actions.feature_flag.schemas import FeatureFlagCreate, FlagStrategy
 
-class EnterpriseFeatureFlagManager:
+class FeatureFlagManager:
     def __init__(self):
         self.flags: Dict[str, FeatureFlagCreate] = {}
         self.lock = asyncio.Lock()

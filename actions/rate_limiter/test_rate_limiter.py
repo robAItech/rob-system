@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from fastapi.testclient import TestClient
 from actions.rate_limiter.main import app, limiter
-from actions.rate_limiter.rate_limiter import EnterpriseRateLimiter
+from actions.rate_limiter.rate_limiter import RateLimiter
 from actions.rate_limiter.schemas import RateLimitConfig
 
 client = TestClient(app)
@@ -12,7 +12,7 @@ def reset_limiter_state():
     limiter.requests.clear()
 
 def test_sliding_window_rate_limiter_logic():
-    l = EnterpriseRateLimiter(RateLimitConfig(max_requests=2, window_seconds=0.2))
+    l = RateLimiter(RateLimitConfig(max_requests=2, window_seconds=0.2))
     
     # Prvi 2 zahtevi dovoljeni
     ok1, rem1, _ = l.is_allowed("client_a")

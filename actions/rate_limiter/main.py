@@ -1,11 +1,11 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from actions.rate_limiter.schemas import RateLimitRequest, RateLimitResponse, RateLimitConfig
-from actions.rate_limiter.rate_limiter import EnterpriseRateLimiter
+from actions.rate_limiter.rate_limiter import RateLimiter
 
 app = FastAPI(title="Rob AI Studio - Enterprise Rate Limiter API")
 
-limiter = EnterpriseRateLimiter(config=RateLimitConfig(max_requests=3, window_seconds=0.5))
+limiter = RateLimiter(config=RateLimitConfig(max_requests=3, window_seconds=0.5))
 
 @app.post("/check", response_model=RateLimitResponse)
 async def check_rate_limit(request: RateLimitRequest):

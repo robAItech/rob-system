@@ -1,10 +1,10 @@
 from fastapi import FastAPI, HTTPException, status
 from typing import Dict
 from actions.feature_flag.schemas import FeatureFlagCreate, FeatureFlagResponse, EvaluationRequest, EvaluationResponse
-from actions.feature_flag.feature_flag import EnterpriseFeatureFlagManager
+from actions.feature_flag.feature_flag import FeatureFlagManager
 
 app = FastAPI(title="Rob AI Studio - Enterprise Feature Flag API")
-manager = EnterpriseFeatureFlagManager()
+manager = FeatureFlagManager()
 
 @app.post("/flags", status_code=status.HTTP_201_CREATED, response_model=FeatureFlagResponse)
 async def create_or_update_flag(flag: FeatureFlagCreate):

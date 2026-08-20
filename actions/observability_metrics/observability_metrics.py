@@ -3,7 +3,7 @@ from typing import Dict
 from collections import defaultdict
 from actions.observability_metrics.schemas import MetricSnapshot
 
-class EnterpriseMetricsRegistry:
+class MetricsRegistry:
     def __init__(self):
         # Format: {(method, endpoint, status): {"count": int, "total_time": float}}
         self.http_metrics: Dict[tuple, Dict[str, float]] = defaultdict(lambda: {"count": 0, "total_time": 0.0})

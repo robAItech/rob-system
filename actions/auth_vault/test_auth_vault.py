@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from actions.auth_vault.main import app, vault
-from actions.auth_vault.auth_vault import EnterpriseAuthVault
+from actions.auth_vault.auth_vault import AuthVault
 from actions.auth_vault.schemas import Role, ApiKeyCreate
 
 client = TestClient(app)
@@ -11,7 +11,7 @@ def reset_vault():
     vault.active_keys.clear()
 
 def test_auth_vault_logic_and_rbac():
-    v = EnterpriseAuthVault()
+    v = AuthVault()
     
     # Issue Dev Key
     dev_key_resp = v.generate_api_key(ApiKeyCreate(client_id="dev_user", role=Role.DEVELOPER))
@@ -30,7 +30,7 @@ def test_auth_vault_logic_and_rbac():
     assert code3 == "FORBIDDEN"
 
 def test_encryption_roundtrip():
-    v = EnterpriseAuthVault()
+    v = AuthVault()
     secret = "TopSecretPassword123!"
     cipher = v.encrypt_data(secret)
     assert cipher.startswith("enc_v1:")

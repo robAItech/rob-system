@@ -16,11 +16,12 @@ def test_full_repos_integrity():
         assert path.exists(), f"Repozitorij repos/{r} ne obstaja"
         assert (path / "pyproject.toml").exists(), f"Repozitorij repos/{r} nima pyproject.toml"
 
-def test_bridges_and_llm_instantiation():
+def test_bridges_and_llm_instantiation(tmp_path):
     import shutil
     probe = "_suite_probe"  # prehodno ime (interno); master_test je v legacy/
     try:
-        gbrain = GBrainBridge()
+        # tmp baza — ne onesnažimo realnega memory.db (izolacija).
+        gbrain = GBrainBridge(tmp_path / "memory.db")
         task_id = gbrain.record_task(probe, "Unit testing LLM integration", "VERIFIED GREEN", "", "pass")
         assert task_id > 0
 

@@ -5,7 +5,7 @@ from actions.circuit_breaker.schemas import CircuitState, CircuitConfig
 class CircuitBreakerOpenException(Exception):
     pass
 
-class EnterpriseCircuitBreaker:
+class CircuitBreaker:
     def __init__(self, service_name: str, config: CircuitConfig = CircuitConfig()):
         self.service_name = service_name
         self.config = config

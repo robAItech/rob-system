@@ -72,7 +72,7 @@ class DeploymentManager:
                 continue
             
             # Generiranje route identifikatorjev
-            r_id = name.replace("enterprise_", "")
+            r_id = name
             prefix = f"/api/{r_id}"
             # Zavarujemo specifične module z Auth ključem
             req_auth = "True" if name in ["audit_trail", "cache_layer"] else "False"

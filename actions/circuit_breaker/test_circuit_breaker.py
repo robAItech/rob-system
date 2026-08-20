@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from fastapi.testclient import TestClient
 from actions.circuit_breaker.main import app, breakers
-from actions.circuit_breaker.circuit_breaker import EnterpriseCircuitBreaker
+from actions.circuit_breaker.circuit_breaker import CircuitBreaker
 from actions.circuit_breaker.schemas import CircuitState, CircuitConfig
 
 client = TestClient(app)
@@ -12,7 +12,7 @@ def reset_breakers():
     breakers.clear()
 
 def test_circuit_breaker_logic():
-    cb = EnterpriseCircuitBreaker("test_service", CircuitConfig(failure_threshold=2, recovery_timeout=0.1, half_open_success_threshold=2))
+    cb = CircuitBreaker("test_service", CircuitConfig(failure_threshold=2, recovery_timeout=0.1, half_open_success_threshold=2))
     assert cb.state == CircuitState.CLOSED
     cb.on_failure()
     cb.on_failure()

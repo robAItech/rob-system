@@ -1,14 +1,14 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from actions.circuit_breaker.schemas import ExecutionRequest, CircuitStatusResponse, CircuitConfig
-from actions.circuit_breaker.circuit_breaker import EnterpriseCircuitBreaker, CircuitBreakerOpenException
+from actions.circuit_breaker.circuit_breaker import CircuitBreaker, CircuitBreakerOpenException
 
 app = FastAPI(title="Rob AI Studio - Enterprise Circuit Breaker API")
-breakers: dict[str, EnterpriseCircuitBreaker] = {}
+breakers: dict[str, CircuitBreaker] = {}
 
-def get_or_create_breaker(service_name: str) -> EnterpriseCircuitBreaker:
+def get_or_create_breaker(service_name: str) -> CircuitBreaker:
     if service_name not in breakers:
-        breakers[service_name] = EnterpriseCircuitBreaker(
+        breakers[service_name] = CircuitBreaker(
             service_name=service_name,
             config=CircuitConfig(failure_threshold=3, recovery_timeout=0.2, half_open_success_threshold=2)
         )

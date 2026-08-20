@@ -1,12 +1,11 @@
 """
 Enterprise API Gateway — unified gateway (routing + webhooks).
 
-Združitev nekdanjih ``enterprise_unified_gateway`` (GatewayRouter) in
-``enterprise_webhook_dispatcher`` (EnterpriseWebhookDispatcher) v en vhodni point.
+Združitev gatewaya (GatewayRouter) in webhookov (WebhookDispatcher) v en vhodni point.
 """
 
 from actions.api_gateway.gateway import GatewayRouter
-from actions.api_gateway.webhooks import EnterpriseWebhookDispatcher
+from actions.api_gateway.webhooks import WebhookDispatcher
 from actions.api_gateway.schemas import (
     RoutePayload,
     RouteResponse,
@@ -19,7 +18,7 @@ from actions.api_gateway.schemas import (
 
 __all__ = [
     "GatewayRouter",
-    "EnterpriseWebhookDispatcher",
+    "WebhookDispatcher",
     "RoutePayload",
     "RouteResponse",
     "WebhookStatus",

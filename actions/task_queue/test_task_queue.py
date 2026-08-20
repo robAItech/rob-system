@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from fastapi.testclient import TestClient
 from actions.task_queue.main import app, queue
-from actions.task_queue.task_queue import EnterpriseTaskQueue
+from actions.task_queue.task_queue import TaskQueue
 from actions.task_queue.schemas import TaskEnqueueRequest, TaskPriority, TaskStatus
 
 client = TestClient(app)
@@ -13,7 +13,7 @@ def reset_queue():
 
 @pytest.mark.asyncio
 async def test_task_queue_priority_and_retry():
-    q = EnterpriseTaskQueue()
+    q = TaskQueue()
     
     async def sample_handler(payload: dict) -> dict:
         if payload.get("fail_count", 0) > 0:

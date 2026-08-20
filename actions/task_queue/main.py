@@ -1,10 +1,10 @@
 from fastapi import FastAPI, HTTPException, status
 from typing import Optional
 from actions.task_queue.schemas import TaskEnqueueRequest, TaskResponse
-from actions.task_queue.task_queue import EnterpriseTaskQueue
+from actions.task_queue.task_queue import TaskQueue
 
 app = FastAPI(title="Rob AI Studio - Enterprise Task Queue API")
-queue = EnterpriseTaskQueue()
+queue = TaskQueue()
 
 async def default_echo_handler(payload: dict) -> dict:
     if payload.get("should_fail"):

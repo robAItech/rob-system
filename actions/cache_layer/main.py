@@ -1,10 +1,10 @@
 from fastapi import FastAPI, HTTPException, status
 from actions.cache_layer.schemas import CacheSetRequest, CacheResponse, CacheStats
-from actions.cache_layer.cache_layer import EnterpriseCacheLayer
+from actions.cache_layer.cache_layer import CacheLayer
 
 app = FastAPI(title="Rob AI Studio - Enterprise Cache Layer API")
 # Inicializacija predpomnilnika z max kapaciteto 500 elementov za testno okolje
-cache = EnterpriseCacheLayer(max_size=500)
+cache = CacheLayer(max_size=500)
 
 @app.post("/cache", status_code=status.HTTP_201_CREATED)
 async def set_cache(request: CacheSetRequest):

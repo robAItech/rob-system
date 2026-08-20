@@ -1,10 +1,10 @@
 from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import JSONResponse
 from actions.auth_vault.schemas import ApiKeyCreate, ApiKeyResponse, TokenVerifyRequest, VaultEncryptRequest, VaultDecryptRequest
-from actions.auth_vault.auth_vault import EnterpriseAuthVault
+from actions.auth_vault.auth_vault import AuthVault
 
 app = FastAPI(title="Rob AI Studio - Enterprise Auth Vault API")
-vault = EnterpriseAuthVault()
+vault = AuthVault()
 
 @app.post("/keys/issue", response_model=ApiKeyResponse)
 async def issue_key(request: ApiKeyCreate):

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List
 from actions.audit_trail.schemas import AuditRecordCreate, AuditRecord, AuditVerificationResult
 
-class EnterpriseAuditTrail:
+class AuditTrail:
     def __init__(self):
         self.chain: List[AuditRecord] = []
         self.lock = asyncio.Lock()

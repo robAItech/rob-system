@@ -2,7 +2,7 @@ import pytest
 import asyncio
 from fastapi.testclient import TestClient
 from actions.cache_layer.main import app, cache
-from actions.cache_layer.cache_layer import EnterpriseCacheLayer
+from actions.cache_layer.cache_layer import CacheLayer
 
 client = TestClient(app)
 
@@ -12,7 +12,7 @@ def reset_cache():
 
 @pytest.mark.asyncio
 async def test_lru_eviction_logic():
-    small_cache = EnterpriseCacheLayer(max_size=3)
+    small_cache = CacheLayer(max_size=3)
     
     # Napolni do meje
     await small_cache.set("A", 1)
@@ -35,7 +35,7 @@ async def test_lru_eviction_logic():
 
 @pytest.mark.asyncio
 async def test_ttl_expiration():
-    c = EnterpriseCacheLayer()
+    c = CacheLayer()
     await c.set("temp", "data", ttl_seconds=0.1)
     
     assert await c.get("temp") == "data"

@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import Dict, List, Tuple
 from actions.rate_limiter.schemas import RateLimitConfig
 
-class EnterpriseRateLimiter:
+class RateLimiter:
     def __init__(self, config: RateLimitConfig = RateLimitConfig()):
         self.config = config
         self.requests: Dict[str, List[float]] = defaultdict(list)

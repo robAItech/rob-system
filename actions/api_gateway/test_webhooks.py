@@ -3,7 +3,7 @@ import asyncio
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from actions.api_gateway.main import app, dispatcher
-from actions.api_gateway.webhooks import EnterpriseWebhookDispatcher
+from actions.api_gateway.webhooks import WebhookDispatcher
 from actions.api_gateway.schemas import WebhookEndpoint, WebhookEvent, WebhookStatus
 
 client = TestClient(app)
@@ -15,7 +15,7 @@ def reset_dispatcher():
 
 @pytest.mark.asyncio
 async def test_webhook_successful_delivery():
-    d = EnterpriseWebhookDispatcher()
+    d = WebhookDispatcher()
     ep = WebhookEndpoint(id="ep_1", url="http://mock.test/hook", secret="super_secret_key_123", max_retries=1)
     d.register_endpoint(ep)
     
@@ -40,7 +40,7 @@ async def test_webhook_successful_delivery():
 
 @pytest.mark.asyncio
 async def test_webhook_retry_logic_and_failure():
-    d = EnterpriseWebhookDispatcher()
+    d = WebhookDispatcher()
     ep = WebhookEndpoint(id="ep_2", url="http://mock.test/fail", secret="super_secret_key_123", max_retries=1)
     d.register_endpoint(ep)
     

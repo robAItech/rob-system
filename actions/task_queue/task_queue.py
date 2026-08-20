@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Callable, Awaitable, Any
 from datetime import datetime
 from actions.task_queue.schemas import TaskStatus, TaskPriority, TaskEnqueueRequest, TaskResponse
 
-class EnterpriseTaskQueue:
+class TaskQueue:
     def __init__(self):
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.handlers: Dict[str, Callable[[Dict[str, Any]], Awaitable[Dict[str, Any]]]] = {}

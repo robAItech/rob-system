@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from actions.mailer.schemas import EmailRequest, EmailResponse
 
-class EnterpriseMailer:
+class Mailer:
     def __init__(self):
         self.primary_fail_sim = False
 

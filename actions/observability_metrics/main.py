@@ -1,11 +1,11 @@
 import time
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse
-from actions.observability_metrics.observability_metrics import EnterpriseMetricsRegistry
+from actions.observability_metrics.observability_metrics import MetricsRegistry
 from actions.observability_metrics.schemas import MetricSnapshot
 
 app = FastAPI(title="Rob AI Studio - Observability & Metrics")
-registry = EnterpriseMetricsRegistry()
+registry = MetricsRegistry()
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):

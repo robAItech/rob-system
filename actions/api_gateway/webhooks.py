@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from actions.api_gateway.schemas import WebhookEndpoint, WebhookEvent, DeliveryResult, DeliveryAttempt, WebhookStatus
 
-class EnterpriseWebhookDispatcher:
+class WebhookDispatcher:
     def __init__(self):
         self.endpoints: Dict[str, WebhookEndpoint] = {}
         self.results: Dict[str, DeliveryResult] = {}

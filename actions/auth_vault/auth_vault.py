@@ -6,7 +6,7 @@ from typing import Dict, Optional, Tuple, Any
 from datetime import datetime, timedelta
 from actions.auth_vault.schemas import Role, ApiKeyCreate, ApiKeyResponse
 
-class EnterpriseAuthVault:
+class AuthVault:
     def __init__(self, secret_seed: str = "rob_ai_studio_master_vault_key_2026"):
         self.secret_seed = secret_seed.encode("utf-8")
         self.active_keys: Dict[str, Dict[str, Any]] = {}

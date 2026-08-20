@@ -1,9 +1,8 @@
 """
 Enterprise API Gateway — unified FastAPI application.
 
-Združuje nekdanja ``enterprise_unified_gateway`` (usmerjanje zahtevkov na
-mikrostoritve) in ``enterprise_webhook_dispatcher`` (razpošiljanje webhookov)
-v en vhodni point z enotnim middleware pipeline-om.
+Združuje usmerjanje zahtevkov (gateway) in razpošiljanje webhookov v en
+vhodni point z enotnim middleware pipeline-om.
 """
 
 from typing import Any, Dict
@@ -19,7 +18,7 @@ from actions.api_gateway.schemas import (
     WebhookEndpoint,
     WebhookEvent,
 )
-from actions.api_gateway.webhooks import EnterpriseWebhookDispatcher
+from actions.api_gateway.webhooks import WebhookDispatcher
 
 app = FastAPI(
     title="Enterprise API Gateway",
@@ -28,7 +27,7 @@ app = FastAPI(
 )
 
 gateway_router = GatewayRouter()
-dispatcher = EnterpriseWebhookDispatcher()
+dispatcher = WebhookDispatcher()
 
 
 # ── Gateway: usmerjanje zahtevkov ────────────────────────────────────────────
