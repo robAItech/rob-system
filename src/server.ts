@@ -704,7 +704,7 @@ async function handleResearch(message: string): Promise<string> {
         { role: 'system', content: 'Ti si raziskovalni agent ROB. Na podlagi podanih spletnih virov napiši jedrnato raziskovalno poročilo v slovenščini. Ključne trditve citiraj z [1], [2], ... Na koncu dodaj sekcijo "Viri:" s seznamom URL-jev. Uporabi SAMO podane vire — ničesar ne izmišljuj.' },
         { role: 'user', content: `Tema: ${query}\n\nViri:\n${srcTxt}` },
       ],
-      temperature: 0.2, maxTokens: 1000,
+      temperature: 0.2, maxTokens: 8000,
     });
     const report = res.text;
     await saveResearch(query, report, sources); // arhiv s citati
@@ -746,7 +746,7 @@ async function chat(message: string): Promise<string> {
         { role: 'system', content: 'Ti si ROB, avtonomni inženirski stroj za Rob AI Studio. Odgovarjaj kratko in tehnično, v slovenščini. Uporabljaj SAMO podane žive podatke (datum/ura/vreme) — ničesar ne izmišljuj.' },
         { role: 'user', content: `${live}\n\nVprašanje uporabnika: ${message}` },
       ],
-      temperature: 0.2, maxTokens: 700,
+      temperature: 0.2, maxTokens: 4000,
     });
     return res.text;
   } finally {
