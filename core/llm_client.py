@@ -4,6 +4,15 @@ import httpx
 from typing import Dict, Any, List, Optional
 from core.config import settings
 
+
+def estimate_tokens(text: str) -> int:
+    """Hevristika brez odvisnosti: ~4 znaki/token za mešano kodo + prozo.
+
+    Uporablja se SAMO za log/meritve, nikoli za odločanje (odločitve so po znakih).
+    """
+    return max(1, (len(text) + 3) // 4)
+
+
 class DeepSeekLLMClient:
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
         self.api_key = api_key or settings.deepseek_api_key
@@ -14,6 +23,7 @@ class DeepSeekLLMClient:
         self.max_retries = getattr(settings, "llm_max_retries", 3) or 3
         self.backoff = getattr(settings, "llm_backoff_seconds", 0.5) or 0.5
         self.max_completion_tokens = getattr(settings, "llm_max_completion_tokens", None) or None
+        self.last_usage: Dict[str, Any] = {}   # Korak 3: usage iz zadnjega API odgovora
 
     def _get_headers(self) -> Dict[str, str]:
         return {
@@ -35,6 +45,7 @@ class DeepSeekLLMClient:
             response = await client.post(endpoint, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
+            self.last_usage = data.get("usage", {}) or {}   # Korak 3: token usage
             return data["choices"][0]["message"]["content"]
 
     async def _post_message(self, endpoint: str, headers: Dict[str, str], payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -43,6 +54,7 @@ class DeepSeekLLMClient:
             response = await client.post(endpoint, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
+            self.last_usage = data.get("usage", {}) or {}   # Korak 3: token usage
             return data["choices"][0]["message"]
 
     async def _complete_with(

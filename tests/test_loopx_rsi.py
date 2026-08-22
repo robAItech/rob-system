@@ -354,3 +354,33 @@ def test_heal_agentic_uspeh_brez_file_blokov_prek_write_file(tmp_path, monkeypat
     with mock.patch.object(engine.llm, "complete_with_tools", side_effect=fake_tools):
         ok, _ = engine._heal_agentic("prompt", "system")
     assert ok is True
+
+
+def test_heal_agentic_trim_pri_majhnem_budgetu(tmp_path, monkeypatch):
+    """Korak 3 — tudi ob agresivnem trim budgetu se agentic zanka ne zlomi
+    (tool_call_id ostanejo parni; varni padec ne trima sredi cikla)."""
+    engine = _engine_direct(tmp_path, monkeypatch)
+    (tmp_path / "actions" / "demo_service" / "big.py").write_text("x = 1\n" * 5000, encoding="utf-8")
+    calls = {"n": 0}
+
+    async def fake_tools(messages, tools, tool_choice="auto", use_coder_model=True):
+        # Parnost invariant: vsak tool ima svojega assistant predhodnika.
+        tool_ids = [m.get("tool_call_id") for m in messages if m.get("role") == "tool"]
+        asst_ids = [tc["id"] for m in messages if m.get("role") == "assistant" for tc in (m.get("tool_calls") or [])]
+        assert all(i in asst_ids for i in tool_ids), "tool brez predhodnika"
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"content": None, "tool_calls": [{
+                "id": "c1", "type": "function",
+                "function": {"name": "write_file",
+                             "arguments": json.dumps({"path": "main.py", "content": "def f():\n    return 1\n"})}}]}
+        if calls["n"] == 2:
+            return {"content": None, "tool_calls": [{
+                "id": "c2", "type": "function",
+                "function": {"name": "read_file", "arguments": json.dumps({"path": "big.py"})}}]}
+        return {"content": "Končano.", "tool_calls": None}
+
+    monkeypatch.setattr(LoopXEngineBridge, "_agentic_context_budget", lambda self: 500)
+    with mock.patch.object(engine.llm, "complete_with_tools", side_effect=fake_tools):
+        ok, _ = engine._heal_agentic("prompt", "system")
+    assert ok is True

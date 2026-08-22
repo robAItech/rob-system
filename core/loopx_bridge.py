@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.config import settings
 from core.gbrain_bridge import GBrainBridge
 from core.graphify_bridge import GraphifyBridge
-from core.llm_client import DeepSeekLLMClient
+from core.llm_client import DeepSeekLLMClient, estimate_tokens
 
 
 # Evropski spomin: prostorsko in po človeško berljivo; brez agresivne redukcije.
@@ -90,6 +90,28 @@ TOOLS = [
 ]
 
 
+# ── Korak 3 — upravljanje konteksta (budget heal prompta + trim agentic) ── #
+HEAL_SOURCES_PER_FILE_MAX = 8000    # per-file cap sources v znakih
+HEAL_SOURCES_MIN_KEEP = 1000        # ne drži praznega ostanka
+HEAL_CORE_ENTRY_FILES = ("main.py", "__init__.py", "app.py", "index.py")
+AGENTIC_CONTEXT_MIN = 20000         # spodnja meja agentic budgeta
+
+TEST_PREFIXES = ("test_", "tests_")
+TEST_SUFFIX_E = ("_test",)          # za basenames (po odstranitvi .py)
+TEST_HARDNAME = {"conftest.py"}
+
+
+def is_test_filename(name: str) -> bool:
+    """True, če je datoteka test (Test-Locking predikat — LLM je ne sme spreminjati)."""
+    if name.endswith(".py"):
+        base = name[:-3]             # odstrani končnico .py
+        if base.startswith(TEST_PREFIXES) or base.endswith(TEST_SUFFIX_E):
+            return True
+        if name in TEST_HARDNAME:
+            return True
+    return False
+
+
 class LoopXEngineBridge:
     """Avtonomna verifikacijska zanka z RSI (self-healing + mednáložni spomin).
 
@@ -167,12 +189,20 @@ class LoopXEngineBridge:
     #  Pomožne funkcije
     # ------------------------------------------------------------------ #
 
-    def _read_module_sources(self) -> Dict[str, str]:
-        """Prebere vse .py datoteke modula za posredovanje LLM-ju."""
+    def _read_module_sources(self, include_tests: Optional[bool] = None) -> Dict[str, str]:
+        """Prebere .py datoteke modula za posredovanje LLM-ju.
+
+        Korak 3: test datoteke (test_*.py, *_test.py, conftest.py) so privzeto
+        izpuščene — Test-Locking LLM-ju prepoveduje spreminjanje, v promptu pa so
+        čist balast (~55 % pri velikih modulih). `include_tests` preglasi settings.
+        """
+        include_tests = settings.llm_heal_include_tests if include_tests is None else include_tests
         sources = {}
         target = Path(f"actions/{self.project}")
         if target.exists():
             for p in target.glob("*.py"):
+                if not include_tests and is_test_filename(p.name):
+                    continue
                 sources[p.name] = p.read_text(encoding="utf-8")
         return sources
 
@@ -217,17 +247,6 @@ class LoopXEngineBridge:
         # USTVARI test (test ne obstaja) — to je dovoljeno, ker ni tamper.
         # Odločitev: test datoteka se zavrne le, če ŽE OBSTAJA na disku; če
         # ne obstaja (nova) → dovolimo pisanje, da RSI build lahko napiše test.
-        TEST_PREFIXES = ("test_", "tests_")
-        TEST_SUFFIX_E = ("_test",)   # za basenames (po odstranitvi .py)
-        TEST_HARDNAME = {"conftest.py"}
-        def _is_test_file(name: str) -> bool:
-            if name.endswith(".py"):
-                base = name[:-3]  # odstrani končnico .py
-                if base.startswith(TEST_PREFIXES) or base.endswith(TEST_SUFFIX_E):
-                    return True
-                if name in TEST_HARDNAME:
-                    return True
-            return False
         for rel, content in files.items():
             # Veljavni ključi so goli basename (brez separatorja/traversal).
             # Vsak separator ali traversal ('.', '..', '/', '\') -> zavrni,
@@ -242,7 +261,7 @@ class LoopXEngineBridge:
             # test datoteka se zavrne LE, če obstaja Z VSEBINO (> STUB_PRAH_BAJTOV);
             # prazen/nov stub se pusti dokončati.
             STUB_PRAH_BAJTOV = 30
-            if _is_test_file(rel) and cand.exists():
+            if is_test_filename(rel) and cand.exists():
                 try:
                     _existing_ok = len(cand.read_text(encoding="utf-8")) > STUB_PRAH_BAJTOV
                 except OSError:
@@ -307,7 +326,12 @@ class LoopXEngineBridge:
         return learned_note + cons_note
 
     def _build_heal_prompt(self, traceback: str, directive: str, kind: str = "python") -> str:
-        """Sestavi heal prompt: sources + direktiva + spec/memory/graph/rag + traceback + out_note."""
+        """Sestavi heal prompt: sources + direktiva + spec/memory/graph/rag + traceback + out_note.
+
+        Korak 3 — budget: celoten prompt ≤ `llm_heal_prompt_chars`; prioriteta
+        traceback > directive > spec/memory/graph/rag > sources. Sources se skrčijo
+        prek `_fit_sources` (relevanca na napako + entry-point + velikost).
+        """
         sources = self._read_module_sources()
         # Navodilo za izhod glede na vrsto izdelka (F1).
         if kind == "markdown":
@@ -333,22 +357,168 @@ class LoopXEngineBridge:
         if relevant:
             blocks = "\n\n".join(f"// {r['path']} (podobnost {r['overlap']})\n{r['snippet']}" for r in relevant)
             rag_note = f"RELEVANTNA KODA (podobni vzorci iz repa):\n{blocks}\n\n"
-        # P0 — spec_hint: arhitekturna usmeritev iz GStack manifesta. Če prazna → skip.
+        # P0 — spec_hint: arhitekturna usmeritev iz GStack manifesta. Korak 3: cap 4000.
         spec_hint = getattr(self, "spec_hint", None) or ""
-        spec_note = f"SPEC (arhitekturna usmeritev izvedbe):\n{spec_hint}\n\n" if spec_hint else ""
-        return (
-            f"Izvirna vsebina modula `{self.project}` (trenutno ogrodje/stubs):\n"
-            f"{json.dumps(sources, ensure_ascii=False, indent=2)}\n\n"
-            "DIREKTIVA (kaj naj izdelek dejansko vsebuje):\n"
-            f"{directive[:3000]}\n\n"
-            f"{spec_note}"
-            f"{memory_note}"
-            f"{graph_note}"
-            f"{rag_note}"
-            "Razlog verifikacije (doseči je treba zelen):\n"
-            f"{traceback[:8000]}\n\n"
-            f"{out_note}"
-        )
+        spec_note = f"SPEC (arhitekturna usmeritev izvedbe):\n{spec_hint[:4000]}\n\n" if spec_hint else ""
+        notes = spec_note + memory_note + graph_note + rag_note
+        directive_note = f"DIREKTIVA (kaj naj izdelek dejansko vsebuje):\n{directive[:3000]}\n\n"
+        traceback_note = f"Razlog verifikacije (doseči je treba zelen):\n{traceback[:8000]}\n\n"
+
+        prompt_budget = max(2000, int(settings.llm_heal_prompt_chars))
+        fixed = len(directive_note) + len(notes) + len(traceback_note) + len(out_note) + 300
+        sources_budget = int(settings.llm_heal_sources_chars)
+        sources_budget = min(sources_budget, max(0, prompt_budget - fixed))
+
+        fitted: Dict[str, str] = sources
+        omitted: List[str] = []
+        truncated: List[str] = []
+        for _ in range(4):                       # konvergenčna zanka na budget
+            fitted, omitted, truncated = self._fit_sources(sources, sources_budget, traceback, directive)
+            manifest_note = self._manifest_note(sources, omitted, truncated)
+            sources_json = json.dumps(fitted, ensure_ascii=False, indent=2)
+            prompt = (
+                f"Izvirna vsebina modula `{self.project}` (trenutno ogrodje/stubs):\n"
+                f"{sources_json}\n\n"
+                f"{manifest_note}"
+                f"{directive_note}"
+                f"{notes}"
+                f"{traceback_note}"
+                f"{out_note}"
+            )
+            if len(prompt) <= prompt_budget:
+                break
+            sources_budget = max(0, int(sources_budget * 0.6) - 1000)
+
+        if omitted or truncated:
+            print(f"[LOOPX] heal prompt: {len(prompt)} znakov, ~{estimate_tokens(prompt)} tokenov "
+                  f"(izpuščeno: {len(omitted)}, okršeno: {len(truncated)})", flush=True)
+        return prompt
+
+    @staticmethod
+    def _fit_sources(sources: Dict[str, str], budget: int, traceback: str, directive: str):
+        """Deterministično skrči sources na budget.
+
+        Vrne (fitted, omitted, truncated). Ključ: relevantnost na napako
+        (token-overlap s traceback/direktivo), nato entry-point, nato velikost.
+        """
+        if not sources:
+            return sources, [], []
+        if sum(len(v) for v in sources.values()) <= budget:
+            return sources, [], []
+
+        def _toks(text: str) -> set:
+            return set(re.findall(r"[a-zA-Z_]\w{2,}", (text or "").lower()))
+        _STOP = {"def", "class", "import", "from", "self", "return", "assert", "file", "line",
+                 "in", "for", "while", "if", "else", "raise", "test", "none", "true", "false",
+                 "and", "the", "with", "as", "is", "not", "or"}
+        tb = _toks(traceback) - _STOP
+        dv = _toks(directive) - _STOP
+
+        def _score(name: str) -> int:
+            content = sources[name].lower()
+            base = 2 * len(tb & _toks(content)) + len(dv & _toks(content))
+            if name in HEAL_CORE_ENTRY_FILES:
+                base += 2                      # entry-point bonus
+            return base
+
+        ordered = sorted(sources, key=lambda n: (-_score(n), len(sources[n]), n))
+        fitted: Dict[str, str] = {}
+        omitted: List[str] = []
+        truncated: List[str] = []
+        remaining = budget
+        for name in ordered:
+            content = sources[name]
+            per = min(HEAL_SOURCES_PER_FILE_MAX, remaining)
+            if len(content) <= per:
+                fitted[name] = content
+                remaining -= len(content)
+            elif remaining >= HEAL_SOURCES_MIN_KEEP and len(content) > HEAL_SOURCES_MIN_KEEP:
+                tail = f"\n... [IZREZANO — {len(content)} znakov; preberi z read_file]"
+                keep = max(200, min(per, remaining) - len(tail))
+                if keep >= 200:
+                    fitted[name] = content[:keep] + tail
+                    truncated.append(name)
+                    remaining = 0
+                else:
+                    omitted.append(name)
+            else:
+                omitted.append(name)
+            if remaining <= 0:
+                break
+        return fitted, omitted, truncated
+
+    @staticmethod
+    def _manifest_note(sources: Dict[str, str], omitted: List[str], truncated: List[str]) -> str:
+        """Seznam vseh datotek modula z oznako izpuščenih/okršenih — samo ko je kaj izpuščeno."""
+        if not omitted and not truncated:
+            return ""
+        lines = []
+        for name in sorted(sources):
+            flag = " [IZPUŠČENO]" if name in omitted else (" [OKRŠENO]" if name in truncated else "")
+            lines.append(f"- {name} ({len(sources[name])} B){flag}")
+        return ("DATOTEKE MODULA (vse; vsebina označenih ni vključena — v agentic "
+                "načinu preberi z read_file):\n" + "\n".join(lines) + "\n\n")
+
+    def _agentic_context_budget(self) -> int:
+        return max(AGENTIC_CONTEXT_MIN, int(settings.llm_heal_agentic_context_chars))
+
+    @staticmethod
+    def _trim_agentic_messages(messages: List[Dict[str, Any]], max_chars: int) -> List[Dict[str, Any]]:
+        """Izloči NAJSTAREJŠE ZAKLJUČENE tool-cikle, dokler vsota ≤ max_chars.
+
+        Vedno obdrži system+user+AKTIVNI cikel (zadnji assistant s tool_calls +
+        njegovi tool odgovori), da tool_call_id nikoli ne visi brez predhodnika.
+        """
+        if not messages:
+            return messages
+
+        def _size(m: Dict[str, Any]) -> int:
+            return len(json.dumps(m, ensure_ascii=False))
+
+        if sum(_size(m) for m in messages) <= max_chars:
+            return messages
+        # head = system+user (defenzivno, če ni standardne oblike).
+        head_end = 2
+        if messages[0].get("role") != "system":
+            head_end = 0
+        elif len(messages) < 2:
+            head_end = len(messages)
+        # tail = aktivni cikel: od zadnjega assistant s tool_calls do konca.
+        tail_start = None
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "assistant" and messages[i].get("tool_calls"):
+                tail_start = i
+                break
+        if tail_start is None:
+            tail_start = max(head_end, len(messages) - 1)
+        head, tail = messages[:head_end], messages[tail_start:]
+        middle = messages[head_end:tail_start]
+        fixed = sum(_size(m) for m in head) + sum(_size(m) for m in tail)
+        if fixed > max_chars:
+            return messages                     # varni padec: ne zlomi cikla
+        budget_mid = max_chars - fixed
+        # middle razdelimo na CELE cikle (assistant + njegovi tool odgovori).
+        groups: List[List[Dict[str, Any]]] = []
+        cur: List[Dict[str, Any]] = []
+        for m in middle:
+            if m.get("role") == "assistant" and cur:
+                groups.append(cur)
+                cur = [m]
+            else:
+                cur.append(m)
+        if cur:
+            groups.append(cur)
+        keep: List[List[Dict[str, Any]]] = []
+        kept = 0
+        for g in reversed(groups):              # najnovejše cikle obdrži
+            gs = sum(_size(x) for x in g)
+            if kept + gs <= budget_mid:
+                keep.append(g)
+                kept += gs
+            else:
+                break
+        keep.reverse()
+        return head + [m for g in keep for m in g] + tail
 
     def _heal_text(self, prompt: str, system_prompt: str) -> Tuple[bool, str]:
         """Tekstovna pot: LLM vrne ### FILE: bloke → razreži → zapiši."""
@@ -390,6 +560,8 @@ class LoopXEngineBridge:
         ]
         written_via_tool = 0
         for _step in range(AGENTIC_MAX_TOOL_STEPS):
+            # Korak 3 — trim kumulativnega konteksta (obdrži aktivni cikel atomično).
+            messages = self._trim_agentic_messages(messages, self._agentic_context_budget())
             self.llm_calls += 1
             try:
                 # complete_with_tools je async korutina; zanko držimo sync.

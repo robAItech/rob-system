@@ -12,6 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from core.config import settings
 from core.llm_client import DeepSeekLLMClient
 
 
@@ -160,3 +161,36 @@ async def test_complete_with_tools_model_fallback_na_400():
     payloads = [k.get("json", {}) for _, k in fake.posts]
     assert len(payloads) == 2
     assert payloads[0]["model"] == payloads[1]["model"] == "deepseek-v4-flash"
+
+
+# --------------------------------------------------------------------------- #
+#  Korak 3 — upravljanje konteksta (last_usage, max_completion_tokens)
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_last_usage_se_zajame():
+    """usage iz API odgovora se zajame v client.last_usage."""
+    c = _client()
+    resp = _FakeResp(200, {"choices": [{"message": {"content": "OK"}}],
+                           "usage": {"prompt_tokens": 7, "completion_tokens": 3, "total_tokens": 10}})
+    fake = _FakeAsyncClient([resp])
+    with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
+        await c.generate_completion("hi")
+    assert c.last_usage["total_tokens"] == 10
+
+
+@pytest.mark.asyncio
+async def test_last_usage_prazna_brez_usage():
+    """Brez usage v odgovoru → last_usage ostane {}. """
+    c = _client()
+    fake = _FakeAsyncClient([_FakeResp(200)])
+    with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
+        await c.generate_completion("hi")
+    assert c.last_usage == {}
+
+
+def test_max_completion_tokens_iz_config(monkeypatch):
+    """max_completion_tokens se prebere iz settings (Korak 3 — deklariran v configu)."""
+    monkeypatch.setattr(settings, "llm_max_completion_tokens", 128)
+    c = DeepSeekLLMClient(api_key="sk-test", base_url="https://x")
+    assert c.max_completion_tokens == 128
