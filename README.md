@@ -105,6 +105,7 @@ Rob AI Studio/
 ```bash
 git clone https://github.com/robAItech/AI-podjetje-V5.git
 cd "Rob system"
+cd "C:\Rob system"
 ```
 
 Zahtevana orodja na PATH (nameščena ročno, ni venv):
