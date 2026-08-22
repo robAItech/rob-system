@@ -87,6 +87,10 @@ Rob AI Studio/
 │   ├── dev_cli.py                    # Orkestracija (proxy+dashboard+claude, --serve)
 │   ├── orchestrator.py               # RSI/GStack faza (gbrain→graphify→gstack→loopx)
 │   ├── loopx_bridge.py               # RSI zanka (pytest→LLM→100% zelen) + test-lock
+│   ├── embedder.py                   # Semantični embeddingi spomina (Gemini, korak 2)
+│   ├── skill_bridge.py               # GStack skilli kot LLM orodje (korak 6)
+│   ├── actions_runtime.py            # actions/ kot enotna runtime app (korak 5)
+│   ├── actions_graph.py              # Realni odvisnostni robovi action modulov (korak 5)
 │   ├── agenda.py                     # Čakalna vrsta naročil (več vhodov → vrsta)
 │   ├── audit.py / business.py / visual_qa.py  # revizija / glavna knjiga / vizualni QA
 ├── src/                              # TypeScript Command-Center dashboard
@@ -95,7 +99,8 @@ Rob AI Studio/
 ├── bridges/litellm_config.yaml       # DeepSeek proxy routing
 ├── scripts/                          # autostart.bat + register-autostart.ps1 (HKCU Run)
 ├── evaluate_autonomy.py              # P5 — SWE-bench stila samo-eval (rob eval)
-└── tests/                            # Pytest suite (394 testov)
+├── .github/workflows/ci.yml          # CI: PR gate (pytest + eval dry-run) + nočni eval
+└── tests/                            # Pytest suite (476 testov)
 ```
 
 ## 🛠️ Hitra namestitev in zagon
@@ -119,9 +124,13 @@ Ustvarite datoteko `.env` v korenskem imeniku projekta:
 
 ```
 DEEPSEEK_API_KEY=vaš_deepseek_api_ključ
-GEMINI_API_KEY=vaš_gemini_api_ključ    # TTS (naravni glas) + spletno iskanje — https://aistudio.google.com/apikey
+GEMINI_API_KEY=vaš_gemini_api_ključ    # TTS + spletno iskanje + semantični spomin (embeddingi) — https://aistudio.google.com/apikey
 SERPER_API_KEY=vaš_serper_api_ključ    # (opcijsko) pravo Google iskanje — https://serper.dev
 ```
+
+Poln seznam nastavitev — vklj. `LLM_TOOL_USE` (agentic tool-use), `MEMORY_EMBEDDINGS`,
+`LLM_HEAL_PROMPT_CHARS`/`LLM_HEAL_SOURCES_CHARS` (kontekst), `LOOPX_ROLLBACK_ON_FAIL`
+(avto-rollback) in `GSTACK_SKILLS_DIR` — je v `.env.example`.
 
 ### 3. Zagon Claude Code prek LiteLLM + DeepSeek (`./dev`)
 
@@ -197,7 +206,9 @@ python run_swarm.py --autonomous --target <m> --directive "<cikel>"  # F2: spec 
 python run_swarm.py --process-agenda                                 # F3: obdela čakalno vrsto naročil
 python run_swarm.py --business "<poslovna ideja>"                    # F6: predlog → glavna knjiga
 python evaluate_autonomy.py --dry-run                               # P5: strukturna preverba eval-a (brez LLM)
-python evaluate_autonomy.py                                         # P5: SWE-bench stila samo-eval avtonomnosti
+python evaluate_autonomy.py --workers 4                             # P5: eval lestvica z vzporednimi case-i
+python -m core.actions_runtime --port 8788                          # Korak 5: enotna runtime app vseh 18 modulov
+python -m core.actions_graph                                        # Korak 5: realni odvisnostni robovi (JSON)
 ```
 
 Dosežene faze:
@@ -211,7 +222,7 @@ Dosežene faze:
 | **F4** | Trajni RSI spomin (samorazvoj / RDI) — LLM se uči iz napak |
 | **F5** | Revizijski dnevnik + števec LLM-klicov (nadzor stroškov) |
 | **F6** | Poslovni avtomat: ideja → predlog → glavna knjiga (prilivi/stranke) |
-| **P5** | SWE-bench stila samo-eval avtonomnosti — `evaluate_autonomy.py` meri prehod rate (`rob eval`), ne blokira CI |
+| **P5** | SWE-bench stila samo-eval avtonomnosti — eval lestvica (8 case-ov: funkcije, Pydantic, FastAPI, avtonomni), `evaluate_autonomy.py` meri prehod rate; **PR gate + nočni eval v CI** (`.github/workflows/ci.yml`) |
 
 Command-Center dashboard ponuja poglede: **Command Center** (pregled + obsidian
 graf), **Pogovor** (glasovni vnos + TTS odgovor, izbira glasu Charon/Orus/...),
@@ -311,6 +322,31 @@ zanko učenja uteži (RLAIF) in eno meta-zanko (avtonomija ciljev):
 ```
 
 Skupaj teh deset zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
+
+## 🔧 Nadgradnje — agentičnost, spomin, kontekst, paralelizem, runtime
+
+- **Agentic tool-use v RSI zanki** (`core/loopx_bridge.py`): LLM v heal zanki kliče
+  orodja `read_file`/`write_file`/`list_files`/`search_memory`/`skill` in iterira
+  (OpenAI function-calling; `LLM_TOOL_USE`), namesto krhke `### FILE:` konvencije.
+- **Semantični spomin** (`core/embedder.py` + `core/memory_consolidation.py`):
+  lekcije se vektorizirajo prek Gemini `gemini-embedding-2`; `recall` uredi po
+  kosinusni podobnosti (prag 0.20) z leksikalnim padcem ob izpadu
+  (`MEMORY_EMBEDDINGS`, `--backfill-embeddings`).
+- **Upravljanje konteksta** (`LLM_HEAL_*`): budget heal prompta, izločitev test
+  datotek iz sources (~55 % manj tokenov), trim agentic messages, zajem `usage`.
+- **GStack skilli kot LLM orodje** (`core/skill_bridge.py`): LLM lahko pokliče
+  `skill("spec")` in dobi strnjen procesni vodič (cap 6k, brez boilerplate-a).
+- **Paralelizem** (`core/fork.py`, `evaluate_autonomy.py`): vzporedno točkovanje
+  variant in eval case-ov (`--workers`); atomski zapis `graph.json`; `DB_WRITE_LOCK`
+  za sočasne pisalce.
+- **actions/ kot pravi runtime** (`core/actions_runtime.py` + `core/actions_graph.py`):
+  enotna FastAPI app, ki mount-a vseh 18 modulov pod `/api/<modul>/` z middleware
+  verigo (auth → rate-limit → audit → deljeni EventBus); dashboard graf kaže
+  REALNE odvisnosti (AST-sken importov), ne trdo-kodiranih.
+- **Avto-rollback** (`LOOPX_ROLLBACK_ON_FAIL`): ob neuspelem buildu se modul povrne
+  na pred-build stanje (snapshot v `.loopx/rollback/`).
+- **CI** (`.github/workflows/ci.yml`): PR gate (pytest + eval dry-run) + nočni eval
+  (poln eval z LLM + Docker, poročilo kot artifact).
 
 ## 🧪 Testni standardi
 
