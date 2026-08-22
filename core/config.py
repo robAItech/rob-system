@@ -12,8 +12,8 @@ class SystemSettings(BaseSettings):
 
     deepseek_api_key: str = Field(default="sk-your-deepseek-api-key-here", alias="DEEPSEEK_API_KEY")
     deepseek_base_url: str = Field(default="https://api.deepseek.com", alias="DEEPSEEK_BASE_URL")
-    deepseek_model_chat: str = Field(default="deepseek-chat", alias="DEEPSEEK_MODEL_CHAT")
-    deepseek_model_coder: str = Field(default="deepseek-coder", alias="DEEPSEEK_MODEL_CODER")
+    deepseek_model_chat: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL_CHAT")
+    deepseek_model_coder: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL_CODER")
     llm_temperature: float = Field(default=0.1, alias="LLM_TEMPERATURE")
     llm_timeout_seconds: float = Field(default=60.0, alias="LLM_TIMEOUT_SECONDS")
 

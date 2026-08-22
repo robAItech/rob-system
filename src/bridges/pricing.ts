@@ -23,8 +23,7 @@ export const PRICING: Record<string, ModelPrice> = {
   'gpt-4o': { inMicrosPerMTok: 2_500_000, outMicrosPerMTok: 10_000_000 },
 
   // DeepSeek
-  'deepseek-chat': { inMicrosPerMTok: 270_000, outMicrosPerMTok: 1_100_000 },
-  'deepseek-reasoner': { inMicrosPerMTok: 550_000, outMicrosPerMTok: 2_190_000 },
+  'deepseek-v4-flash': { inMicrosPerMTok: 270_000, outMicrosPerMTok: 1_100_000 },
 };
 
 /**

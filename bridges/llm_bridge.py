@@ -18,7 +18,7 @@ class LLMBridge:
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-flash",
             "messages": [
                 {"role": "system", "content": system_prompt or "You are an expert Python architect."},
                 {"role": "user", "content": prompt}

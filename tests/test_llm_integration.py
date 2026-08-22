@@ -7,8 +7,8 @@ from core.llm_client import DeepSeekLLMClient
 def test_dotenv_loading():
     assert Path(".env").exists()
     assert settings.deepseek_base_url == "https://api.deepseek.com"
-    assert settings.deepseek_model_chat == "deepseek-chat"
-    assert settings.deepseek_model_coder == "deepseek-coder"
+    assert settings.deepseek_model_chat == "deepseek-v4-flash"
+    assert settings.deepseek_model_coder == "deepseek-v4-flash"
 
 def test_llm_code_extraction():
     client = DeepSeekLLMClient()

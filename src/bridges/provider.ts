@@ -35,7 +35,7 @@ export const PROVIDERS = {
   deepseek: {
     baseUrl: 'https://api.deepseek.com/v1',
     apiKeyEnv: 'DEEPSEEK_API_KEY',
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-v4-flash',
     baseUrlEnv: 'DEEPSEEK_BASE_URL',
   },
 } as const satisfies Record<string, ProviderConfig>;
