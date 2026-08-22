@@ -74,6 +74,12 @@ elif [ "$1" == "goals" ]; then
 elif [ "$1" == "reflect" ]; then
     # P3 — strateška samorefleksija: operativna načela iz zadnjih lekcij.
     cd "$PROJECT_DIR" && python core/strategy_reflect.py "${@:2}"
+elif [ "$1" == "patterns" ]; then
+    # P5 — prečni vzorci neuspehov čez naloge (≥2 projektov).
+    cd "$PROJECT_DIR" && python core/pattern_detect.py --patterns "${@:2}"
+elif [ "$1" == "learn" ]; then
+    # P7 — learning dashboard: eval trend + lekcije + načela + vzorci.
+    cd "$PROJECT_DIR" && python core/learning_dashboard.py "${@:2}"
 elif [ "$1" == "deploy" ]; then
     # Zagon python skripte, ki naredi POST request na naš novi manager
     cd "$PROJECT_DIR" && activate_venv && python -c "
@@ -111,4 +117,6 @@ else
     echo "  ./rob dev --serve - AVTONOMEN zagon: system v ozadju (Task Scheduler), UI vnos, brez terminala."
     echo "  ./rob eval        - SWE-bench stila samo-eval avtonomnosti (P5; --dry-run za brez LLM preverbo)"
     echo "  ./rob visual-qa <pot|url> - Neobvezen vizualni QA (Gemma 4 prek Ollama pogleda HTML)"
+    echo "  ./rob patterns    - P5: prečni vzorci neuspehov (≥2 projektov)"
+    echo "  ./rob learn       - P7: learning dashboard (eval trend, lekcije, načela, vzorci)"
 fi

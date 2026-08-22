@@ -77,7 +77,17 @@ class GoalProposer:
             "weak_projects": self._weak_projects(),
             "causes": self._cause_counts(),
             "pitfalls": self._pitfall_counts(),
+            "dominant_pattern": self._dominant_pattern(),   # P5
         }
+
+    def _dominant_pattern(self) -> Optional[Dict[str, Any]]:
+        """P5 — največji prečni vzorec neuspehov (ali None)."""
+        try:
+            from core.pattern_detect import PatternDetector
+            det = PatternDetector(self.db_path)
+            return det.dominant_pattern(det.detect_cross_task_patterns())
+        except Exception:
+            return None
 
     def _weak_projects(self, min_total: int = 3, min_fail_rate: float = 0.4) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:

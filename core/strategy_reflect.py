@@ -44,8 +44,12 @@ class StrategyReflector:
     # ------------------------------------------------------------------ #
     #  Lekcije
     # ------------------------------------------------------------------ #
-    def gather_lessons(self, limit: int = 20) -> str:
-        """Zadnjih N task_lessons (run_reviews) kot strnjen niz za LLM."""
+    def gather_lessons(self, limit: int = 20, include_patterns: bool = True) -> str:
+        """Zadnjih N task_lessons (run_reviews) kot strnjen niz za LLM.
+
+        P5 — na VRH doda dominantni prečni vzorec (če obstaja ≥2 projekta),
+        da LLM v P3 vedno vidi fokus. `include_patterns=False` izklopi.
+        """
         try:
             from core.run_review import RunReviewer
             rows = RunReviewer(self.db_path).recent(limit=limit)
@@ -67,7 +71,19 @@ class StrategyReflector:
             if lesson and lesson != ww and lesson != wf:
                 parts.append("lekcija: " + lesson)
             lines.append("- " + " | ".join(parts))
-        return "\n".join(lines)
+        text = "\n".join(lines)
+        if include_patterns:
+            try:
+                from core.pattern_detect import PatternDetector
+                det = PatternDetector(self.db_path)
+                pat = det.dominant_pattern(det.detect_cross_task_patterns())
+                if pat:
+                    focus = (f"## DOMINANTEN VZOREC: {pat['cause']} v {pat['projects']} projektih "
+                             f"({pat['total']}×, {pat['share']:.0%}) — {pat['recommendation']}")
+                    text = focus + "\n\n" + text
+            except Exception:
+                pass
+        return text
 
     # ------------------------------------------------------------------ #
     #  Predlog + guard

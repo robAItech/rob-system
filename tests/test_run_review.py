@@ -64,6 +64,29 @@ def test_review_records_structured_goal_plan_task_type(tmp_path):
     assert row["task_type"] == "python"
 
 
+def test_review_includes_next_step_failed(tmp_path):
+    """P6 — rdeč tek → next_step po vzroku (recurring_error → change_approach)."""
+    r = RunReviewer(tmp_path / "memory.db")
+    res = r.review({"project": "p", "directive": "d", "outcome": "failed",
+                    "traceback": "ista napaka ValueError po 3 poskusih"})
+    assert res["next_step"] == "change_approach"
+
+
+def test_review_includes_next_step_green(tmp_path):
+    """P6 — zelen tek → next_step continue."""
+    r = RunReviewer(tmp_path / "memory.db")
+    res = r.review({"project": "p", "directive": "d", "outcome": "green"})
+    assert res["next_step"] == "continue"
+
+
+def test_next_step_column_exists(tmp_path):
+    """P6 — stolpec next_step obstaja v run_reviews (recent → dict)."""
+    r = RunReviewer(tmp_path / "memory.db")
+    r.review({"project": "p", "directive": "d", "outcome": "green"})
+    row = r.recent(limit=1)[0]
+    assert "next_step" in row
+
+
 def test_recent_returns_reviews_newest_first(tmp_path):
     r = RunReviewer(tmp_path / "memory.db")
     r.review({"project": "a", "directive": "x", "outcome": "failed",

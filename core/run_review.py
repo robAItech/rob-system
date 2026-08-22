@@ -50,6 +50,17 @@ ROOT_CAUSES = (
     "unknown",           # ni mogoče določiti
 )
 
+# P5/P6 — vzrok → priporočen naslednji korak {action, hint}. En vir resnice.
+NEXT_STEP = {
+    "correct":         {"action": "continue",                "hint": ""},
+    "spec_mismatch":   {"action": "retry_z_boljso_direktivo", "hint": "pojasni direktivo/spec, dodaj primere"},
+    "llm_error":       {"action": "change_prompt",            "hint": "spremeni prompt"},
+    "test_gap":        {"action": "review_tests",             "hint": "preglej testna pričakovanja"},
+    "recurring_error": {"action": "change_approach",          "hint": "preveri okolje/vhode pred ponavljanjem"},
+    "env_issue":       {"action": "check_env",                "hint": "preveri odvisnosti"},
+    "unknown":         {"action": "investigate",              "hint": "razišči osnovni vzrok"},
+}
+
 
 class RunReviewer:
     """Po teku klasificira vzrok izida in zapiše lekcijo v spomin.
@@ -97,13 +108,14 @@ class RunReviewer:
                     lesson TEXT,
                     llm_calls INTEGER NOT NULL DEFAULT 0,
                     attempts INTEGER NOT NULL DEFAULT 0,
+                    next_step TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            # P1 — idempotentna migracija: strukturirana polja task_lesson za
-            # obstoječe baze (nullable TEXT; stari zapisi ostanejo veljavni).
+            # P1/P6 — idempotentna migracija: strukturirana polja task_lesson +
+            # next_step za obstoječe baze (nullable TEXT; stari zapisi veljavni).
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(run_reviews)").fetchall()}
-            for col in ("goal", "plan_summary", "task_type", "what_worked", "what_failed"):
+            for col in ("goal", "plan_summary", "task_type", "what_worked", "what_failed", "next_step"):
                 if col not in cols:
                     conn.execute(f"ALTER TABLE run_reviews ADD COLUMN {col} TEXT")
             conn.commit()
@@ -134,6 +146,8 @@ class RunReviewer:
             result = self._review_heuristic(run)
 
         root_cause = result["root_cause"] if result["root_cause"] in ROOT_CAUSES else "unknown"
+        ns = NEXT_STEP.get(root_cause, NEXT_STEP["unknown"])
+        next_step = ns["action"]
         what_worked = (result.get("what_worked") or run.get("what_worked") or "").strip()
         what_failed = (result.get("what_failed") or run.get("what_failed") or "").strip()
         if outcome == "green" and not what_worked:
@@ -146,7 +160,8 @@ class RunReviewer:
         if len(lesson) < MIN_LESSON_LEN:
             lesson = ""  # presplošna/prazna lekcija ni vredna zapisa
 
-        self._insert_review(run, root_cause, lesson, goal, plan_summary, task_type, what_worked, what_failed)
+        self._insert_review(run, root_cause, lesson, goal, plan_summary, task_type,
+                            what_worked, what_failed, next_step)
 
         # Zapri zanko: konkretno lekcijo takoj vpiši v semantični spomin (Zanka 1).
         if lesson:
@@ -166,6 +181,7 @@ class RunReviewer:
             "project": run["project"], "outcome": outcome, "root_cause": root_cause,
             "lesson": lesson, "goal": goal, "plan_summary": plan_summary,
             "task_type": task_type, "what_worked": what_worked, "what_failed": what_failed,
+            "next_step": next_step, "next_step_hint": ns["hint"],
         }
 
     def _review_via_llm(self, run: Dict[str, Any]) -> Dict[str, Any]:
@@ -237,15 +253,15 @@ class RunReviewer:
 
     def _insert_review(self, run: Dict[str, Any], root_cause: str, lesson: str, goal: str = "",
                        plan_summary: str = "", task_type: str = "", what_worked: str = "",
-                       what_failed: str = "") -> None:
+                       what_failed: str = "", next_step: str = "") -> None:
         with DB_WRITE_LOCK, self._get_connection() as conn:
             conn.execute(
                 "INSERT INTO run_reviews (project, directive, goal, plan_summary, task_type, "
-                "outcome, root_cause, lesson, what_worked, what_failed, llm_calls, attempts) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "outcome, root_cause, lesson, what_worked, what_failed, next_step, llm_calls, attempts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (run.get("project", ""), run.get("directive", ""), goal, plan_summary[:1000], task_type,
                  run.get("outcome", ""), root_cause, lesson,
-                 what_worked[:2000], what_failed[:2000],
+                 what_worked[:2000], what_failed[:2000], next_step,
                  int(run.get("llm_calls", 0) or 0), int(run.get("attempts", 0) or 0)),
             )
             conn.commit()
@@ -297,7 +313,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     r = RunReviewer()
     if args.recent:
         for row in r.recent(project=args.project):
-            print(f"[{row['id']} · {row['outcome']:6} · {row['root_cause']:14}] {row['project']} — {row['lesson'] or '(brez lekcije)'}")
+            line = f"[{row['id']} · {row['outcome']:6} · {row['root_cause']:14}] {row['project']} — {row['lesson'] or '(brez lekcije)'}"
+            if row.get("next_step"):
+                line += f" · next: {row['next_step']}"
+            print(line)
     elif args.stats:
         print(json.dumps(r.stats(), ensure_ascii=False, indent=2))
     else:

@@ -51,8 +51,11 @@ def _recent_reviews(db: Path, project: str) -> str:
         lines = []
         for r in rows:
             note = (r.get("what_worked") or r.get("what_failed") or r.get("lesson") or "")
-            lines.append(f"- [{r.get('outcome', '?')}/{r.get('root_cause', '?')}] "
-                         f"{r.get('project', '')}: {str(note)[:100]}")
+            line = (f"- [{r.get('outcome', '?')}/{r.get('root_cause', '?')}] "
+                    f"{r.get('project', '')}: {str(note)[:100]}")
+            if r.get("next_step"):
+                line += f" → next: {r['next_step']}"
+            lines.append(line)
         return "\n".join(lines)
     except Exception:
         return ""
