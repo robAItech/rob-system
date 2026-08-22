@@ -558,6 +558,8 @@ class LoopXEngineBridge:
                 error_pattern=f"{self.project}.{error_type}",
                 mitigation=f"RSI poskus {attempt}: {report}",
             )
+            # Zanka 1 — refleksija: takoj strdi strukturirano lekcijo (ne čaka konsolidacije).
+            self._reflect_and_store(error_type, report)
 
             if healed:
                 self.update_loopx_state("HEALED_AFTER_ATTEMPT", attempt)
@@ -611,3 +613,22 @@ class LoopXEngineBridge:
             )
         except Exception:
             pass
+
+    def _reflect_and_store(self, error_type: str, report: str) -> None:
+        """Refleksija (Zanka 1): po neuspelem heal poskusu TAKOJ strdi
+        strukturirano lekcijo (root cause + poskus) v semantic_memories —
+        ne čaka periodične konsolidacije. Naslednji heal jo dobi prek recall().
+        Nikoli ne blokira healinga (vse napake požre).
+        """
+        try:
+            from core.memory_consolidation import MemoryConsolidator
+            cons = MemoryConsolidator(self.gbrain.db_path)
+            cons.store(
+                theme=f"{self.project}: {error_type}",
+                content=f"{error_type} v projektu '{self.project}' — poskus popravka: {report}",
+                project=self.project,
+                kind="pitfall",
+                confidence=0.5,
+            )
+        except Exception as e:
+            print(f"[LOOPX] refleksija preskočena (ni blokirno): {e}", flush=True)

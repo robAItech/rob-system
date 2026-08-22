@@ -398,18 +398,23 @@ class MemoryConsolidator:
     def recall(self, query: str, project: Optional[str] = None, limit: int = 5) -> List[Dict[str, Any]]:
         """Vrne najbolj relevantne konsolidirane lekcije za poizvedbo.
 
-        Točkovanje = prekrivanje žetonov + confidence + recenzentnost + uporaba.
+        Točkovanje = prekrivanje žetonov + confidence + uporaba (hits), vse
+        pomnoženo z recenzentnim decay-jem (Ebbinghaus: razpolovna doba 14 dni).
         Brez embeddingov — hiter, brez odvisnosti, determinističen.
         """
         q_tokens = self._tokenize(query)
         with self._get_connection() as conn:
             if project:
                 rows = conn.execute(
-                    "SELECT * FROM semantic_memories WHERE project = ? OR project = ''",
+                    "SELECT *, julianday('now') - julianday(updated_at) AS age_days "
+                    "FROM semantic_memories WHERE project = ? OR project = ''",
                     (project,),
                 ).fetchall()
             else:
-                rows = conn.execute("SELECT * FROM semantic_memories").fetchall()
+                rows = conn.execute(
+                    "SELECT *, julianday('now') - julianday(updated_at) AS age_days "
+                    "FROM semantic_memories"
+                ).fetchall()
 
         scored = []
         for r in rows:
@@ -418,9 +423,10 @@ class MemoryConsolidator:
             overlap = sum(1 for t in q_tokens if t in text)
             if overlap == 0:
                 continue
-            # Recenzentnost: mlajše lekcije dobijo rahlo prednost.
-            recency = 1.0  # SQLite nima enostavnega starostnega dostopa brez izračuna; ohranimo 1.0
-            score = overlap * 1.0 + float(mem["confidence"]) * 2.0 + math.log1p(int(mem["hits"]))
+            # Recenzentnost (decay): mlajše lekcije dobijo prednost; stare ne-uporabljene zbledijo.
+            age_days = max(0.0, float(mem.get("age_days") or 0))
+            recency = 0.5 ** (age_days / 14.0)
+            score = (overlap * 1.0 + float(mem["confidence"]) * 2.0 + math.log1p(int(mem["hits"]))) * recency
             mem["score"] = round(score, 3)
             scored.append(mem)
 
@@ -462,6 +468,23 @@ class MemoryConsolidator:
             conn.execute("DELETE FROM task_history WHERE timestamp < datetime('now', ?)", (f"-{days} days",))
             conn.commit()
             return moved
+
+    def prune_memories(self, max_memories: int = 200) -> int:
+        """Lifecycle (kompresija): ohrani top-N lekcij, izbriši nizko-vredne.
+
+        Prepreči neomejeno rast spomina — stare/nizko-confidence lekcije se
+        pozabijo (use-it-or-lose-it). Vrne število izbrisanih vrstic.
+        """
+        with self._get_connection() as conn:
+            cur = conn.execute("""
+                DELETE FROM semantic_memories WHERE id NOT IN (
+                    SELECT id FROM semantic_memories
+                    ORDER BY confidence DESC, updated_at DESC
+                    LIMIT ?
+                )
+            """, (max_memories,))
+            conn.commit()
+            return cur.rowcount
 
     def stats(self) -> Dict[str, Any]:
         with self._get_connection() as conn:
