@@ -58,6 +58,16 @@ __pycache__/
 legacy/fizzbuzz/
 legacy/divide_safe/
 legacy/count_words/
+# P5 eval lestvica — runtime moduli zgrajeni v actions/ (niso producijski)
+actions/fizzbuzz/
+actions/divide_safe/
+actions/count_words/
+actions/text_stats/
+actions/money_formatter/
+actions/order_schema/
+actions/inventory_api/
+actions/growth_report/
+.rob_ai/eval_report.md
 # Runtime test build-i iz klikov (trajna agenda / testne naloge) — izven gita
 legacy/test/
 legacy/testna/

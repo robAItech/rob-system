@@ -1,0 +1,13 @@
+# Development/CI odvisnosti za Rob AI Studio.
+# En vir resnice za GitHub Actions in lokalni razvoj.
+# Poganjaj: pip install -r requirements-dev.txt
+pytest>=7.0
+pytest-asyncio>=0.23
+fastapi>=0.100
+httpx>=0.24
+pydantic>=2.0
+pydantic-settings>=2.0
+PyYAML>=6.0
+python-dotenv>=1.0
+requests>=2.28
+ruff>=0.1

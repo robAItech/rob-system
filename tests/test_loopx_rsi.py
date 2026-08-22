@@ -4,6 +4,7 @@ Osredotočeni so na jedro logike zanke in NE kličejo pravega LLM-a.
 Za izolacijo uporabljajo tmp cwd (monkeypatch.chdir), da se ne dotaknejo
 dejanske mape actions/ niti produkcijške memory.db.
 """
+import json
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -252,3 +253,104 @@ def test_verify_ruff_ob_izjemi_ne_blokira(tmp_path, monkeypatch):
 
 class TimeoutExpiredStub(Exception):
     pass
+
+
+# --------------------------------------------------------------------------- #
+#  Korak 1 — agentic tool-use (_execute_tool, _heal_agentic)
+# --------------------------------------------------------------------------- #
+
+def test_execute_tool_write_spostuje_test_lock_in_traversal(tmp_path, monkeypatch):
+    """write_file: traversal se neutralizira na basename znotraj modula;
+    obstoječi test (vsebina > STUB_PRAH) se zavrne (Test-Locking)."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    modul = tmp_path / "actions" / "demo_service"
+    # traversal → basename se zapiše ZNOTRAJ modula (ne zunaj).
+    res = engine._execute_tool("write_file", {"path": "../../evil.py", "content": "x = 1"})
+    assert res["ok"] is True
+    assert (modul / "evil.py").exists()
+    # obstoječi test → zavrnjen, vsebina nespremenjena.
+    (modul / "test_foo.py").write_text("def test_orig():\n    assert True\n", encoding="utf-8")
+    res2 = engine._execute_tool("write_file", {"path": "test_foo.py", "content": "def test_orig():\n    assert False\n"})
+    assert res2["ok"] is False
+    assert "def test_orig():\n    assert True" in (modul / "test_foo.py").read_text(encoding="utf-8")
+
+
+def test_execute_tool_list_in_read(tmp_path, monkeypatch):
+    """list_files/read_file delujeta; traversal read → ok False; neznano orodje → error."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    modul = tmp_path / "actions" / "demo_service"
+    (modul / "main.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    lst = engine._execute_tool("list_files", {})
+    assert lst["ok"] is True and "main.py" in lst["files"]
+    rd = engine._execute_tool("read_file", {"path": "main.py"})
+    assert rd["ok"] is True and "def f():" in rd["content"]
+    bad = engine._execute_tool("read_file", {"path": "../outside.py"})
+    assert bad["ok"] is False
+    unk = engine._execute_tool("neznano", {})
+    assert unk["ok"] is False
+
+
+def _engine_direct(tmp_path, monkeypatch):
+    """Inštanica v izoliranem tmp cwd z modulom demo_service."""
+    monkeypatch.chdir(tmp_path)
+    engine = LoopXEngineBridge("demo_service", db_path=tmp_path / "memory.db")
+    (tmp_path / "actions" / "demo_service").mkdir(parents=True, exist_ok=True)
+    return engine
+
+
+def test_heal_agentic_tool_call_nato_content_napise_datoteko(tmp_path, monkeypatch):
+    """write_file tool_call → nato končni content → datoteka zapisana, True, 2 LLM klica."""
+    engine = _engine_direct(tmp_path, monkeypatch)
+    calls = {"n": 0}
+
+    async def fake_tools(messages, tools, tool_choice="auto", use_coder_model=True):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"content": None, "tool_calls": [{
+                "id": "c1", "type": "function",
+                "function": {"name": "write_file",
+                             "arguments": json.dumps({"path": "main.py", "content": "def f():\n    return 1\n"})}}]}
+        return {"content": "Končano.", "tool_calls": None}
+
+    with mock.patch.object(engine.llm, "complete_with_tools", side_effect=fake_tools):
+        ok, _report = engine._heal_agentic("prompt", "system")
+    assert ok is True
+    assert (tmp_path / "actions" / "demo_service" / "main.py").exists()
+    assert calls["n"] == 2
+    assert engine.llm_calls == 2
+
+
+def test_heal_agentic_pade_na_text_ob_izjemi(tmp_path, monkeypatch):
+    """Ob izjemi complete_with_tools → padec na _heal_text; llm_calls == 2 (brez dvojnega štetja)."""
+    engine = _engine_direct(tmp_path, monkeypatch)
+
+    async def boom(*a, **k):
+        raise RuntimeError("tools ne podpira")
+
+    async def fake_text(prompt, system_prompt, use_coder_model=True):
+        return "### FILE: main.py\n```python\ndef f():\n    return 1\n```\n"
+
+    with mock.patch.object(engine.llm, "complete_with_tools", side_effect=boom), \
+         mock.patch.object(engine.llm, "generate_completion", side_effect=fake_text):
+        ok, _ = engine._heal_agentic("prompt", "system")
+    assert ok is True
+    assert (tmp_path / "actions" / "demo_service" / "main.py").exists()
+    assert engine.llm_calls == 2  # 1 tool + 1 text — brez dvojnega štetja
+
+
+def test_heal_agentic_uspeh_brez_file_blokov_prek_write_file(tmp_path, monkeypatch):
+    """Samo write_file (končni odgovor brez ### FILE:) → True."""
+    engine = _engine_direct(tmp_path, monkeypatch)
+    calls = {"n": 0}
+
+    async def fake_tools(messages, tools, tool_choice="auto", use_coder_model=True):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return {"content": None, "tool_calls": [{
+                "id": "c1", "type": "function",
+                "function": {"name": "write_file", "arguments": json.dumps({"path": "main.py", "content": "x = 1"})}}]}
+        return {"content": "Končano.", "tool_calls": None}
+
+    with mock.patch.object(engine.llm, "complete_with_tools", side_effect=fake_tools):
+        ok, _ = engine._heal_agentic("prompt", "system")
+    assert ok is True

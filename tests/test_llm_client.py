@@ -113,3 +113,50 @@ async def test_max_tokens_se_doda_le_ko_config_nastavljen():
         await c2.generate_completion("hi")
     payload2 = fake2.posts[0][1].get("json", {})
     assert payload2["max_tokens"] == 128
+
+
+# --------------------------------------------------------------------------- #
+#  Korak 1 — agentic tool-use (complete_with_tools)
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_complete_with_tools_vrne_message_s_tool_calls():
+    """Agentic klic vrne message dict s tool_calls; tools/tool_choice v payloadu."""
+    c = _client()
+    msg = {"content": None, "tool_calls": [{
+        "id": "c1", "type": "function",
+        "function": {"name": "read_file", "arguments": '{"path": "main.py"}'}}]}
+    fake = _FakeAsyncClient([_FakeResp(200, {"choices": [{"message": msg}]})])
+    with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
+        out = await c.complete_with_tools(
+            [{"role": "user", "content": "hi"}],
+            [{"type": "function", "function": {"name": "read_file"}}],
+        )
+    assert out["tool_calls"][0]["function"]["name"] == "read_file"
+    payload = fake.posts[0][1].get("json", {})
+    assert payload["tool_choice"] == "auto"
+    assert "tools" in payload
+
+
+@pytest.mark.asyncio
+async def test_complete_with_tools_retry_na_429():
+    """Prvi 429 → retry → drugi 200 → OK, 2 POST-a (agentic)."""
+    c = _client()
+    fake = _FakeAsyncClient([_FakeResp(429), _FakeResp(200)])
+    with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
+        out = await c.complete_with_tools([{"role": "user", "content": "hi"}], [])
+    assert out.get("content") == "OK"
+    assert len(fake.posts) == 2
+
+
+@pytest.mark.asyncio
+async def test_complete_with_tools_model_fallback_na_400():
+    """Coder 400 → fallback na chat (agentic)."""
+    c = _client()
+    fake = _FakeAsyncClient([_FakeResp(400), _FakeResp(200)])
+    with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
+        out = await c.complete_with_tools([{"role": "user", "content": "hi"}], [])
+    assert out.get("content") == "OK"
+    payloads = [k.get("json", {}) for _, k in fake.posts]
+    assert len(payloads) == 2
+    assert payloads[0]["model"] == payloads[1]["model"] == "deepseek-v4-flash"

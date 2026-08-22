@@ -5,8 +5,9 @@ import re
 import asyncio
 import shutil
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from core.config import settings
 from core.gbrain_bridge import GBrainBridge
 from core.graphify_bridge import GraphifyBridge
 from core.llm_client import DeepSeekLLMClient
@@ -37,6 +38,58 @@ za dosego zelene barve je prepovedana manipulacija.
 """
 
 
+# ── Agentic tool-use (korak 1) ──────────────────────────────────────────── #
+# LLM v heal zanki lahko kliče orodja (read_file/write_file/list_files/
+# search_memory) in iterira, namesto da se zanaša samo na ### FILE: bloke.
+AGENTIC_MAX_TOOL_STEPS = 8
+
+AGENTIC_TOOL_GUIDANCE = """UPORABA ORODIJ (function calling):
+Imaš na voljo orodja read_file, write_file, list_files, search_memory, skill.
+Najprej RAZIŠČI kodo v actions/<proj>/ z list_files/read_file; po potrebi vprašaj
+search_memory. Nato zapiši POPRAVLJENE datoteke z write_file
+(path = samo basename, content = POPOLNA vsebina). Po koncu vrni končni odgovor;
+ta lahko še vedno vsebuje ### FILE: bloke, ki se uporabijo, če write_file
+ni pokril vseh datotek. Ne vračaj test datotek (Test-Locking velja tudi tu).
+
+SKILL: ko naloga zahteva procesno znanje iz GStack skilla (npr. spec, review, qa,
+investigate, ship), pokliči skill(name='<slug>') in uporabi vrnjen vodič kot
+kontekst. Za eno sekcijo uporabi `section`. Ne kliči orodij iz skilla
+(bash/AskUserQuestion) — nimaš jih; dobiš le procesno znanje. Ne preplavi
+konteksta: kliči skill največ 1–2-krat na cikel."""
+
+TOOLS = [
+    {"type": "function", "function": {"name": "read_file",
+        "description": "Preberi vsebino datoteke v actions/<project>/ (basename).",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Basename datoteke, npr. main.py"}},
+            "required": ["path"]}}},
+    {"type": "function", "function": {"name": "write_file",
+        "description": "Zapiši POPOLNO vsebino datoteke v actions/<project>/ (basename). Spoštuje Test-Locking.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Basename datoteke, npr. main.py"},
+            "content": {"type": "string", "description": "Celotna nova vsebina datoteke"}},
+            "required": ["path", "content"]}}},
+    {"type": "function", "function": {"name": "list_files",
+        "description": "Seznam datotek v actions/<project>/.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "search_memory",
+        "description": "Poišči naučene napake (blacklist) in konsolidirane lekcije za poizvedbo.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "skill",
+        "description": "Pridobi strnjen procesni vodič GStack skilla (frontmatter + "
+                       "procesni del, ~6000 znakov, brez ponavljajočega boilerplate-a). "
+                       "Uporabni: spec, review, qa, investigate, plan-eng-review, "
+                       "plan-ceo-review, ship, autoplan, document-generate. "
+                       "name='list' ali prazen → seznam vseh skillov. Opcijsko `section` "
+                       "vrne samo eno H2 sekcijo (npr. 'Process', 'Step 4').",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "Slug skilla, npr. 'spec'. 'list' → seznam."},
+            "section": {"type": "string", "description": "Opcijsko: ime H2 sekcije za ciljan izsek."}},
+            "required": ["name"]}}},
+]
+
+
 class LoopXEngineBridge:
     """Avtonomna verifikacijska zanka z RSI (self-healing + mednáložni spomin).
 
@@ -65,6 +118,7 @@ class LoopXEngineBridge:
         self.llm_calls = 0   # F5: števec LLM klicev za revizijo in cost-zavarovanje
         self._heal_fail_count: Dict[str, int] = {}   # error_type → štev ponovitev v teku
         self._prompt_registry = None  # Zanka 3: lazy prompt-register (verzioniran prompt)
+        self._skill_bridge = None     # Korak 6: lazy GStack skill bralec
 
     def _rsisystem_prompt(self) -> str:
         """Zanka 3 — RSI prompt iz registra; ob napaki pade nazaj na konstanto."""
@@ -86,6 +140,13 @@ class LoopXEngineBridge:
             self.repeat_abort_after = int(t.get("repeat_abort_after", self.repeat_abort_after))
         except Exception:
             pass  # ob napaki ostanemo pri privzetih vrednostih
+
+    def _get_skill_bridge(self):
+        """Korak 6 — lazy GStack skill bralec (testi zamenjajo z Fake/SkillBridge(tmp))."""
+        if self._skill_bridge is None:
+            from core.skill_bridge import SkillBridge
+            self._skill_bridge = SkillBridge()
+        return self._skill_bridge
 
     # ------------------------------------------------------------------ #
     #  Stanje zanke
@@ -201,17 +262,21 @@ class LoopXEngineBridge:
     def _heal_once(self, traceback: str, directive: str, kind: str = "python") -> Tuple[bool, str]:
         """Poskuša popraviti kodo/zdelek z LLM-jem (3.1, 3.2).
 
-        Vrni (uspeh, poročilo).
+        Dispečer: zgradi prompt + system prompt, nato izbere pot — agentic
+        (tool-use, če je vklopljeno) ali tekstovno (### FILE:). Vrni (uspeh, poročilo).
         """
-        sources = self._read_module_sources()
-        # Navodilo za izhod glede na vrsto izdelka (F1).
-        if kind == "markdown":
-            out_note = "Vrni POPOLN Markdown dokument v formatu ### FILE: ime.md\\n```markdown\\n<vsebina>\\n``` (z naslovom #, brez placeholdoj)."
-        elif kind == "html":
-            out_note = "Vrni POPOLNO HTML stran v formatu ### FILE: ime.html\\n```html\\n<vsebina z </html>>\\n``` (veljavna, brez placeholdoj)."
-        else:
-            out_note = "Vrni POPOLNE, delujoča Python datoteko v formatu ### FILE: ime.py\\n```python\\n<koda>\\n``` (vse datoteke popolne, brez placeholdoj, dejanska implementacija)."
-        # F4 — trajni RSI spomin: naučene napake (blacklists) iz preteklih tekov.
+        prompt = self._build_heal_prompt(traceback, directive, kind)
+        system_prompt = self._rsisystem_prompt()
+        if settings.llm_tool_use:
+            return self._heal_agentic(prompt, system_prompt)
+        return self._heal_text(prompt, system_prompt)
+
+    def _gather_memory_notes(self, query: str, limit_learned: int = 10, limit_cons: int = 5) -> str:
+        """F4/F4b — naučene napake (blacklists) + konsolidirane lekcije v en niz.
+
+        Deterministično (token-overlap, brez LLM/embeddingov); uporabita ga tako
+        prompt builder kot orodje `search_memory`. Ob napaki se varno preskoči.
+        """
         try:
             learned = self.gbrain.get_blacklists(self.project)
         except Exception:
@@ -219,19 +284,17 @@ class LoopXEngineBridge:
         learned_note = ""
         if learned:
             pats = "; ".join(
-                f"{b.get('error_pattern','?')} → {b.get('mitigation','')[:60]}" for b in learned[:10]
+                f"{b.get('error_pattern','?')} → {b.get('mitigation','')[:60]}" for b in learned[:limit_learned]
             )
             learned_note = (
                 "Naučeno iz prejšnjih poskusov (izogni se tem napakam):\n"
                 f"{pats}\n\n"
             )
-        # F4b — Zanka 1: konsolidiran spomin (semantične lekcije iz VSEH tekov,
-        # ne le tega projekta). Varno: ob kakršnikoli napaki lekcije preskočimo
-        # (nikoli ne blokiramo healinga zaradi spominskega priklica).
         try:
             from core.memory_consolidation import MemoryConsolidator
-            _consolidator = MemoryConsolidator(self.gbrain.db_path)
-            consolidated = _consolidator.recall(directive, project=self.project, limit=5)
+            consolidated = MemoryConsolidator(self.gbrain.db_path).recall(
+                query, project=self.project, limit=limit_cons
+            )
         except Exception:
             consolidated = []
         cons_note = ""
@@ -241,9 +304,21 @@ class LoopXEngineBridge:
                 "Konsolidirane lekcije iz preteklih tekov (upoštevaj):\n"
                 f"{lessons}\n\n"
             )
-        # Graf-kontekst (graphify): LLM vidi dependency pregled za ciljni modul —
-        # torej kje se nahaja in kdo ga uporablja. Varno: če render pade,
-        # nadaljujemo brez njega (ne blokiramo healinga).
+        return learned_note + cons_note
+
+    def _build_heal_prompt(self, traceback: str, directive: str, kind: str = "python") -> str:
+        """Sestavi heal prompt: sources + direktiva + spec/memory/graph/rag + traceback + out_note."""
+        sources = self._read_module_sources()
+        # Navodilo za izhod glede na vrsto izdelka (F1).
+        if kind == "markdown":
+            out_note = "Vrni POPOLN Markdown dokument v formatu ### FILE: ime.md\\n```markdown\\n<vsebina>\\n``` (z naslovom #, brez placeholdoj)."
+        elif kind == "html":
+            out_note = "Vrni POPOLNO HTML stran v formatu ### FILE: ime.html\\n```html\\n<vsebina z </html>>\\n``` (veljavna, brez placeholdoj)."
+        else:
+            out_note = "Vrni POPOLNE, delujoča Python datoteko v formatu ### FILE: ime.py\\n```python\\n<koda>\\n``` (vse datoteke popolne, brez placeholdoj, dejanska implementacija)."
+        memory_note = self._gather_memory_notes(directive)
+        # Graf-kontekst (graphify): LLM vidi dependency pregled za ciljni modul.
+        # Varno: če render pade, nadaljujemo brez njega (ne blokiramo healinga).
         try:
             graph_ctx = self.graphify.render_context(self.project)
         except Exception:
@@ -261,20 +336,22 @@ class LoopXEngineBridge:
         # P0 — spec_hint: arhitekturna usmeritev iz GStack manifesta. Če prazna → skip.
         spec_hint = getattr(self, "spec_hint", None) or ""
         spec_note = f"SPEC (arhitekturna usmeritev izvedbe):\n{spec_hint}\n\n" if spec_hint else ""
-        prompt = (
+        return (
             f"Izvirna vsebina modula `{self.project}` (trenutno ogrodje/stubs):\n"
             f"{json.dumps(sources, ensure_ascii=False, indent=2)}\n\n"
             "DIREKTIVA (kaj naj izdelek dejansko vsebuje):\n"
             f"{directive[:3000]}\n\n"
             f"{spec_note}"
-            f"{learned_note}"
-            f"{cons_note}"
+            f"{memory_note}"
             f"{graph_note}"
             f"{rag_note}"
             "Razlog verifikacije (doseči je treba zelen):\n"
             f"{traceback[:8000]}\n\n"
             f"{out_note}"
         )
+
+    def _heal_text(self, prompt: str, system_prompt: str) -> Tuple[bool, str]:
+        """Tekstovna pot: LLM vrne ### FILE: bloke → razreži → zapiši."""
         try:
             self.llm_calls += 1   # F5: revizijski števec LLM klicev
             # generate_completion je async korutina; zanko držimo sync,
@@ -282,7 +359,7 @@ class LoopXEngineBridge:
             response = asyncio.run(
                 self.llm.generate_completion(
                     prompt=prompt,
-                    system_prompt=self._rsisystem_prompt(),
+                    system_prompt=system_prompt,
                     use_coder_model=True,
                 )
             )
@@ -302,6 +379,117 @@ class LoopXEngineBridge:
             return False, "Uporabljene datoteke niso bile zapisane (omejitev 3.4)."
 
         return True, f"Uporaba {written} datotek(e)."
+
+    def _heal_agentic(self, prompt: str, system_prompt: str) -> Tuple[bool, str]:
+        """Agentic pot: LLM kliče orodja (read/write/list/search), iterira, nato
+        vrne končni odgovor. Uspeh tudi, če so datoteke zapisane prek `write_file`
+        brez ### FILE: blokov. Ob izjemi pade na tekstovno pot (`_heal_text`)."""
+        messages = [
+            {"role": "system", "content": f"{system_prompt}\n\n{AGENTIC_TOOL_GUIDANCE}"},
+            {"role": "user", "content": prompt},
+        ]
+        written_via_tool = 0
+        for _step in range(AGENTIC_MAX_TOOL_STEPS):
+            self.llm_calls += 1
+            try:
+                # complete_with_tools je async korutina; zanko držimo sync.
+                msg = asyncio.run(self.llm.complete_with_tools(
+                    messages, TOOLS, tool_choice="auto", use_coder_model=True))
+            except Exception as e:
+                print(f"[LOOPX] agentic klic padel, padam na tekst: {e}", flush=True)
+                if written_via_tool > 0:
+                    return True, f"Zapisano prek orodij: {written_via_tool} datotek(e)."
+                return self._heal_text(prompt, system_prompt)
+            tool_calls = msg.get("tool_calls")
+            if not tool_calls:
+                # Končni odgovor: ### FILE: bloki kot rezervna pot; uspeh štejejo
+                # tudi že zapisane datoteke prek write_file.
+                content = msg.get("content") or ""
+                files = self._parse_patched_files(content)
+                if files:
+                    written_via_tool += self._apply_patch(files)
+                if written_via_tool == 0:
+                    return False, "LLM ni vrnil uporabnih datotek (### FILE ali write_file)."
+                return True, f"Uporaba {written_via_tool} datotek(e)."
+            # Assistant message s tool_calls posredujemo NEDOTAKNJEN (ohrani
+            # reasoning_content); nato serijsko izvedemo vsa orodja.
+            messages.append(msg)
+            for call in tool_calls:
+                call_id = call.get("id")
+                name = (call.get("function") or {}).get("name")
+                raw_args = (call.get("function") or {}).get("arguments", "{}")
+                try:
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+                except Exception:
+                    args = {}
+                result = self._execute_tool(name, args)
+                if name == "write_file" and result.get("ok"):
+                    written_via_tool += int(result.get("written", 0))
+                messages.append({"role": "tool", "tool_call_id": call_id,
+                                 "content": json.dumps(result, ensure_ascii=False)})
+        return False, f"Agentic zanka ni zaključila v {AGENTIC_MAX_TOOL_STEPS} korakih."
+
+    def _safe_resolve(self, rel: str) -> Optional[str]:
+        """Normalizira pot LLM-ja na goli basename (traversal se neutralizira);
+        `_apply_patch` ostaja edini avtoritativen varnostni filter."""
+        if not isinstance(rel, str) or not rel.strip():
+            return None
+        base = rel.strip().replace("\\", "/").split("/")[-1]
+        if not base or base in (".", ".."):
+            return None
+        return base
+
+    def _execute_tool(self, name, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Izvede orodje; NIKOLI ne dvigne — napake se vrnejo kot dict, da jih LLM vidi."""
+        try:
+            if name == "list_files":
+                files = (sorted(p.name for p in self.target_dir.iterdir() if p.is_file())
+                         if self.target_dir.exists() else [])
+                return {"ok": True, "files": files}
+            if name == "read_file":
+                base = self._safe_resolve(str(args.get("path", "")))
+                if base is None:
+                    return {"ok": False, "error": "path manjka ali ni veljaven basename"}
+                path = self.target_dir / base
+                if not path.exists():
+                    return {"ok": False, "error": f"datoteka ne obstaja: {base}"}
+                text = path.read_text(encoding="utf-8", errors="replace")
+                if len(text) > 20000:
+                    text = text[:20000] + f"\n...[izrezano, skupaj {len(text)} znakov]"
+                return {"ok": True, "path": base, "content": text}
+            if name == "write_file":
+                base = self._safe_resolve(str(args.get("path", "")))
+                content = args.get("content", "")
+                if not isinstance(content, str):
+                    content = str(content) if content is not None else ""
+                if base is None:
+                    return {"ok": False, "error": "path manjka ali ni veljaven basename"}
+                written = self._apply_patch({base: content})
+                if written == 0:
+                    return {"ok": False, "written": 0, "path": base,
+                            "error": "zavrnjeno (test-lock / dovoljene končnice / traversal)"}
+                return {"ok": True, "written": written, "path": base}
+            if name == "search_memory":
+                notes = self._gather_memory_notes(str(args.get("query", "")))
+                return {"ok": True, "notes": notes or "(ni naučenih lekcij za poizvedbo)"}
+            if name == "skill":
+                slug = args.get("name", "") or ""
+                section = args.get("section")
+                if not isinstance(section, str) or not section.strip():
+                    section = None
+                bridge = self._get_skill_bridge()
+                if str(slug).strip().lower() in ("", "list", "_list"):
+                    skills = bridge.list_skills()
+                    return {"ok": True, "count": len(skills), "skills": skills}
+                skill = bridge.get_skill(str(slug), section=section)
+                if skill is None:
+                    names = ", ".join(s["name"] for s in bridge.list_skills()[:15])
+                    return {"ok": False, "error": f"skill ni najden ali ni uporaben: {slug}",
+                            "available": names}
+                return {"ok": True, **skill}
+            return {"ok": False, "error": f"neznano orodje: {name}"}
+        except Exception as e:
+            return {"ok": False, "error": f"napaka pri izvedbi orodja {name}: {e}"}
 
     @staticmethod
     def _classify_error(traceback: str) -> str:

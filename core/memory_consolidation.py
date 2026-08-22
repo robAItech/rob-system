@@ -81,6 +81,7 @@ class MemoryConsolidator:
         else:
             self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._embedder = None   # lazy: core.embedder.MemoryEmbedder (korak 2)
         self._init_db()
 
     # ------------------------------------------------------------------ #
@@ -122,6 +123,11 @@ class MemoryConsolidator:
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_semantic_theme
                 ON semantic_memories (theme, project);
             """)
+            # Korak 2 — semantični spomin: idempotentna migracija stolpca `embedding`.
+            # Obstoječe baze stolpca nimajo; ALTER je edina pot, ki jih pokrije.
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(semantic_memories)").fetchall()}
+            if "embedding" not in cols:
+                conn.execute("ALTER TABLE semantic_memories ADD COLUMN embedding TEXT")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS consolidation_state (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -134,6 +140,48 @@ class MemoryConsolidator:
                 VALUES (1, 0);
             """)
             conn.commit()
+
+    # ------------------------------------------------------------------ #
+    #  Semantični spomin (korak 2) — embeddingi
+    # ------------------------------------------------------------------ #
+    def _get_embedder(self):
+        """Lazy embedder (izognemo se import ciklu). Testi ga zamenjajo s FakeEmbedder."""
+        if self._embedder is None:
+            from core.embedder import MemoryEmbedder
+            self._embedder = MemoryEmbedder()
+        return self._embedder
+
+    def _embed_text(self, text: str) -> Optional[tuple]:
+        """Best-effort: text → tuple vektorja ali None. Nikoli ne dvigne izjeme."""
+        try:
+            vec = self._get_embedder().embed(text)
+        except Exception:
+            return None
+        return tuple(vec) if vec else None
+
+    def backfill_embeddings(self, limit: int = 500) -> int:
+        """Izpolni embedding za lekcije semantic_memories brez vektorja (best-effort).
+
+        Enkraten ukrep za obstoječe baze (stare vrstice nimajo vektorja in bi sicer
+        vlekle leksikalni fallback). Brez omrežja (`memory_embeddings=False`) vrne 0.
+        """
+        emb = self._get_embedder()
+        n = 0
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT id, theme, content FROM semantic_memories WHERE embedding IS NULL LIMIT ?",
+                (limit,),
+            ).fetchall()
+            for r in rows:
+                vec = emb.embed(f"{r['theme']} {r['content']}")
+                if vec:
+                    conn.execute(
+                        "UPDATE semantic_memories SET embedding = ? WHERE id = ?",
+                        (json.dumps(list(vec)), r["id"]),
+                    )
+                    n += 1
+            conn.commit()
+        return n
 
     # ------------------------------------------------------------------ #
     #  Konsolidacija
@@ -360,23 +408,34 @@ class MemoryConsolidator:
     #  Shranjevanje
     # ------------------------------------------------------------------ #
     def _upsert(self, m: Dict[str, Any]) -> bool:
-        """Vstavi ali posodobi lekcijo. Vrne True, če je bila NOVA (insert)."""
+        """Vstavi ali posodobi lekcijo. Vrne True, če je bila NOVA (insert).
+
+        Embedding (korak 2) se izračuna PRED odprtjem DB povezave (network zunaj
+        locka). Ob napaki embedderja → NULL; ON CONFLICT obdrži stari vektor
+        (COALESCE), da se obstoječe lekcije ne poškodujejo.
+        """
+        embedding_json = None
+        vec = self._embed_text(f"{m['theme']} {m['content']}")
+        if vec:
+            embedding_json = json.dumps(list(vec))
         with self._get_connection() as conn:
             before = conn.execute(
                 "SELECT id FROM semantic_memories WHERE theme = ? AND project = ?",
                 (m["theme"], m.get("project", "")),
             ).fetchone()
             conn.execute("""
-                INSERT INTO semantic_memories (theme, content, project, kind, confidence)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO semantic_memories (theme, content, project, kind, confidence, embedding)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(theme, project) DO UPDATE SET
                     content = excluded.content,
                     kind = excluded.kind,
                     confidence = MIN(1.0, semantic_memories.confidence + excluded.confidence * 0.3),
+                    embedding = COALESCE(excluded.embedding, semantic_memories.embedding),
                     updated_at = CURRENT_TIMESTAMP
             """, (
                 m["theme"], m["content"], m.get("project", ""),
                 m.get("kind", "principle"), float(m.get("confidence", 0.5)),
+                embedding_json,
             ))
             conn.commit()
             return before is None
@@ -398,24 +457,38 @@ class MemoryConsolidator:
     def recall(self, query: str, project: Optional[str] = None, limit: int = 5) -> List[Dict[str, Any]]:
         """Vrne najbolj relevantne konsolidirane lekcije za poizvedbo.
 
-        Točkovanje = prekrivanje žetonov + confidence + uporaba (hits), vse
-        pomnoženo z recenzentnim decay-jem (Ebbinghaus: razpolovna doba 14 dni).
-        Brez embeddingov — hiter, brez odvisnosti, determinističen.
+        Korak 2 — semantična pot (kosinusna podobnost embeddingov), če je
+        embedder na voljo IN vse kandidatne vrstice imajo vektor; sicer
+        natanko ohranjen leksikalni fallback (token-overlap + confidence +
+        hits + Ebbinghaus decay, razpolovna doba 14 dni).
         """
-        q_tokens = self._tokenize(query)
-        with self._get_connection() as conn:
-            if project:
-                rows = conn.execute(
-                    "SELECT *, julianday('now') - julianday(updated_at) AS age_days "
-                    "FROM semantic_memories WHERE project = ? OR project = ''",
-                    (project,),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT *, julianday('now') - julianday(updated_at) AS age_days "
-                    "FROM semantic_memories"
-                ).fetchall()
+        q_vec = self._embed_text(query)
+        if q_vec is not None:
+            rows = self._select_rows(project, include_embedding=True)
+            if rows and all(r["embedding"] for r in rows):
+                return self._score_semantic(q_vec, rows, limit)
+            # Vsaj ena vrstica brez vektorja (stara baza) → poln leksikalni padec.
+            return self._score_lexical(query, rows, limit)
+        rows = self._select_rows(project, include_embedding=False)
+        return self._score_lexical(query, rows, limit)
 
+    def _select_rows(self, project: Optional[str], include_embedding: bool) -> List[Dict[str, Any]]:
+        """Kandidatne vrstice po project filtru. Leksikalni fallback ne nalaga
+        embedding bloba (3072-dim JSON ~25–35 KB/vrstico)."""
+        if include_embedding:
+            cols = "*, julianday('now') - julianday(updated_at) AS age_days"
+        else:
+            cols = ("id, theme, content, project, kind, confidence, hits, created_at, updated_at, "
+                    "julianday('now') - julianday(updated_at) AS age_days")
+        where = "WHERE project = ? OR project = ''" if project else ""
+        params = (project,) if project else ()
+        with self._get_connection() as conn:
+            rows = conn.execute(f"SELECT {cols} FROM semantic_memories {where}", params).fetchall()
+        return [dict(r) for r in rows]
+
+    def _score_lexical(self, query: str, rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+        """Natanko stara formula (token-overlap + confidence + hits + decay)."""
+        q_tokens = self._tokenize(query)
         scored = []
         for r in rows:
             mem = dict(r)
@@ -423,13 +496,42 @@ class MemoryConsolidator:
             overlap = sum(1 for t in q_tokens if t in text)
             if overlap == 0:
                 continue
-            # Recenzentnost (decay): mlajše lekcije dobijo prednost; stare ne-uporabljene zbledijo.
+            # Recenzentnost (decay): mlajše lekcije dobijo prednost; stare zbledijo.
             age_days = max(0.0, float(mem.get("age_days") or 0))
             recency = 0.5 ** (age_days / 14.0)
             score = (overlap * 1.0 + float(mem["confidence"]) * 2.0 + math.log1p(int(mem["hits"]))) * recency
             mem["score"] = round(score, 3)
             scored.append(mem)
+        scored.sort(key=lambda m: m["score"], reverse=True)
+        return scored[:limit]
 
+    def _score_semantic(self, q_vec: tuple, rows: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+        """Semantično točkovanje: kosinusna podobnost z absolutnim pragom θ.
+
+        score = cos * (0.6 + 0.4*confidence) * recency. Confidence lahko dvigne
+        do 1.67×, a ne more nadomestiti semanticne relevantnosti. Prag 0.20
+        odreže nepovezane lekcije (v testih deterministično).
+        """
+        from core.embedder import cosine_similarity
+        COS_THRESHOLD = 0.20
+        scored = []
+        for r in rows:
+            mem = dict(r)
+            try:
+                vec = json.loads(mem["embedding"]) if mem.get("embedding") else None
+            except Exception:
+                vec = None
+            if not vec:
+                continue
+            cos = cosine_similarity(list(q_vec), [float(v) for v in vec])
+            if cos < COS_THRESHOLD:
+                continue
+            conf = max(0.0, min(1.0, float(mem.get("confidence") or 0)))
+            age_days = max(0.0, float(mem.get("age_days") or 0))
+            recency = 0.5 ** (age_days / 14.0)
+            score = cos * (0.6 + 0.4 * conf) * recency
+            mem["score"] = round(score, 3)
+            scored.append(mem)
         scored.sort(key=lambda m: m["score"], reverse=True)
         return scored[:limit]
 
@@ -517,6 +619,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     p.add_argument("--project", default=None, help="omeji recall na projekt")
     p.add_argument("--prune", type=int, metavar="DAYS", help="arhiviraj epizode starejše od N dni")
     p.add_argument("--stats", action="store_true", help="izpiši statistiko spomina")
+    p.add_argument("--backfill-embeddings", action="store_true",
+                   help="izpolni embedding za lekcije brez vektorja (best-effort)")
     args = p.parse_args(argv)
 
     cons = MemoryConsolidator()
@@ -530,6 +634,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     elif args.prune:
         n = cons.prune(args.prune)
         print(f"Arhiviranih epizod: {n}")
+    elif args.backfill_embeddings:
+        n = cons.backfill_embeddings()
+        print(f"Backfill embeddingov: {n}")
     elif args.stats:
         print(json.dumps(cons.stats(), ensure_ascii=False, indent=2))
     else:

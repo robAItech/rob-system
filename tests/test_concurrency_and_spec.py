@@ -14,6 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from core.config import settings
 from core.gbrain_bridge import GBrainBridge, PROJECT_ROOT
 from core.loopx_bridge import LoopXEngineBridge
 
@@ -86,6 +87,7 @@ def test_heal_once_vkljuci_spec_hint(tmp_path, monkeypatch):
         captured["prompt"] = prompt
         return "### FILE: svc.py\n```python\ndef f():\n    return 2\n```\n"
 
+    monkeypatch.setattr(settings, "llm_tool_use", False)  # tekstovna pot (mock generate_completion)
     with mock.patch.object(e.llm, "generate_completion", side_effect=fake):
         e.spec_hint = "Pydantic V2 s strogimi validatorji"
         ok, _ = e._heal_once("Traceback\nValueError: x", "d", kind="python")
@@ -104,6 +106,7 @@ def test_heal_once_prazna_spec_hint_ni_v_promptu(tmp_path, monkeypatch):
         captured["prompt"] = prompt
         return "### FILE: svc.py\n```python\ndef f():\n    return 2\n```\n"
 
+    monkeypatch.setattr(settings, "llm_tool_use", False)  # tekstovna pot (mock generate_completion)
     with mock.patch.object(e.llm, "generate_completion", side_effect=fake):
         e.spec_hint = ""  # ni nastavIt postaja
         ok, _ = e._heal_once("Traceback\nValueError: x", "d", kind="python")

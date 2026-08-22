@@ -28,8 +28,9 @@ import argparse
 import importlib
 import json
 import sys
+import time
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # Repo koren na PYTHONPATH.
 ROOT = Path(__file__).resolve().parent
@@ -43,6 +44,14 @@ try:
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
     pass  # reconfigure ni vedno na voljo
+
+
+# ------------------------------------------------------------------ #
+#  Tipi in načini eval case-ov (eval lestvica)
+# ------------------------------------------------------------------ #
+CASE_TYPES = ("function", "pydantic", "http")
+CASE_MODES = ("single", "autonomous")
+VALID_HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 
 
 # ------------------------------------------------------------------ #
@@ -111,7 +120,176 @@ EVAL_CASES: List[Dict] = [
             ("  ", 0),
         ],
     },
+    {
+        "name": "text_stats",
+        "type": "function",
+        "mode": "single",
+        "directive": (
+            "Zgradi Python modul 'text_stats' v actions/text_stats/. "
+            "Definiraj funkcijo `text_stats(text: str) -> dict`, ki vrne slovar s ključi "
+            "'word_count' (število besed), 'char_count' (število znakov, ki NISO presledki; "
+            "ločila štejejo) in 'sentence_count' (število povedi, ločenih z . ! ?). "
+            "Prazno besedilo vrne same ničle. Primer: text_stats('Hello world.') mora vrniti "
+            "{'word_count': 2, 'char_count': 11, 'sentence_count': 1}. "
+            "Napiši pytest test za potrditev. Vsi testi 100% zeleni."
+        ),
+        "function_key": "text_stats",
+        "checks": [
+            ("Hello world.", {"word_count": 2, "char_count": 11, "sentence_count": 1}),
+            ("", {"word_count": 0, "char_count": 0, "sentence_count": 0}),
+            ("One. Two! Three?", {"word_count": 3, "char_count": 14, "sentence_count": 3}),
+            ("  a   b  ", {"word_count": 2, "char_count": 2, "sentence_count": 0}),
+        ],
+    },
+    {
+        "name": "money_formatter",
+        "type": "function",
+        "mode": "single",
+        "directive": (
+            "Zgradi Python modul 'money_formatter' v actions/money_formatter/. "
+            "Definiraj funkcijo `money_formatter(znesek: float) -> str`, ki znesek oblikuje "
+            "v EUR niz po slovenski konvenciji: cela števila brez decimalk (5 -> '5 EUR'), "
+            "drugače z dvema decimalkama in vejico (5.5 -> '5,50 EUR'), tisočice ločene s "
+            "piko (1234567.89 -> '1.234.567,89 EUR'), negativni znesek ima predznak minus. "
+            "Napiši pytest test za potrditev (vključno z robnimi primeri). Vsi testi 100% zeleni."
+        ),
+        "function_key": "money_formatter",
+        "checks": [
+            (5, "5 EUR"),
+            (5.5, "5,50 EUR"),
+            (0, "0 EUR"),
+            (1234567.89, "1.234.567,89 EUR"),
+            (-5.5, "-5,50 EUR"),
+            (1000000, "1.000.000 EUR"),
+        ],
+    },
+    {
+        "name": "order_schema",
+        "type": "pydantic",
+        "mode": "single",
+        "directive": (
+            "Zgradi Python modul 'order_schema' v actions/order_schema/. "
+            "V datoteki schemas.py definiraj Pydantic V2 razred `Order` s pravili: "
+            "'id' je int večji od 0, 'customer' je neprazen str, 'items' je seznam "
+            "slovarjev {'sku': str, 'quantity': int večje od 0}, 'total' je float >= 0. "
+            "Uporabi Pydantic validacijo, da neveljavni podatki vržejo ValidationError. "
+            "Napiši pytest test za potrditev. Vsi testi 100% zeleni."
+        ),
+        "schema_key": "Order",
+        "valid_inputs": [
+            {"id": 1, "customer": "Ana", "items": [{"sku": "A1", "quantity": 2}], "total": 10.0},
+            {"id": 42, "customer": "B", "items": [], "total": 0.0},
+        ],
+        "invalid_inputs": [
+            {"id": 0, "customer": "Ana", "items": [], "total": 1.0},
+            {"id": 1, "customer": "", "items": [], "total": 1.0},
+            {"id": 1, "customer": "Ana", "items": [{"sku": "A1", "quantity": 0}], "total": 1.0},
+            {"id": 1, "customer": "Ana", "items": [], "total": -5.0},
+        ],
+    },
+    {
+        "name": "inventory_api",
+        "type": "http",
+        "mode": "single",
+        "directive": (
+            "Zgradi Python modul 'inventory_api' v actions/inventory_api/. "
+            "Ustvari FastAPI aplikacijo s spremenljivko `app` in potmi: "
+            "GET /health vrne {'status': 'ok'}; "
+            "GET /items/{sku} vrne {'sku': ..., 'quantity': ...} za obstoječ sku, sicer HTTP 404; "
+            "POST /items sprejme JSON {'sku': str, 'quantity': int >= 0} in vrne 201 z ustvarjenim "
+            "artiklom. Uporabi trden spomin na nivoju modula (ni baze). "
+            "Napiši pytest test za potrditev. Vsi testi 100% zeleni."
+        ),
+        "app_key": "app",
+        "endpoint_checks": [
+            ("GET", "/health", None, 200),
+            ("GET", "/items/nepoznan", None, 404),
+            ("POST", "/items", {"sku": "A1", "quantity": 5}, 201),
+            ("GET", "/items/A1", None, 200),
+        ],
+    },
+    {
+        "name": "growth_report",
+        "type": "function",
+        "mode": "autonomous",
+        "directive": (
+            "Izracunaj rast podjetja in izdelaj Python modul 'growth_report' v actions/growth_report/. "
+            "Definiraj funkcijo `growth_report(vrednosti: list[float]) -> dict`, ki iz seznama "
+            "letnih vrednosti vrne slovar s ključi 'cagr' (sestavljena letna rast v odstotkih, "
+            "zaokrožena na 2 decimalki) in 'growth_pct' (rast med zadnjim in prvim letom v odstotkih). "
+            "Za prazen ali enoelementni seznam vrne {'cagr': 0.0, 'growth_pct': 0.0}. "
+            "Napiši pytest test za potrditev. Vsi testi 100% zeleni."
+        ),
+        "function_key": "growth_report",
+        "checks": [
+            ([100.0, 110.0, 121.0], {"cagr": 10.0, "growth_pct": 21.0}),
+            ([], {"cagr": 0.0, "growth_pct": 0.0}),
+            ([50.0], {"cagr": 0.0, "growth_pct": 0.0}),
+            ([100.0, 200.0], {"cagr": 100.0, "growth_pct": 100.0}),
+        ],
+    },
 ]
+
+
+def validate_case(case: Dict) -> List[str]:
+    """Vrne seznam napak strukture case-a; prazen seznam = veljaven.
+
+    Type-aware: function zahteva function_key+checks; pydantic zahteva
+    valid_inputs+invalid_inputs; http zahteva endpoint_checks.
+    """
+    errs: List[str] = []
+    name = case.get("name", "")
+    if not name or not name.isidentifier():
+        errs.append("'name' mora biti veljaven identifikator")
+    d = case.get("directive", "")
+    if not isinstance(d, str) or len(d) <= 20:
+        errs.append("'directive' prekratka ali manjka")
+    ctype = case.get("type", "function")
+    if ctype not in CASE_TYPES:
+        errs.append(f"neznan 'type': {ctype!r}")
+    mode = case.get("mode", "single")
+    if mode not in CASE_MODES:
+        errs.append(f"neznan 'mode': {mode!r}")
+    if ctype == "function":
+        fk = case.get("function_key", name)
+        if not fk or not fk.isidentifier():
+            errs.append("'function_key' ni veljaven identifikator")
+        checks = case.get("checks", [])
+        if not isinstance(checks, list) or not checks:
+            errs.append("'checks' mora biti neprazen seznam")
+        else:
+            for ch in checks:
+                if not isinstance(ch, (tuple, list)) or len(ch) < 2:
+                    errs.append(f"check {ch!r} mora imeti vsaj (vhod, izhod)")
+    elif ctype == "pydantic":
+        sk = case.get("schema_key")
+        if sk is not None and not sk.isidentifier():
+            errs.append("'schema_key' ni veljaven identifikator")
+        for key in ("valid_inputs", "invalid_inputs"):
+            val = case.get(key, [])
+            if not isinstance(val, list) or not val:
+                errs.append(f"pydantic case potrebuje neprazen '{key}'")
+            else:
+                for inp in val:
+                    if not isinstance(inp, dict):
+                        errs.append(f"vhod {inp!r} v '{key}' mora biti dict")
+    elif ctype == "http":
+        ak = case.get("app_key", "app")
+        if not isinstance(ak, str) or not ak:
+            errs.append("'app_key' mora biti str")
+        ecs = case.get("endpoint_checks", [])
+        if not isinstance(ecs, list) or not ecs:
+            errs.append("'endpoint_checks' mora biti neprazen seznam")
+        else:
+            for ec in ecs:
+                if not isinstance(ec, (tuple, list)) or len(ec) < 2:
+                    errs.append(f"endpoint_check {ec!r} mora biti (method, path[, body][, status])")
+                    continue
+                if not isinstance(ec[0], str) or ec[0].upper() not in VALID_HTTP_METHODS:
+                    errs.append(f"neveljaven HTTP method: {ec[0]!r}")
+    if "function" in case and not callable(case.get("function")):
+        errs.append("'function' mora biti klicljiv (ali odsoten)")
+    return errs
 
 
 # ------------------------------------------------------------------ #
@@ -128,67 +306,140 @@ class AutonomyEval:
         return ROOT / "actions" / name
 
     @classmethod
-    def _load_checkable_func(cls, name: str, func_name: str):
-        """Poišči funkcijo v kateremkoli .py v actions/<name>/. Vrne funkcijo.
+    def _import_module(cls, name: str, py: Path):
+        """Paketni uvoz `actions.<name>.<stem>` (omogoča `from actions.<name>...`
+        znotraj modulov), padec na goli `importlib.util` uvoz iz datoteke.
 
-        Robustno: RSI-generirani moduli nimajo nujno `__init__.py`, zato
-        paketni import lahko pade. Uporabimo `importlib.util` za neposredno
-        nalaganje iz datoteke. Ne uvozi test_ datotek.
+        Vrne modul ali None. Ne uvozi test_ datotek (kličejoč).
         """
         import importlib.util
 
+        modname = f"actions.{name}.{py.stem}"
+        if modname in sys.modules:
+            return sys.modules[modname]
+        try:
+            return importlib.import_module(modname)
+        except Exception:
+            spec = importlib.util.spec_from_file_location(py.stem, py)
+            if spec is None or spec.loader is None:
+                return None
+            mod = importlib.util.module_from_spec(spec)
+            try:
+                spec.loader.exec_module(mod)
+            except Exception:
+                return None
+            return mod
+
+    @classmethod
+    def _load_checkable_func(cls, name: str, func_name: str):
+        """Poišči funkcijo v kateremkoli .py v actions/<name>/. Vrne funkcijo.
+
+        Robustno: poskusi paketni uvoz (za `from actions.<name>...` znotraj
+        modulov), sicer goli uvoz iz datoteke. Ne uvozi test_ datotek.
+        """
         mod_dir = cls._discover_module_dir(name)
         if not mod_dir.exists():
             return None
         for py in sorted(mod_dir.glob("*.py")):
             if py.name.startswith("test_"):
                 continue
-            try:
-                spec = importlib.util.spec_from_file_location(py.stem, py)
-                if spec is None or spec.loader is None:
-                    continue
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                fn = getattr(mod, func_name, None)
-                if callable(fn):
-                    return fn
-            except Exception:
+            mod = cls._import_module(name, py)
+            if mod is None:
                 continue
+            fn = getattr(mod, func_name, None)
+            if callable(fn):
+                return fn
         return None
 
     # -- en primer kot smoke (dry-run): samo zazna strukturo, ne kliče LLM --
     def smoke_check(self, case: Dict) -> bool:
         """Preveri, da je case dobro oblikovan (brez LLM/RSI). Vrne True."""
-        d = case["directive"]
-        assert case["name"] and case["name"].isidentifier(), "name mora biti veljaven identifikator"
-        assert "function" not in case or callable(case.get("function")), "function mora biti klicljiv"
-        return bool(d) and len(d) > 20
+        return not validate_case(case)
 
-    # -- pokreni eval enega case (pravi RSI) -------------------------------
-    def run_case(self, case: Dict) -> dict:
-        name = case["name"]
-        directive = case["directive"]
-        res = {"name": name, "rsi_ok": False, "checks_ok": 0, "checks_total": len(case["checks"]),
-               "func": case.get("function_key", name), "reason": ""}
-        print(f"\n🎯 [P5] EVAL case: {name}")
-        print(f"   direktiva: {directive[:120]}...")
+    @staticmethod
+    def _expected_checks(case: Dict) -> int:
+        """Število pričakovanih neodvisnih preverb glede na tip case-a."""
+        ctype = case.get("type", "function")
+        if ctype == "pydantic":
+            return len(case.get("valid_inputs", [])) + len(case.get("invalid_inputs", []))
+        if ctype == "http":
+            return len(case.get("endpoint_checks", []))
+        return len(case.get("checks", []))
 
-        # 1) RSI zanka (gbrain→gstack→hermes→loopx/pytest).
-        from core.orchestrator import RobAIOrchestrator
-        rsi_ok = RobAIOrchestrator.run(name, directive)
-        res["rsi_ok"] = rsi_ok
-        if not rsi_ok:
-            res["reason"] = "RSI ni zelen"
-            self.results.append(res)
-            return res
+    @classmethod
+    def _load_schema_class(cls, name: str, schema_key: Optional[str] = None):
+        """Najdi Pydantic BaseModel razred v actions/<name>/ (preskoči test_*).
 
-        # 2) Lastna verifikacija funkcije (neodvisna od LLM testov).
-        fn = self._load_checkable_func(name, case["function_key"])
+        Če je `schema_key` podan, vrne razred s tem imenom ali None (ne ugiba).
+        Brez njega vrne prvi najdeni BaseModel razred.
+        """
+        from pydantic import BaseModel
+        mod_dir = cls._discover_module_dir(name)
+        if not mod_dir.exists():
+            return None
+        candidates: List[type] = []
+        for py in sorted(mod_dir.glob("*.py")):
+            if py.name.startswith("test_"):
+                continue
+            mod = cls._import_module(name, py)
+            if mod is None:
+                continue
+            for attr in vars(mod).values():
+                if isinstance(attr, type) and issubclass(attr, BaseModel) and attr is not BaseModel:
+                    if schema_key and attr.__name__ == schema_key:
+                        return attr
+                    candidates.append(attr)
+        if not candidates:
+            return None
+        if schema_key:
+            for c in candidates:
+                if c.__name__ == schema_key:
+                    return c
+            return None  # specificen razred ni najden — ne ugibaj
+        return candidates[0]
+
+    @classmethod
+    def _load_app(cls, name: str, app_key: str = "app"):
+        """Najdi FastAPI instanco (ali APIRouter) v actions/<name>/.
+
+        Najprej eksplicitni atribut `app_key`, nato skenira vse `.py` za katero
+        koli FastAPI/APIRouter instanco. APIRouter se ovije v FastAPI.
+        """
+        from fastapi import FastAPI
+        from fastapi.routing import APIRouter
+        mod_dir = cls._discover_module_dir(name)
+        if not mod_dir.exists():
+            return None
+        for py in sorted(mod_dir.glob("*.py")):
+            if py.name.startswith("test_"):
+                continue
+            mod = cls._import_module(name, py)
+            if mod is None:
+                continue
+            if app_key:
+                val = getattr(mod, app_key, None)
+                if isinstance(val, FastAPI):
+                    return val
+                if isinstance(val, APIRouter):
+                    app = FastAPI()
+                    app.include_router(val)
+                    return app
+            for val in vars(mod).values():
+                if isinstance(val, FastAPI):
+                    return val
+                if isinstance(val, APIRouter):
+                    app = FastAPI()
+                    app.include_router(val)
+                    return app
+        return None
+
+    def _verify_function_inline(self, name: str, case: Dict) -> dict:
+        fk = case.get("function_key", name)
+        fn = self._load_checkable_func(name, fk)
+        total = len(case.get("checks", []))
         if fn is None:
-            res["reason"] = f"funkcija '{case['function_key']}' ni najdena v actions/{name}/"
-            self.results.append(res)
-            return res
-
+            return {"checks_ok": 0, "checks_total": total,
+                    "reason": f"funkcija '{fk}' ni najdena v actions/{name}/"}
         checks_ok = 0
         for check in case["checks"]:
             try:
@@ -198,13 +449,142 @@ class AutonomyEval:
                     checks_ok += 1
             except Exception:
                 pass
-        res["checks_ok"] = checks_ok
-        if checks_ok == res["checks_total"]:
-            res["reason"] = "vsi neodvisni preveri zeleni"
-        else:
-            res["reason"] = f"{checks_ok}/{res['checks_total']} neodvisnih preverov zelenih"
+        reason = ("vsi neodvisni preveri zeleni" if checks_ok == total
+                  else f"{checks_ok}/{total} neodvisnih preverov zelenih")
+        return {"checks_ok": checks_ok, "checks_total": total, "reason": reason}
+
+    def _verify_pydantic_inline(self, name: str, case: Dict) -> dict:
+        from pydantic import ValidationError
+        cls = self._load_schema_class(name, case.get("schema_key"))
+        if cls is None:
+            return {"checks_ok": 0, "checks_total": self._expected_checks(case),
+                    "reason": f"shema '{case.get('schema_key')}' ni najdena v actions/{name}/"}
+        ok = total = 0
+        for inp in case.get("valid_inputs", []):
+            total += 1
+            try:
+                cls(**inp)
+                ok += 1
+            except Exception:
+                pass
+        for inp in case.get("invalid_inputs", []):
+            total += 1
+            try:
+                cls(**inp)
+            except ValidationError:
+                ok += 1
+            except Exception:
+                pass  # vrgel napačno vrsto napake → šteje kot neuspeh
+        reason = ("vsi pydantic preveri zeleni" if ok == total
+                  else f"{ok}/{total} pydantic preverov zelenih")
+        return {"checks_ok": ok, "checks_total": total, "reason": reason}
+
+    def _verify_http_inline(self, name: str, case: Dict) -> dict:
+        from fastapi.testclient import TestClient
+        app = self._load_app(name, case.get("app_key", "app"))
+        if app is None:
+            return {"checks_ok": 0, "checks_total": self._expected_checks(case),
+                    "reason": f"FastAPI app ni najden v actions/{name}/"}
+        ok = total = 0
+        try:
+            with TestClient(app) as client:
+                for ec in case.get("endpoint_checks", []):
+                    total += 1
+                    method = str(ec[0]).upper()
+                    path = ec[1]
+                    body = ec[2] if len(ec) > 2 else None
+                    expected = int(ec[3]) if len(ec) > 3 else 200
+                    try:
+                        resp = client.request(method, path, json=body)
+                        if resp.status_code == expected:
+                            ok += 1
+                    except Exception:
+                        pass
+        except Exception as e:
+            return {"checks_ok": ok, "checks_total": max(total, 1),
+                    "reason": f"TestClient zagon ni uspel: {e}"}
+        reason = ("vsi HTTP preveri zeleni" if ok == total
+                  else f"{ok}/{total} HTTP preverov zelenih")
+        return {"checks_ok": ok, "checks_total": total, "reason": reason}
+
+    def _verify_in_subprocess(self, name: str, case: Dict, timeout: int = 90) -> dict:
+        """Pydantic/http verifier v podprocesu s trdim timeoutom.
+
+        LLM-generiran modul lahko visi na importu (zanka, omrežni klic brez
+        timeouta) — podproces se ob prekoračitvi prekine. Function verifier
+        ostane in-process (ohranja obstoječi mock test).
+        """
+        import os
+        import subprocess
+        case_json = json.dumps(case, ensure_ascii=False)
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+        try:
+            r = subprocess.run(
+                [sys.executable, str(Path(__file__).resolve()), "--verify-only", name],
+                input=case_json, capture_output=True, text=True, timeout=timeout, env=env,
+            )
+        except subprocess.TimeoutExpired:
+            return {"checks_ok": 0, "checks_total": self._expected_checks(case),
+                    "reason": f"verifikacija prekinjena po {timeout}s (možen zanko uvoz)"}
+        prefix = "EVALVERIFY:"
+        for line in (r.stdout or "").splitlines():
+            if line.startswith(prefix):
+                try:
+                    return json.loads(line[len(prefix):])
+                except Exception:
+                    break
+        return {"checks_ok": 0, "checks_total": self._expected_checks(case),
+                "reason": f"podproces verifikacije ni vrnil rezultata (rc={r.returncode})"}
+
+    def _verify_inline_dispatch(self, name: str, case: Dict) -> dict:
+        ctype = case.get("type", "function")
+        if ctype == "pydantic":
+            return self._verify_pydantic_inline(name, case)
+        if ctype == "http":
+            return self._verify_http_inline(name, case)
+        return self._verify_function_inline(name, case)
+
+    # -- pokreni eval enega case (pravi RSI) -------------------------------
+    def run_case(self, case: Dict) -> dict:
+        name = case["name"]
+        directive = case["directive"]
+        ctype = case.get("type", "function")
+        mode = case.get("mode", "single")
+        res = {"name": name, "type": ctype, "mode": mode,
+               "rsi_ok": False, "checks_ok": 0,
+               "checks_total": self._expected_checks(case),
+               "func": case.get("function_key", name), "reason": "",
+               "wall_seconds": 0.0}
+        print(f"\n🎯 [P5] EVAL case: {name} ({ctype}/{mode})")
+        print(f"   direktiva: {directive[:120]}...")
+
+        # 1) RSI zanka (gbrain→gstack→hermes→loopx/pytest) — single ali autonomous.
+        from core.orchestrator import RobAIOrchestrator
+        t0 = time.monotonic()
+        rsi_ok = (RobAIOrchestrator.run_autonomous(name, directive) if mode == "autonomous"
+                  else RobAIOrchestrator.run(name, directive))
+        res["wall_seconds"] = round(time.monotonic() - t0, 1)
+        res["rsi_ok"] = rsi_ok
+        if not rsi_ok:
+            res["reason"] = "RSI ni zelen"
+            self.results.append(res)
+            return res
+
+        # Best-effort meritve iz eval podatkov (attempts, LLM klici).
+        res["attempts"] = _read_attempts(name)
+        res["llm_calls"] = _read_llm_calls(name)
+
+        # 2) Lastna verifikacija (neodvisna od LLM testov). Pydantic/http tečeta
+        #    v podprocesu s timeoutom — LLM modul lahko visi na importu.
+        ver = (self._verify_in_subprocess(name, case)
+               if ctype in ("pydantic", "http")
+               else self._verify_function_inline(name, case))
+        res["checks_ok"] = ver["checks_ok"]
+        res["checks_total"] = ver["checks_total"]
+        res["reason"] = ver["reason"]
         self.results.append(res)
-        print(f"   → neodvisni preveri: {checks_ok}/{res['checks_total']}")
+        print(f"   → neodvisni preveri: {res['checks_ok']}/{res['checks_total']} ({res['reason']})")
         return res
 
     def run_all(self) -> Dict[str, float]:
@@ -241,6 +621,53 @@ def _append_history(entry: dict) -> None:
         print(f"[WARN] ni mogoče shraniti eval zgodovine: {e}")
 
 
+def _read_attempts(name: str) -> Optional[int]:
+    """Best-effort: zadnje število poskusov heala iz .loopx/registry.json."""
+    try:
+        reg = json.loads((ROOT / ".loopx" / "registry.json").read_text(encoding="utf-8"))
+        if reg.get("project") == name and reg.get("current_attempt"):
+            return int(reg["current_attempt"])
+    except Exception:
+        pass
+    return None
+
+
+def _read_llm_calls(name: str) -> Optional[int]:
+    """Best-effort: število LLM klicev zadnjega RSI teka iz audit.jsonl."""
+    try:
+        lines = (ROOT / ".rob_ai" / "audit.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    except Exception:
+        return None
+    for line in reversed(lines):
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        if e.get("event") == "rsi-run" and e.get("project") == name:
+            v = e.get("llm_calls")
+            return int(v) if isinstance(v, (int, float)) else None
+    return None
+
+
+def _render_markdown_report(results: List[dict], summary: Dict[str, float], started_iso: str) -> str:
+    """Markdown poročilo teka: tabela case-ov + rezultat (za nočni CI artifact)."""
+    lines = [
+        f"# P5 Eval avtonomnosti — {started_iso}", "",
+        f"**Rezultat: {summary['passed']}/{summary['total']} ({summary['rate'] * 100:.0f}%)**", "",
+        "| Case | Tip | Mode | RSI | Preveri | Čas (s) | Opomba |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for r in results:
+        rsi = "ZELEN" if r["rsi_ok"] else "FAIL"
+        lines.append(
+            f"| {r['name']} | {r.get('type', 'function')} | {r.get('mode', 'single')} | "
+            f"{rsi} | {r['checks_ok']}/{r['checks_total']} | "
+            f"{r.get('wall_seconds', 0)} | {r.get('reason', '')} |"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="rob eval",
@@ -252,6 +679,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="samo strukturna preverba EVAL_CASES (brez LLM/RSI)")
     p.add_argument("--history", type=int, nargs="?", const=5, metavar="N",
                    help="izpiši zadnjih N meritvenih vnosov (trend) iz eval zgodovine")
+    p.add_argument("--report", metavar="PATH", default=None,
+                   help="zapiši Markdown poročilo teka ('-' za stdout)")
+    p.add_argument("--verify-only", metavar="NAME", default=None,
+                   help="interno: preveri en case iz stdin (podprocesna izolacija)")
     return p
 
 
@@ -267,6 +698,14 @@ def main(argv=None) -> int:
             return 1
     if args.limit:
         cases = cases[: args.limit]
+
+    # Interno za podprocesno izolacijo pydantic/http verifierja: preveri en case
+    # iz stdin in izpiše rezultat v eni vrstici s prefiksom EVALVERIFY:.
+    if args.verify_only:
+        case = json.loads(sys.stdin.read())
+        res = AutonomyEval([])._verify_inline_dispatch(args.verify_only, case)
+        sys.stdout.write("EVALVERIFY:" + json.dumps(res, ensure_ascii=False) + "\n")
+        return 0
 
     print("=" * 70)
     print("🤖 P5 — SWE-bench stila samo-eval za avtonomnost")
@@ -306,15 +745,32 @@ def main(argv=None) -> int:
 
     # Meritveno sledenje: shrani ta tek v zgodovino (opazljivost skozi čas).
     from datetime import datetime, timezone
+    started_iso = datetime.now(timezone.utc).isoformat()
+    cases_out = {}
+    for r in evaluator.results:
+        entry = {"rsi_ok": r["rsi_ok"], "checks_ok": r["checks_ok"],
+                 "checks_total": r["checks_total"]}
+        for k in ("type", "mode", "wall_seconds", "attempts", "llm_calls"):
+            if r.get(k) is not None:
+                entry[k] = r[k]
+        cases_out[r["name"]] = entry
     _append_history({
-        "date": datetime.now(timezone.utc).isoformat(),
+        "date": started_iso,
         "passed": summary["passed"],
         "total": summary["total"],
         "rate": summary["rate"],
-        "cases": {r["name"]: {"rsi_ok": r["rsi_ok"],
-                              "checks_ok": r["checks_ok"],
-                              "checks_total": r["checks_total"]} for r in evaluator.results},
+        "cases": cases_out,
     })
+
+    # Markdown poročilo teka (za nočni CI eval → artifact).
+    if args.report:
+        md = _render_markdown_report(evaluator.results, summary, started_iso)
+        if args.report == "-":
+            print(md)
+        else:
+            Path(args.report).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.report).write_text(md, encoding="utf-8")
+            print(f"📄 Poročilo zapisano: {args.report}")
     return 0 if summary["rate"] >= 1.0 else 1
 
 

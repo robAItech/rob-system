@@ -12,20 +12,17 @@ import pytest
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from evaluate_autonomy import EVAL_CASES, AutonomyEval
+from evaluate_autonomy import EVAL_CASES, AutonomyEval, validate_case
 
 
 def test_eval_cases_so_dobro_oblikovani():
-    """Vsak case ima veljaven name, direktivo, function_key in checks."""
+    """Vsak case ima veljaven name/direktivo in polja veljavna za svoj 'type'."""
     assert len(EVAL_CASES) >= 2, "potrebujemo vsaj 2 reprezentativna case-a"
+    assert len({c.get("type", "function") for c in EVAL_CASES}) >= 2, \
+        "lestvica naj pokrije vsaj 2 tipa (npr. function + pydantic/http)"
     for c in EVAL_CASES:
-        assert c["name"].isidentifier(), f"{c['name']} ni veljaven identifikator"
-        assert len(c["directive"]) > 20, f"{c['name']}: direktiva prekratka"
-        assert c["function_key"].isidentifier(), f"napačen function_key"
-        assert isinstance(c["checks"], list) and len(c["checks"]) > 0, "brez checks"
-        # checks: bodisi (vhod[, dodatni], pričakovani) — zadnji element izhod.
-        for ch in c["checks"]:
-            assert len(ch) >= 2, "check mora imeti vsaj (vhod, izhod)"
+        errs = validate_case(c)
+        assert not errs, f"{c['name']}: {errs}"
 
 
 def test_smoke_check_veljaven():

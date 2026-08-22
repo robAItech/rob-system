@@ -15,6 +15,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from core.config import settings
 from core.graphify_bridge import GraphifyBridge
 from core.loopx_bridge import LoopXEngineBridge
 
@@ -98,6 +99,7 @@ def test_heal_once_vkljuci_graf_kontekst(tmp_path, monkeypatch):
         captured["prompt"] = prompt
         return "### FILE: demo_service.py\n```python\ndef run():\n    return 2\n```\n"
 
+    monkeypatch.setattr(settings, "llm_tool_use", False)  # tekstovna pot (mock generate_completion)
     with mock.patch.object(eng, "graphify") as mock_graph, \
          mock.patch.object(eng.llm, "generate_completion", side_effect=fake_generate_completion):
         mock_graph.render_context.return_value = "GRAF_SPECIAL_MARKER"
@@ -120,6 +122,7 @@ def test_heal_once_prezivi_izjemo_render_context(tmp_path, monkeypatch):
         captured["prompt"] = prompt
         return "### FILE: demo_service.py\n```python\ndef run():\n    return 2\n```\n"
 
+    monkeypatch.setattr(settings, "llm_tool_use", False)  # tekstovna pot (mock generate_completion)
     with mock.patch.object(eng, "graphify") as mock_graph, \
          mock.patch.object(eng.llm, "generate_completion", side_effect=fake_generate_completion):
         mock_graph.render_context.side_effect = RuntimeError("graf padel")
@@ -141,6 +144,7 @@ def test_heal_once_popravi_to_dobi_obstojece_sources(tmp_path, monkeypatch):
         captured["prompt"] = prompt
         return "### FILE: demo_service.py\n```python\ndef run():\n    return 2\n```\n"
 
+    monkeypatch.setattr(settings, "llm_tool_use", False)  # tekstovna pot (mock generate_completion)
     with mock.patch.object(eng, "graphify") as mock_graph, \
          mock.patch.object(eng.llm, "generate_completion", side_effect=fake_generate_completion):
         mock_graph.render_context.return_value = ""
