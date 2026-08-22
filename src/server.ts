@@ -395,18 +395,42 @@ async function listAgents(): Promise<Record<string, unknown>[]> {
   return out;
 }
 
-/** Reprezentativne povezave v sistemskem grafu. */
-const GRAPH_EDGES: [string, string][] = [
-  ['api_gateway','auth_vault'],['api_gateway','rate_limiter'],['api_gateway','circuit_breaker'],
-  ['api_gateway','observability_metrics'],['api_gateway','event_bus'],['api_gateway','contract_schema_engine'],
-  ['event_bus','saga_orchestrator'],['event_bus','task_queue'],['event_bus','audit_trail'],
-  ['saga_orchestrator','task_queue'],['observability_metrics','cache_layer'],['observability_metrics','circuit_breaker'],
-  ['deployment_manager','api_gateway'],['deployment_manager','observability_metrics'],['rsi_engine','deployment_manager'],
-  ['contract_schema_engine','currency_converter'],['currency_converter','warehouse_inventory'],
+/** Povezave med agenti (TS) in bridge-i (core/) — action moduli imajo realne robove iz core/actions_graph.py. */
+const AGENT_EDGES: [string, string][] = [
   ['planner','builder'],['builder','qa'],['qa','screenshot'],['qa','loopx'],
   ['gbrain','graphify'],['graphify','gstack'],['gstack','hermes'],['hermes','loopx'],
-  ['planner','gbrain'],['loopx','rsi_engine'],
+  ['planner','gbrain'],
 ];
+
+/** Realni robovi action modulov (core/actions_graph.py) — TTL 30 s. */
+let actionEdgesCache: { ts: number; edges: [string, string][] } | null = null;
+async function actionEdges(): Promise<[string, string][]> {
+  const now = Date.now();
+  if (actionEdgesCache && now - actionEdgesCache.ts < 30_000) return actionEdgesCache.edges;
+  const script = `
+import sys, os, json
+sys.path.insert(0, os.environ.get('OUT_ROOT') or '.')
+from core.actions_graph import all_edges
+print(json.dumps(all_edges(), ensure_ascii=False))
+`;
+  try {
+    const proc = Bun.spawn({
+      cmd: ['python', '-c', script],
+      cwd: OUT_ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+    });
+    const out = await new Response(proc.stdout).text();
+    await proc.exited;
+    const edges = (JSON.parse(out.trim() || '[]') as { source: string; target: string }[])
+      .map((e) => [e.source, e.target] as [string, string]);
+    actionEdgesCache = { ts: now, edges };
+    return edges;
+  } catch {
+    actionEdgesCache = { ts: now, edges: [] };
+    return [];
+  }
+}
 
 /** Sistemski graf: moduli (actions/) + agenti (src/agents/) + bridge-i (core/). */
 async function systemGraph(): Promise<Record<string, unknown>> {
@@ -416,7 +440,8 @@ async function systemGraph(): Promise<Record<string, unknown>> {
     ...modules.map((m) => ({ id: m.name, label: m.name, group: 'm' })),
     ...agents.map((a) => ({ id: a.id, label: a.label, group: a.group === 'bridge' ? 'b' : 'a' })),
   ];
-  return { nodes, edges: GRAPH_EDGES };
+  const edges = [...(await actionEdges()), ...AGENT_EDGES];
+  return { nodes, edges };
 }
 
 /** Združen seznam artefaktov: moduli (actions/) + izdelki (out/), vsak s potjo za prenos. */
