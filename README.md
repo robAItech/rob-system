@@ -73,7 +73,7 @@ Sistem temelji na treh integriranih stebrih:
   ga posreduje LLM-u in v do 5 poskusih avtonomno odpravi napako.
 - **Fail-safe beleženje napak** — če koda po vseh poskusih ne doseže 100-%
   zelene verifikacije, se tek zaključi kot `FAILED` in napaka se zapiše v
-  GBRAIN blacklist (učenje za prihodnje teke). Avtomatskega rollback-a ni.
+  GBRAIN blacklist (učenje za prihodnje teke). Ob neuspelem buildu se modul avtomatsko povrne na pred-build stanje (snapshot v `.loopx/rollback/`; izklop: `LOOPX_ROLLBACK_ON_FAIL=false`).
 - **Jedrnati CLI ukazi** — brez mikromanagementa. Sistem se krmili s
   kratkimi, direktnimi ukazi.
 
@@ -271,7 +271,7 @@ RSI zanka (`_heal_loop`) deluje takole:
 4. **Ponavljanje** — do 5 poskusov (`max_attempts`); enaka ponavljajoča se
    napaka (≥ 3×, `REPEAT_ABORT_AFTER`) zgodaj prekine zanko.
 5. **Neuspeh** — tek se zaključi kot `FAILED`, napaka se zapiše v GBRAIN
-   blacklist (učenje). Avtomatskega rollback-a ni.
+   blacklist (učenje). Ob neuspelem buildu se modul avtomatsko povrne na pred-build stanje (snapshot v `.loopx/rollback/`; izklop: `LOOPX_ROLLBACK_ON_FAIL=false`).
 
 Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
 `RSISelfHealingEngine` živi kot samostojen modul v

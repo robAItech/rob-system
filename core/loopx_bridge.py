@@ -141,6 +141,7 @@ class LoopXEngineBridge:
         self._heal_fail_count: Dict[str, int] = {}   # error_type → štev ponovitev v teku
         self._prompt_registry = None  # Zanka 3: lazy prompt-register (verzioniran prompt)
         self._skill_bridge = None     # Korak 6: lazy GStack skill bralec
+        self._rollback_had_target = False  # Korak 10: je modul obstajal pred buildom?
 
     def _rsisystem_prompt(self) -> str:
         """Zanka 3 — RSI prompt iz registra; ob napaki pade nazaj na konstanto."""
@@ -857,6 +858,52 @@ class LoopXEngineBridge:
         except OSError:
             pass
 
+    # ------------------------------------------------------------------ #
+    #  Korak 10 — avto-rollback ob neuspelem buildu
+    # ------------------------------------------------------------------ #
+    def _backup_dir(self) -> Path:
+        """Rollback snapshot: .loopx/rollback/<project>/ (gitignoran, per-modul izoliran)."""
+        return Path(".loopx") / "rollback" / self.project
+
+    def _snapshot_project(self) -> None:
+        """Pred-build kopija actions/<project>/ v .loopx/rollback/<project>/.
+
+        Stale snapshot se pred kopijo počisti (samozdravljenje po krachu).
+        `_rollback_had_target` loči »modul ni obstajal« od »modul je obstajal
+        kot prazen/eksisten dir«.
+        """
+        backup = self._backup_dir()
+        if backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        self._rollback_had_target = self.target_dir.exists()
+        if self._rollback_had_target:
+            shutil.copytree(self.target_dir, backup, dirs_exist_ok=True)
+        else:
+            backup.mkdir(parents=True, exist_ok=True)   # marker: modul ni obstajal
+
+    def _restore_project(self) -> None:
+        """Povrne actions/<project>/ na pred-build stanje iz snapshota.
+
+        Nov modul (ni obstajal) → v celoti odstranjen. Obstoječ modul → rmtree +
+        kopija snapshota nazaj. Manjkajoč snapshot → no-op (defenzivno).
+        """
+        backup = self._backup_dir()
+        if not backup.exists():
+            print(f"[LOOPX] ROLLBACK: ni snapshota za '{self.project}' — preskočen.", flush=True)
+            return
+        if self.target_dir.exists():
+            shutil.rmtree(self.target_dir)
+        if self._rollback_had_target:
+            shutil.copytree(backup, self.target_dir)
+        print(f"[LOOPX] ROLLBACK: '{self.project}' povrnjen na pred-build stanje.", flush=True)
+
+    def _cleanup_snapshot(self) -> None:
+        """Po zelenem buildu ali po uspelem rollbacku počisti snapshot dir."""
+        backup = self._backup_dir()
+        if backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+
     def execute_and_heal(self, directive: str, spec_hint: str = "") -> bool:
         """RSI zanka. `spec_hint` = arhitekturna usmeritev (P0) iz GStack manifesta,
         ki jo _heal_once vstavi v LLM prompt (če ni prazna).
@@ -864,16 +911,36 @@ class LoopXEngineBridge:
         P2 — sočasnost: pred zanko vzame atomic target-lock; drugi build istega
         modula čaka kratek čas in ob časovni izteku vrne False (ne tekmuje).
         Lock se sprosti v `finally` ne glede na izid.
+
+        Korak 10 — avto-rollback: pred zanko se snapshotira actions/<proj>/
+        (.loopx/rollback/<proj>/); ob neuspelem buildu (ok=False, vklj. izjemo)
+        se modul povrne na pred-build stanje; ob zelenem se snapshot počisti.
         """
         self.spec_hint = spec_hint  # P0 — usmeritev za _heal_once
         if not self._acquire_target_lock():
             print(f"[LOOPX] TARGET ZAKLENJEN: '{self.project}' — drug build že poteka. Preskočen.",
                   flush=True)
             return False
+        ok = False
         try:
-            return self._heal_loop(directive)
+            try:
+                self._snapshot_project()
+            except Exception as e:
+                # Snapshot ni kritičen za build: ob napaki gradnja teče naprej,
+                # rollback je za ta tek le onemogočen.
+                print(f"[LOOPX] snapshot preskočen ({e}) — rollback onemogočen za ta tek.", flush=True)
+                self._rollback_had_target = False
+            ok = self._heal_loop(directive)
+            return ok
         finally:
-            self._release_target_lock()
+            try:
+                if not ok and settings.loopx_rollback_on_fail:
+                    self._restore_project()
+                self._cleanup_snapshot()
+            except Exception as e:
+                print(f"[LOOPX] rollback/cleanup opozorilo: {e}", flush=True)
+            finally:
+                self._release_target_lock()
 
     def _heal_loop(self, directive: str) -> bool:
         """Jedro RSI zanke (pod target-lockom). Vrača True ob zelenem, sicer False."""

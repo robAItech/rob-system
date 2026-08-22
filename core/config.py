@@ -41,6 +41,10 @@ class SystemSettings(BaseSettings):
     llm_heal_include_tests: bool = Field(default=False, alias="LLM_HEAL_INCLUDE_TESTS")
     # Maks. skupna dolžina messages v agentic heal zanki (trim praga).
     llm_heal_agentic_context_chars: int = Field(default=50000, alias="LLM_HEAL_AGENTIC_CONTEXT_CHARS")
+    # ─── Korak 10 — avto-rollback ob neuspelem buildu ─────────────────────
+    # true = ob FAILED se actions/<proj>/ povrne na pred-build stanje
+    # (snapshot v .loopx/rollback/). false = stara semantika (zlomljena koda ostane).
+    loopx_rollback_on_fail: bool = Field(default=True, alias="LOOPX_ROLLBACK_ON_FAIL")
 
     def is_real_key_available(self) -> bool:
         return bool(

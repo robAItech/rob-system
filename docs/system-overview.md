@@ -104,7 +104,7 @@ Naloga (človek)
 2. **Zelen** — `VERIFIED GREEN` se zapiše v GBRAIN; zanka konča.
 3. **Rdeč → heal** — traceback → DeepSeek (`_heal_once`) → popravki → `actions/<mod>/` → ponovna verifikacija.
 4. **Ponavljanje** — do 5 poskusov; enaka ponavljajoča se napaka (≥ 3×, `REPEAT_ABORT_AFTER`) zgodaj prekine.
-5. **Neuspeh** — `FAILED` + blacklist v GBRAIN (učenje). **Avtomatskega rollback-a ni.**
+5. **Neuspeh** — `FAILED` + blacklist v GBRAIN (učenje). Modul se avtomatsko povrne na pred-build stanje (snapshot v `.loopx/rollback/`; izklop: `LOOPX_ROLLBACK_ON_FAIL=false`).
 
 Sočasni buildi istega modula se varujejo z atomic target-lockom.
 

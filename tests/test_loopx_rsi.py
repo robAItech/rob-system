@@ -11,6 +11,7 @@ from unittest import mock
 
 import pytest
 
+from core.config import settings
 from core.loopx_bridge import LoopXEngineBridge
 
 
@@ -384,3 +385,93 @@ def test_heal_agentic_trim_pri_majhnem_budgetu(tmp_path, monkeypatch):
     with mock.patch.object(engine.llm, "complete_with_tools", side_effect=fake_tools):
         ok, _ = engine._heal_agentic("prompt", "system")
     assert ok is True
+
+
+# --------------------------------------------------------------------------- #
+#  Korak 10 — avto-rollback ob neuspelem buildu
+# --------------------------------------------------------------------------- #
+
+def _engine_with_modul(tmp_path, monkeypatch, content: str) -> LoopXEngineBridge:
+    monkeypatch.chdir(tmp_path)
+    modul = tmp_path / "actions" / "demo_service"
+    modul.mkdir(parents=True, exist_ok=True)
+    (modul / "main.py").write_text(content, encoding="utf-8")
+    return LoopXEngineBridge("demo_service", db_path=tmp_path / "memory.db")
+
+
+def test_execute_and_heal_rollback_ob_failu(tmp_path, monkeypatch):
+    """Ob FAILED se modul povrne na pred-build stanje (heal je zapisal Y → nazaj X)."""
+    modul = tmp_path / "actions" / "demo_service"
+    engine = _engine_with_modul(tmp_path, monkeypatch, "X")
+
+    def fake_heal_loop(directive):
+        (modul / "main.py").write_text("Y", encoding="utf-8")   # heal pokvari kodo
+        return False
+
+    with mock.patch.object(engine, "_heal_loop", side_effect=fake_heal_loop):
+        r = engine.execute_and_heal("build demo")
+    assert r is False
+    assert (modul / "main.py").read_text(encoding="utf-8") == "X"      # rollback deluje
+    assert not (tmp_path / ".loopx" / "rollback" / "demo_service").exists()  # backup počisčen
+
+
+def test_execute_and_heal_green_pocisti_backup(tmp_path, monkeypatch):
+    """Zelen build → snapshot pobrisan, modul nespremenjen."""
+    modul = tmp_path / "actions" / "demo_service"
+    engine = _engine_with_modul(tmp_path, monkeypatch, "X")
+
+    with mock.patch.object(engine, "_heal_loop", return_value=True):
+        r = engine.execute_and_heal("build demo")
+    assert r is True
+    assert (modul / "main.py").read_text(encoding="utf-8") == "X"
+    assert not (tmp_path / ".loopx" / "rollback" / "demo_service").exists()
+
+
+def test_execute_and_heal_rollback_novega_modula(tmp_path, monkeypatch):
+    """Nov modul (ni obstajal) + FAILED → rollback ga v celoti odstrani."""
+    monkeypatch.chdir(tmp_path)
+    engine = LoopXEngineBridge("fresh_module", db_path=tmp_path / "memory.db")
+    modul = tmp_path / "actions" / "fresh_module"
+    assert not modul.exists()
+
+    def fake_heal_loop(directive):
+        modul.mkdir(parents=True)
+        (modul / "main.py").write_text("broken", encoding="utf-8")
+        return False
+
+    with mock.patch.object(engine, "_heal_loop", side_effect=fake_heal_loop):
+        r = engine.execute_and_heal("build fresh")
+    assert r is False
+    assert not modul.exists()     # nov modul v celoti odstranjen
+
+
+def test_execute_and_heal_rollback_off(tmp_path, monkeypatch):
+    """LOOPX_ROLLBACK_ON_FAIL=false → zlomljena koda ostane (off-switch)."""
+    modul = tmp_path / "actions" / "demo_service"
+    engine = _engine_with_modul(tmp_path, monkeypatch, "X")
+
+    def fake_heal_loop(directive):
+        (modul / "main.py").write_text("Y", encoding="utf-8")
+        return False
+
+    monkeypatch.setattr(settings, "loopx_rollback_on_fail", False)
+    with mock.patch.object(engine, "_heal_loop", side_effect=fake_heal_loop):
+        r = engine.execute_and_heal("build demo")
+    assert r is False
+    assert (modul / "main.py").read_text(encoding="utf-8") == "Y"   # brez rollbacka
+
+
+def test_execute_and_heal_rollback_ob_izjemi(tmp_path, monkeypatch):
+    """Izjema v _heal_loop → rollback v finally, izjema propagira."""
+    modul = tmp_path / "actions" / "demo_service"
+    engine = _engine_with_modul(tmp_path, monkeypatch, "X")
+
+    def boom(directive):
+        (modul / "main.py").write_text("Y", encoding="utf-8")
+        raise RuntimeError("krah verifikacije")
+
+    with mock.patch.object(engine, "_heal_loop", side_effect=boom):
+        with pytest.raises(RuntimeError):
+            engine.execute_and_heal("build demo")
+    assert (modul / "main.py").read_text(encoding="utf-8") == "X"
+    assert not (tmp_path / ".loopx" / "rollback" / "demo_service").exists()
