@@ -94,8 +94,38 @@ class TeamCoordinator:
         except Exception:
             return plan
 
+    def _test_confidence(self, project: str) -> Dict[str, Any]:
+        """Deterministična globina testov (Confidence Gate).
+
+        Vsaka test funkcija mora imeti vsaj en `assert`; prazne test funkcije
+        (brez assertion-a) so lažno pozitiven prehod. Vrne {score (0-1),
+        total_tests, empty_tests}.
+        """
+        import ast
+        d = Path(f"actions/{project}")
+        total = empty = 0
+        for tf in sorted(d.glob("test_*.py")):
+            try:
+                tree = ast.parse(tf.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
+                    total += 1
+                    if not any(isinstance(n, ast.Assert) for n in ast.walk(node)):
+                        empty += 1
+        score = (total - empty) / total if total > 0 else 0.0
+        return {"score": score, "total_tests": total, "empty_tests": empty}
+
     def verify(self, project: str, goal: str) -> Dict[str, Any]:
-        """Verifier neodvisno potrdi, ali zgrajen modul izpolnjuje cilj."""
+        """Verifier neodvisno potrdi, ali zgrajen modul izpolnjuje cilj.
+
+        Confidence Gate: pred LLM presojo deterministično preveri globino
+        testov — prazni assert → lažno zeleno → zavrni.
+        """
+        conf = self._test_confidence(project)
+        if conf["total_tests"] > 0 and conf["score"] < 0.85:
+            return {"ok": False, "reason": f"Zanesljivost testov {conf['score']:.2f} pod pragom 0.85 ({conf['empty_tests']}/{conf['total_tests']} testov brez assertion-a)."}
         sources = self._read_sources(project)
         if not self._llm_available() or not sources:
             return {"ok": True, "reason": "hevristika (brez LLM ali brez vira)"}

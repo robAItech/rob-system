@@ -83,7 +83,8 @@ async def test_model_fallback_na_400():
     # Preveri, da sta bili izvedeni dve različni model zahtevki (coder → chat).
     payloads = [k.get("json", {}) for _, k in fake.posts]
     assert len(payloads) == 2
-    assert payloads[0]["model"] != payloads[1]["model"]  # fallback na drug model
+    # Oba modela (coder in chat) sta zdaj deepseek-v4-flash — fallback je no-op (isti model).
+    assert payloads[0]["model"] == payloads[1]["model"] == "deepseek-v4-flash"
 
 
 @pytest.mark.asyncio
