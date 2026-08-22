@@ -29,6 +29,7 @@ import { LLMCache } from './bridges/cache.ts';
 import { resolveProvider } from './bridges/provider.ts';
 import { SqliteMemoryStore } from './memory/sqlite-store.ts';
 import { BunExec } from './bridges/exec.ts';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 // Pretvorba in prikaz artefaktov (Word / PDF / Markdown-ogled)
 import {
@@ -588,11 +589,16 @@ async function webSearch(query: string): Promise<{ title: string; url: string; s
   return wikiSearch(query);
 }
 
+/** Odstrani diakritike (š→s, č→c, ž→z), da se regex ujema ne glede na encoding. */
+function normalize(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
 /** Ali je sporočilo NALOGA (izvedi), RAZISKAVA (globinsko preglej) ali POGOVOR. */
 function classifyMessage(message: string): 'task' | 'research' | 'chat' {
-  const m = message.toLowerCase();
-  if (/(naloga|poslušaj|želim da|želim,|naredi|zgradi|ustvari|izvedi|deploy|build|zaženi|zapiši|pripravi|generiraj|ukaz|izdelaj)/.test(m)) return 'task';
-  if (/(preglej|analiziraj|razišči|raziskuj|poglej|preveri|razloži|primerjaj|oceni|preuči|sintetiziraj)/.test(m)) return 'research';
+  const m = normalize(message.toLowerCase());
+  if (/(naloga|poslusaj|zelim da|zelim,|naredi|zgradi|ustvari|izvedi|deploy|build|zazeni|zapisi|pripravi|generiraj|ukaz|izdelaj)/.test(m)) return 'task';
+  if (/(preglej|analiziraj|razisci|raziskuj|poglej|preveri|razlozi|primerjaj|oceni|preuci|sintetiziraj)/.test(m)) return 'research';
   return 'chat';
 }
 
@@ -640,6 +646,39 @@ async function fetchPage(url: string): Promise<string> {
   } catch { return ''; }
 }
 
+/** Pretvori tekst v URL-varen slug (brez šumnikov). */
+function slugify(text: string): string {
+  return text.toLowerCase()
+    .replace(/č/g, 'c').replace(/š/g, 's').replace(/ž/g, 'z')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 48) || 'raziskava';
+}
+
+/** Shrani raziskovalno poročilo (s citati) v arhiv. Vrne relativno pot. */
+async function saveResearch(query: string, report: string, sources: { title: string; url: string; snippet: string }[]): Promise<string> {
+  const dir = `${OUT_ROOT}/.rob_ai/research`;
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
+  const name = `${stamp}_${slugify(query)}.md`;
+  const md = `# ${query}\n\n_Datum: ${new Date().toLocaleString('sl-SI')}_\n\n${report}\n\n---\n\n## Viri\n\n${sources.map((s, i) => `${i + 1}. [${s.title}](${s.url})`).join('\n')}\n`;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(`${dir}/${name}`, md, 'utf-8');
+  return `.rob_ai/research/${name}`;
+}
+
+/** Seznam arhiviranih raziskav. */
+async function listResearch(): Promise<Record<string, unknown>[]> {
+  const dir = `${OUT_ROOT}/.rob_ai/research`;
+  const out: Record<string, unknown>[] = [];
+  try {
+    const glob = new Bun.Glob('*.md');
+    for await (const f of glob.scan({ cwd: dir, onlyFiles: true })) {
+      const txt = await Bun.file(`${dir}/${f}`).text().catch(() => '');
+      const title = (txt.match(/^# (.+)$/m)?.[1] || f.replace(/\.md$/, '')).slice(0, 90);
+      out.push({ name: f, path: `.rob_ai/research/${f}`, title, sizeBytes: txt.length });
+    }
+  } catch { /* arhiv morda še ne obstaja */ }
+  return out.sort((a, b) => String(b.name).localeCompare(String(a.name)));
+}
+
 /** Raziskovalni način: spletno iskanje + branje virov + sintetizirano poročilo s citati. */
 async function handleResearch(message: string): Promise<string> {
   const query = message.replace(/(preglej|analiziraj|razišči|raziskuj|poglej|preveri|razloži|primerjaj|oceni|preuči|sintetiziraj)/gi, '').trim() || message;
@@ -667,7 +706,9 @@ async function handleResearch(message: string): Promise<string> {
       ],
       temperature: 0.2, maxTokens: 1000,
     });
-    return res.text;
+    const report = res.text;
+    await saveResearch(query, report, sources); // arhiv s citati
+    return report;
   } finally { ledger.close(); }
 }
 
@@ -1193,6 +1234,10 @@ const server = Bun.serve({
       const q = (url.searchParams.get('q') || '').trim();
       if (!q) return json({ ok: false, error: 'q je prazen' }, 400);
       return json({ ok: true, results: await webSearch(q) });
+    }
+    // Arhiv raziskav (seznam .md poročil).
+    if (req.method === 'GET' && url.pathname === '/api/research') {
+      return json({ research: await listResearch() });
     }
     // Zagon gstack skill-a (prek claude CLI, headless).
     if (req.method === 'POST' && url.pathname === '/api/skill') {

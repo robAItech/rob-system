@@ -161,6 +161,11 @@
   .skill-chips{display:flex;flex-wrap:wrap;gap:7px;}
   .skill{background:var(--surface2);border:1px solid var(--line);border-radius:5px;color:var(--accent);font-family:var(--font-mono);font-size:12px;padding:7px 12px;cursor:pointer;transition:border-color .15s,background .15s,color .15s;}
   .skill:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-2);}
+  .research-list{display:flex;flex-direction:column;gap:10px;}
+  .research-item{border:1px solid var(--line);border-radius:7px;background:var(--surface);padding:14px 16px;cursor:pointer;transition:border-color .15s;}
+  .research-item:hover{border-color:var(--accent);}
+  .research-item .rt{font-family:var(--font-display);font-weight:600;font-size:14px;color:var(--ink);margin-bottom:4px;}
+  .research-item .rm{font-size:11px;color:var(--faint);font-family:var(--font-mono);}
 
   table{width:100%;border-collapse:collapse;font-size:12.5px;}
   th{font-family:var(--font-display);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);font-weight:500;}
@@ -257,6 +262,10 @@
       <button data-view="pogovor" onclick="show('pogovor')">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Pogovor
+      </button>
+      <button data-view="research" onclick="show('research')">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6M11 8v6"/></svg>
+        Raziskovanje
       </button>
       <button data-view="agenda" onclick="show('agenda')">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
@@ -371,6 +380,12 @@
       </div>
     </section>
 
+    <!-- RAZISKOVANJE -->
+    <section class="view" id="view-research">
+      <div class="view-head"><h1>Raziskovanje</h1><span class="meta">arhiv poročil · .rob_ai/research</span></div>
+      <div class="research-list" id="research-list"><div style="color:var(--faint)">nalaganje …</div></div>
+    </section>
+
     <!-- AGENDA -->
     <section class="view" id="view-agenda">
       <div class="view-head"><h1>Agenda</h1><span class="meta">čakalna vrsta naročil · agenda.json</span></div>
@@ -473,7 +488,7 @@
 
 <script>
   // ── Navigacija ────────────────────────────────────────────────────
-  const crumbs = {command:'/ pregled', pogovor:'/ pogovor', agenda:'/ agenda', artifacts:'/ artefakti', gbrain:'/ gbrain', agents:'/ agenti'};
+  const crumbs = {command:'/ pregled', pogovor:'/ pogovor', research:'/ raziskovanje', agenda:'/ agenda', artifacts:'/ artefakti', gbrain:'/ gbrain', agents:'/ agenti'};
   function show(view){
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
     document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
@@ -757,6 +772,16 @@
     ts.innerHTML=list.filter(x=>x.group==='agent').map(card).join('');
     br.innerHTML=list.filter(x=>x.group==='bridge').map(card).join('');
   }
+  function renderResearch(list){
+    const g=document.getElementById('research-list'); if(!g) return;
+    g.innerHTML=list.length?list.map(r=>`<div class="research-item" data-path="${r.path}" data-name="${r.title}"><div class="rt">${r.title}</div><div class="rm">${r.name} · ${(r.sizeBytes/1024).toFixed(1)} KB</div></div>`).join(''):'<div style="color:var(--faint)">Še ni arhiviranih raziskav. V pogovoru vprašaj "preglej / razišči ...".</div>';
+  }
+  async function loadResearch(){
+    try{
+      const r=await fetch('/api/research');
+      if(r.ok){ const d=await r.json(); if(d.research) renderResearch(d.research); }
+    }catch(e){}
+  }
   async function loadLive(){
     try{
       const r=await fetch('/api/metrics');
@@ -922,6 +947,8 @@
   document.addEventListener('click', e=>{
     const art=e.target.closest('.art');
     if(art){ openArtifact(art.dataset.path, art.dataset.name); return; }
+    const ri=e.target.closest('.research-item');
+    if(ri){ openArtifact(ri.dataset.path, ri.dataset.name); return; }
     const ag=e.target.closest('.agent');
     if(ag){ itemToast(ag.querySelector('.role').textContent, ag.querySelector('.file').textContent); return; }
     const line=e.target.closest('.feed .line');
@@ -936,5 +963,5 @@
   buildWave(); renderSkills(); initGraph();
   render(); setInterval(refresh,3800);
   loadLive(); setInterval(loadLive,10000);
-  loadGraph();
+  loadGraph(); loadResearch();
 </script>
