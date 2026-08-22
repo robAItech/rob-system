@@ -25,7 +25,9 @@ UPORABA:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import importlib
+import inspect
 import json
 import sys
 import time
@@ -37,6 +39,8 @@ from typing import Dict, List, Optional, Tuple
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from core.eval_bugs import BUG_CASES, EvalBugError, check_bug_injectable, cleanup, inject_bug
 
 # Vsili UTF-8 izhod (enako kot run_swarm.py), da emoji/šumniki ne crash-on
 # Windows cp1250 (UnicodeEncodeError) v piped okoljih.
@@ -50,7 +54,7 @@ except Exception:
 # ------------------------------------------------------------------ #
 #  Tipi in načini eval case-ov (eval lestvica)
 # ------------------------------------------------------------------ #
-CASE_TYPES = ("function", "pydantic", "http")
+CASE_TYPES = ("function", "pydantic", "http", "bugfix")
 CASE_MODES = ("single", "autonomous")
 VALID_HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 
@@ -232,11 +236,18 @@ EVAL_CASES: List[Dict] = [
 ]
 
 
+# P0 — idempotentna pripetev bugfix case-ov (real eval na zlatih modulih).
+for _bc in BUG_CASES:
+    if not any(c["name"] == _bc["name"] for c in EVAL_CASES):
+        EVAL_CASES.append(_bc)
+
+
 def validate_case(case: Dict) -> List[str]:
     """Vrne seznam napak strukture case-a; prazen seznam = veljaven.
 
     Type-aware: function zahteva function_key+checks; pydantic zahteva
-    valid_inputs+invalid_inputs; http zahteva endpoint_checks.
+    valid_inputs+invalid_inputs; http zahteva endpoint_checks; bugfix zahteva
+    source_module + bug + function_key + total + checks|verify.
     """
     errs: List[str] = []
     name = case.get("name", "")
@@ -288,6 +299,24 @@ def validate_case(case: Dict) -> List[str]:
                     continue
                 if not isinstance(ec[0], str) or ec[0].upper() not in VALID_HTTP_METHODS:
                     errs.append(f"neveljaven HTTP method: {ec[0]!r}")
+    elif ctype == "bugfix":
+        sm = case.get("source_module")
+        if not isinstance(sm, str) or not sm.isidentifier():
+            errs.append("'source_module' mora biti veljaven identifikator")
+        bugs = case.get("bug", [])
+        if not isinstance(bugs, list) or not bugs:
+            errs.append("'bug' mora biti neprazen seznam (file, old, new)")
+        else:
+            for b in bugs:
+                if not isinstance(b, (tuple, list)) or len(b) != 3 or not all(isinstance(x, str) for x in b):
+                    errs.append(f"bug {b!r} mora biti (file, old, new) — vsi str")
+        fk = case.get("function_key", "")
+        if not isinstance(fk, str) or not fk:
+            errs.append("'bugfix' potrebuje 'function_key'")
+        if not (isinstance(case.get("checks"), list) and case.get("checks")) and not callable(case.get("verify")):
+            errs.append("'bugfix' potrebuje 'checks' (z extract) ali 'verify' callable")
+        if not isinstance(case.get("total", 0), int) or case.get("total", 0) <= 0:
+            errs.append("'bugfix' potrebuje 'total' > 0")
     if "function" in case and not callable(case.get("function")):
         errs.append("'function' mora biti klicljiv (ali odsoten)")
     return errs
@@ -297,8 +326,9 @@ def validate_case(case: Dict) -> List[str]:
 #  Eval engine
 # ------------------------------------------------------------------ #
 class AutonomyEval:
-    def __init__(self, cases: List[Dict]) -> None:
+    def __init__(self, cases: List[Dict], keep_artifacts: bool = False) -> None:
         self.cases = cases
+        self.keep_artifacts = keep_artifacts
         self.results: List[dict] = []
 
     # -- ujemi funkcijo iz actions/<name>/ (neodvisno od pokvarjenega imena) ---
@@ -365,6 +395,8 @@ class AutonomyEval:
             return len(case.get("valid_inputs", [])) + len(case.get("invalid_inputs", []))
         if ctype == "http":
             return len(case.get("endpoint_checks", []))
+        if ctype == "bugfix":
+            return int(case.get("total", 0)) or len(case.get("checks", []))
         return len(case.get("checks", []))
 
     @classmethod
@@ -548,6 +580,8 @@ class AutonomyEval:
 
     # -- pokreni eval enega case (pravi RSI) -------------------------------
     def run_case(self, case: Dict) -> dict:
+        if case.get("type") == "bugfix":
+            return self._run_bugfix_case(case)
         name = case["name"]
         directive = case["directive"]
         ctype = case.get("type", "function")
@@ -591,6 +625,139 @@ class AutonomyEval:
         res["reason"] = ver["reason"]
         print(f"   → neodvisni preveri: {res['checks_ok']}/{res['checks_total']} ({res['reason']})")
         return res
+
+    # -- P0: real bugfix (inject → RSI popravi → neodvisna verifikacija) ----
+    def _run_bugfix_case(self, case: Dict) -> dict:
+        """Bugfix case: inject bug → RSI popravi → neodvisna verifikacija."""
+        name, directive = case["name"], case["directive"]
+        res = {"name": name, "type": "bugfix", "mode": "single", "rsi_ok": False,
+               "checks_ok": 0, "checks_total": self._expected_checks(case),
+               "func": case.get("function_key", name), "reason": "", "wall_seconds": 0.0}
+        print(f"\n🎯 [P0] EVAL bugfix: {name} (vir: {case['source_module']})")
+        try:
+            inject_bug(case)                      # (0) setup PRED RSI — RAISE ob nenajdeni bug string
+        except Exception as e:
+            res["reason"] = f"bug ni vnesen: {e!r}"
+            return res
+        from core.orchestrator import RobAIOrchestrator
+        t0 = time.monotonic()
+        try:
+            rsi_ok = RobAIOrchestrator.run(name, directive)   # (1) RSI, mode=single
+        except Exception as e:
+            rsi_ok = False
+            res["reason"] = f"RSI zanka je padla: {e!r}"
+        res["wall_seconds"] = round(time.monotonic() - t0, 1)
+        res["rsi_ok"] = rsi_ok
+        if not rsi_ok:
+            if not res["reason"]:
+                res["reason"] = "RSI ni zelen (bug ostaja v actions/<name>/)"
+            self._maybe_cleanup(case)
+            return res
+        res["attempts"] = _read_attempts(name)
+        res["llm_calls"] = _read_llm_calls(name)
+        ver = self._verify_bugfix_inline(name, case)          # (2) neodvisna verifikacija
+        res["checks_ok"] = ver["checks_ok"]
+        res["checks_total"] = ver["checks_total"]
+        res["reason"] = ver["reason"]
+        print(f"   → neodvisni preveri: {res['checks_ok']}/{res['checks_total']} ({ver['reason']})")
+        self._maybe_cleanup(case)
+        return res
+
+    def _maybe_cleanup(self, case: Dict) -> None:
+        if not self.keep_artifacts:
+            cleanup(case)
+
+    def _find_module_with(self, name: str, attr: str):
+        """Poišči modul (v actions/<name>/) z atributom `attr` (preskoči test_*)."""
+        mod_dir = self._discover_module_dir(name)
+        if not mod_dir.exists():
+            return None
+        for py in sorted(mod_dir.glob("*.py")):
+            if py.name.startswith("test_"):
+                continue
+            mod = self._import_module(name, py)
+            if mod is not None and hasattr(mod, attr):
+                return mod
+        return None
+
+    def _resolve_bugfix_target(self, name: str, case: Dict):
+        """Razreši function_key: dotted 'Class.method' ali razred/funkcija."""
+        fk = case["function_key"]
+        if "." in fk:
+            cls_name, method = fk.rsplit(".", 1)
+            cls = self._load_checkable_func(name, cls_name)
+            if cls is None:
+                return None, self._find_module_with(name, cls_name)
+            return getattr(cls(), method), self._find_module_with(name, cls_name)
+        mod = self._find_module_with(name, fk)
+        val = self._load_checkable_func(name, fk)
+        if val is None:
+            return None, mod
+        if inspect.isclass(val):
+            return val(), mod
+        return val, mod
+
+    def _run_function_checks(self, target, case: Dict, total: int) -> dict:
+        """Data-driven bugfix checks: (args..., expected). Async/RAISE/extract aware."""
+        extract = case.get("extract", lambda r: r)
+        is_async = inspect.iscoroutinefunction(target) or (
+            inspect.ismethod(target) and inspect.iscoroutinefunction(target.__func__))
+        checks_ok = 0
+        for check in case.get("checks", []):
+            args, expected = check[:-1], check[-1]
+            try:
+                if isinstance(expected, str) and expected.startswith("RAISE:"):
+                    try:
+                        if is_async:
+                            asyncio.run(target(*args))
+                        else:
+                            target(*args)
+                    except Exception as e:
+                        if type(e).__name__ == expected[6:]:
+                            checks_ok += 1
+                    continue
+                if is_async:
+                    got = asyncio.run(target(*args))
+                else:
+                    got = target(*args)
+                if extract(got) == expected:
+                    checks_ok += 1
+            except Exception:
+                pass
+        reason = ("vsi neodvisni preveri zeleni" if checks_ok == total
+                  else f"{checks_ok}/{total} neodvisnih preverov zelenih")
+        return {"checks_ok": checks_ok, "checks_total": total, "reason": reason}
+
+    def _verify_bugfix_inline(self, name: str, case: Dict) -> dict:
+        """P0 — neodvisna verifikacija bugfix modula (funkcija ali verify callable)."""
+        total = int(case.get("total", 0)) or len(case.get("checks", []))
+        verify = case.get("verify")
+        if verify is not None:
+            target, mod = self._resolve_bugfix_target(name, case)
+            if target is None:
+                return {"checks_ok": 0, "checks_total": total,
+                        "reason": f"target '{case['function_key']}' ni najden v actions/{name}/"}
+            try:
+                if inspect.iscoroutinefunction(verify):
+                    res = asyncio.run(verify(target, mod))
+                else:
+                    res = verify(target, mod)
+            except Exception as e:
+                return {"checks_ok": 0, "checks_total": total, "reason": f"verify je padla: {e!r}"}
+            if isinstance(res, dict):
+                return {"checks_ok": int(res.get("checks_ok", 0)),
+                        "checks_total": int(res.get("checks_total", total)),
+                        "reason": res.get("reason", "")}
+            if isinstance(res, (tuple, list)) and len(res) >= 3:
+                return {"checks_ok": int(res[0]), "checks_total": int(res[1]), "reason": str(res[2])}
+            ok = 1 if res else 0
+            return {"checks_ok": ok, "checks_total": total,
+                    "reason": "ok" if ok else "verify ni uspela"}
+        target, _mod = self._resolve_bugfix_target(name, case)
+        if target is None:
+            return {"checks_ok": 0, "checks_total": total,
+                    "reason": f"target '{case['function_key']}' ni najden v actions/{name}/"}
+        return self._run_function_checks(target, case, total)
 
     def _run_case_guarded(self, case: Dict) -> dict:
         """Korak 7 — izolacija: vse izjeme posameznega case-a → dict, ne padec."""
@@ -716,6 +883,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="interno: preveri en case iz stdin (podprocesna izolacija)")
     p.add_argument("--workers", type=int, default=2,
                    help="število vzporednih eval tekov (1 = sekvenčno)")
+    p.add_argument("--keep-artifacts", action="store_true",
+                   help="ohrani bugfix kopije v actions/ (default: počiščene)")
     return p
 
 
@@ -761,11 +930,18 @@ def main(argv=None) -> int:
     if args.dry_run:
         evaluator = AutonomyEval(cases)
         ok = all(evaluator.smoke_check(c) for c in cases)
+        # P0 — pre-flight bugfix: old stringi enolični v source (lovi drift).
+        for c in cases:
+            if c.get("type") == "bugfix":
+                errs = check_bug_injectable(c)
+                if errs:
+                    ok = False
+                    print(f"  [P0] {c['name']}: bug ni injektabilen → {errs}")
         print(f"Dry-run: {len(cases)} case-ov strukturno veljavnih: {ok}")
         return 0 if ok else 1
 
     # Potrdi prisotnost tipke in Dockerja pred dragim eval zagonom.
-    evaluator = AutonomyEval(cases)
+    evaluator = AutonomyEval(cases, keep_artifacts=args.keep_artifacts)
     summary = evaluator.run_all(workers=max(1, args.workers))
     print("\n" + "=" * 70)
     print(f"📊 PREHOD RATE: {summary['passed']}/{summary['total']} "

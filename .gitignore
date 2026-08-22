@@ -67,6 +67,13 @@ actions/money_formatter/
 actions/order_schema/
 actions/inventory_api/
 actions/growth_report/
+# P0 real eval — bugfix kopije zlatih modulov (SWE-bench stil)
+actions/fix_currency_inverted_rate/
+actions/fix_currency_jpy_rate/
+actions/fix_event_bus_payload/
+actions/fix_contract_type_check/
+actions/fix_contract_return_valid/
+actions/fix_audit_hash_formula/
 .rob_ai/eval_report.md
 # Runtime test build-i iz klikov (trajna agenda / testne naloge) — izven gita
 legacy/test/
