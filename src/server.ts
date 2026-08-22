@@ -1147,6 +1147,64 @@ async function tlsOptions(): Promise<Record<string, unknown>> {
   return {};
 }
 
+/** Trigger ključne besede za vsak gstack skill (progressive disclosure). */
+const SKILL_KEYWORDS: Record<string, string[]> = {
+  'office-hours': ['ideja', 'brainstorm', 'produkt', 'pitch'],
+  'plan-ceo-review': ['strategija', 'ceo', 'obseg', 'vizija'],
+  'plan-eng-review': ['arhitektura', 'inženir', 'načrt'],
+  'plan-design-review': ['dizajn', 'oblikovanje', 'ui', 'ux'],
+  'plan-devex-review': ['dx', 'razvijalec'],
+  'autoplan': ['celoten pregled', 'avtoplan', 'revizija'],
+  'design-consultation': ['design sistem', 'barve', 'tipografija'],
+  'plan-tune': ['uglaševanje', 'tune', 'parametri'],
+  'spec': ['specifikacija', 'spec', 'issue'],
+  'review': ['preglej kodo', 'code review', 'diff'],
+  'codex': ['drugo mnenje', 'codex', 'openai'],
+  'investigate': ['bug', 'napaka', 'debug', 'odpravljanje'],
+  'design-review': ['vizualni pregled', 'politura', 'visual'],
+  'design-shotgun': ['variante dizajna', 'različice', 'shotgun'],
+  'design-html': ['produkcijski html', 'css', 'stran'],
+  'devex-review': ['developer experience'],
+  'qa': ['qa', 'testiraj', 'testiranje'],
+  'qa-only': ['qa poročilo', 'samo testiranje'],
+  'scrape': ['pobriši podatke', 'scrape', 'web scraping'],
+  'skillify': ['kodificiraj', 'skillify'],
+  'ship': ['ship', 'deploy', 'objavi', 'združi'],
+  'land-and-deploy': ['land', 'deploy', 'pr'],
+  'canary': ['canary', 'monitoring po deployu'],
+  'landing-report': ['dashboard čakalne vrste', 'landing'],
+  'document-release': ['posodobi dokumentacijo', 'release docs'],
+  'document-generate': ['generiraj dokumentacijo', 'docs'],
+  'setup-deploy': ['nastavi deploy'],
+  'gstack-upgrade': ['nadgradi gstack', 'upgrade'],
+  'context-save': ['shrani kontekst', 'save'],
+  'context-restore': ['obnovi kontekst', 'restore'],
+  'learn': ['upravljaj znanja', 'learnings'],
+  'retro': ['retrospektiva', 'tedenski pregled'],
+  'health': ['kakovost kode', 'health dashboard'],
+  'benchmark': ['benchmark', 'zmogljivost'],
+  'benchmark-models': ['primerjava modelov', 'cross-model'],
+  'cso': ['varnostni pregled', 'security', 'cso'],
+  'setup-gbrain': ['nastavi gbrain', 'memory setup'],
+  'sync-gbrain': ['sinhroniziraj gbrain', 'sync memory'],
+  'browse': ['brskaj', 'browse', 'splet'],
+  'open-gstack-browser': ['odpri brskalnik', 'browser'],
+  'setup-browser-cookies': ['uvoz piškotkov', 'cookies'],
+  'pair-agent': ['seznani agenta', 'pair'],
+  'ios-qa': ['ios qa', 'iphone test'],
+  'ios-fix': ['ios popravi', 'ios bug'],
+  'ios-design-review': ['ios dizajn', 'iphone ui'],
+  'ios-clean': ['ios cleanup', 'odstrani debug'],
+  'ios-sync': ['ios bridge', 'resync'],
+  'careful': ['nevarni ukaz', 'careful', 'varovanje'],
+  'freeze': ['omeji urejanje', 'freeze', 'zamrzni'],
+  'guard': ['varnostni način', 'guard'],
+  'unfreeze': ['odkleni urejanje', 'unfreeze'],
+  'make-pdf': ['pdf', 'markdown v pdf'],
+  'diagram': ['diagram', 'flowchart'],
+  'gstack': ['router', 'kateri skill', 'gstack'],
+};
+
 const tls = await tlsOptions();
 const server = Bun.serve({
   port: PORT,
@@ -1238,6 +1296,15 @@ const server = Bun.serve({
     // Arhiv raziskav (seznam .md poročil).
     if (req.method === 'GET' && url.pathname === '/api/research') {
       return json({ research: await listResearch() });
+    }
+    // Progressive disclosure: ujemi sporočilo z relevantnimi gstack skilli.
+    if (req.method === 'GET' && url.pathname === '/api/skills/match') {
+      const q = normalize((url.searchParams.get('q') || '').toLowerCase());
+      const skills: string[] = [];
+      for (const [name, kws] of Object.entries(SKILL_KEYWORDS)) {
+        if (kws.some((k) => q.includes(k))) skills.push(name);
+      }
+      return json({ ok: true, skills: skills.slice(0, 5) });
     }
     // Zagon gstack skill-a (prek claude CLI, headless).
     if (req.method === 'POST' && url.pathname === '/api/skill') {

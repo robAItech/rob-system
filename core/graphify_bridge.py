@@ -147,3 +147,52 @@ class GraphifyBridge:
         if len(out) > max_chars:
             out = out[:max_chars] + f"\n…(+{len(out) - max_chars} znakov izpuščenih)"
         return out
+
+    # ------------------------------------------------------------------ #
+    #  Code-RAG: semantična pridobitev podobne kode (leksikalna, brez embeddingov).
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _tokenize(text: str) -> set:
+        import re
+        stop = {
+            "the", "and", "for", "with", "that", "this", "from", "your", "you",
+            "are", "into", "not", "but", "have", "has", "was", "all", "any",
+            "je", "in", "ki", "se", "da", "na", "za", "v", "z", "po", "iz",
+        }
+        return {t for t in re.findall(r"[a-zčšž0-9_]{2,}", (text or "").lower()) if t not in stop}
+
+    def retrieve_relevant(self, query: str, limit: int = 3, max_chars_per_file: int = 800) -> List[Dict[str, Any]]:
+        """Code-RAG: vrni top-N najbolj podobnih kodnih datotek za poizvedbo.
+
+        Leksikalno prekrivanje žetonov (poceni nadomestek embedding-ov) — LLM
+        med healingom dobi "podobno kodo" iz celega repa kot referenco.
+        Preskoči test datoteke. Tolerantna na manjkajoče mape.
+        """
+        q_tokens = self._tokenize(query)
+        if not q_tokens:
+            return []
+        scored: List[tuple] = []
+        for sub in ("actions", "core"):
+            d = self.root_dir / sub
+            if not d.exists():
+                continue
+            for f in d.rglob("*.py"):
+                if "test_" in f.name or f.name.endswith("_test.py"):
+                    continue
+                try:
+                    text = f.read_text(encoding="utf-8")
+                except OSError:
+                    continue
+                low = text.lower()
+                overlap = sum(1 for t in q_tokens if t in low)
+                if overlap > 0:
+                    scored.append((overlap, f, text))
+        scored.sort(key=lambda x: -x[0])
+        out: List[Dict[str, Any]] = []
+        for overlap, f, text in scored[:limit]:
+            out.append({
+                "path": self._norm(str(f)),
+                "overlap": overlap,
+                "snippet": text[:max_chars_per_file],
+            })
+        return out

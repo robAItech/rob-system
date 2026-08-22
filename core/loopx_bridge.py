@@ -249,6 +249,15 @@ class LoopXEngineBridge:
         except Exception:
             graph_ctx = ""
         graph_note = f"KODNI GRAF (dependency kontekst):\n{graph_ctx}\n\n" if graph_ctx else ""
+        # Code-RAG: semantično najbolj relevantne kode po celem repu (referenca za LLM).
+        try:
+            relevant = self.graphify.retrieve_relevant(directive, limit=3)
+        except Exception:
+            relevant = []
+        rag_note = ""
+        if relevant:
+            blocks = "\n\n".join(f"// {r['path']} (podobnost {r['overlap']})\n{r['snippet']}" for r in relevant)
+            rag_note = f"RELEVANTNA KODA (podobni vzorci iz repa):\n{blocks}\n\n"
         # P0 — spec_hint: arhitekturna usmeritev iz GStack manifesta. Če prazna → skip.
         spec_hint = getattr(self, "spec_hint", None) or ""
         spec_note = f"SPEC (arhitekturna usmeritev izvedbe):\n{spec_hint}\n\n" if spec_hint else ""
@@ -261,6 +270,7 @@ class LoopXEngineBridge:
             f"{learned_note}"
             f"{cons_note}"
             f"{graph_note}"
+            f"{rag_note}"
             "Razlog verifikacije (doseči je treba zelen):\n"
             f"{traceback[:8000]}\n\n"
             f"{out_note}"

@@ -117,15 +117,54 @@ class TeamCoordinator:
         score = (total - empty) / total if total > 0 else 0.0
         return {"score": score, "total_tests": total, "empty_tests": empty}
 
+    def _code_quality_score(self, project: str) -> Dict[str, Any]:
+        """Deterministična ocena kakovosti kode (Evaluator-optimizer).
+
+        Preveri prazne funkcije (samo ``pass``/docstring) in ``except:`` brez
+        tipa (lovi vse). Vrne {score (0-1), empty_funcs, bare_excepts, issues}.
+        """
+        import ast
+        d = Path(f"actions/{project}")
+        total_funcs = empty_funcs = bare_excepts = 0
+        issues: List[str] = []
+        for f in sorted(d.glob("*.py")):
+            if f.name.startswith("test_"):
+                continue
+            try:
+                tree = ast.parse(f.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    total_funcs += 1
+                    # Telo brez docstring-a/pass → prazna funkcija (stub).
+                    real = [n for n in node.body
+                            if not (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str))]
+                    if not real or all(isinstance(n, ast.Pass) for n in real):
+                        empty_funcs += 1
+                        issues.append(f"{f.name}:{node.name} je prazna (stub)")
+                if isinstance(node, ast.ExceptHandler) and node.type is None:
+                    bare_excepts += 1
+                    issues.append(f"{f.name}: except: brez tipa (lovi vse)")
+        if total_funcs == 0:
+            return {"score": 1.0, "empty_funcs": 0, "bare_excepts": 0, "issues": []}
+        penalty = (empty_funcs + bare_excepts) / total_funcs
+        score = max(0.0, round(1.0 - penalty, 2))
+        return {"score": score, "empty_funcs": empty_funcs, "bare_excepts": bare_excepts, "issues": issues[:5]}
+
     def verify(self, project: str, goal: str) -> Dict[str, Any]:
         """Verifier neodvisno potrdi, ali zgrajen modul izpolnjuje cilj.
 
-        Confidence Gate: pred LLM presojo deterministično preveri globino
-        testov — prazni assert → lažno zeleno → zavrni.
+        Dva deterministična gate-a pred LLM presojo:
+        1. Confidence Gate — globina testov (prazni assert → lažno zeleno).
+        2. Evaluator-optimizer — kakovost kode (prazne funkcije/bare except).
         """
         conf = self._test_confidence(project)
         if conf["total_tests"] > 0 and conf["score"] < 0.85:
             return {"ok": False, "reason": f"Zanesljivost testov {conf['score']:.2f} pod pragom 0.85 ({conf['empty_tests']}/{conf['total_tests']} testov brez assertion-a)."}
+        qual = self._code_quality_score(project)
+        if qual["score"] < 0.85:
+            return {"ok": False, "reason": f"Kakovost kode {qual['score']:.2f} pod pragom 0.85: {qual['issues']}"}
         sources = self._read_sources(project)
         if not self._llm_available() or not sources:
             return {"ok": True, "reason": "hevristika (brez LLM ali brez vira)"}

@@ -657,6 +657,16 @@
     }catch(e){
       reply=REPLIES[Math.floor(Math.random()*REPLIES.length)]; // offline fallback
     }
+    // Progressive disclosure: predlagaj relevantne gstack skille.
+    try{
+      const sr=await fetch('/api/skills/match?q='+encodeURIComponent(text));
+      if(sr.ok){
+        const sd=await sr.json();
+        if(sd.skills && sd.skills.length){
+          reply+='\n\n💡 Predlagani skilli: '+sd.skills.map(s=>'/'+s).join(', ');
+        }
+      }
+    }catch(e){}
     addLine('ai',reply);
     setSpeaking(false);
     if(voiceReply) speak(reply);
