@@ -13,6 +13,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from evaluate_autonomy import EVAL_CASES, AutonomyEval, validate_case
+from unittest import mock
 
 
 def test_eval_cases_so_dobro_oblikovani():
@@ -45,3 +46,36 @@ def test_run_case_manjkajoca_funkcija_ne_crash(tmp_path, monkeypatch):
     assert res["rsi_ok"] is True
     assert res["checks_ok"] == 0
     assert "ni najdena" in res["reason"]
+
+
+def test_run_all_vzporedno_ohranja_vrstni_red():
+    """Korak 7 — run_all(workers=2) zbira rezultate v vrstnem redu case-ov."""
+    cases = [EVAL_CASES[0], EVAL_CASES[1]]
+    ev = AutonomyEval(cases)
+
+    def fake(case):
+        return {"name": case["name"], "rsi_ok": True, "checks_ok": 1,
+                "checks_total": 1, "reason": "ok", "wall_seconds": 1.0}
+
+    with mock.patch.object(ev, "run_case", side_effect=fake):
+        s = ev.run_all(workers=2)
+    assert [r["name"] for r in ev.results] == [c["name"] for c in cases]
+    assert s == {"passed": 2, "total": 2, "rate": 1.0}
+
+
+def test_run_all_izjema_enega_ne_zruši():
+    """Korak 7 — padec enega case-a ne zruši run_all; ostali uspejo."""
+    cases = [EVAL_CASES[0], EVAL_CASES[1]]
+    ev = AutonomyEval(cases)
+
+    def fake(case):
+        if case["name"] == "divide_safe":
+            raise RuntimeError("boom")
+        return {"name": case["name"], "rsi_ok": True, "checks_ok": 1,
+                "checks_total": 1, "reason": "ok", "wall_seconds": 1.0}
+
+    with mock.patch.object(ev, "run_case", side_effect=fake):
+        s = ev.run_all(workers=2)
+    assert len(ev.results) == 2
+    assert ev.results[1]["rsi_ok"] is False and "padel" in ev.results[1]["reason"]
+    assert s == {"passed": 1, "total": 2, "rate": 0.5}

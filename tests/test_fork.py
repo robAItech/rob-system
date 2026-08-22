@@ -47,3 +47,12 @@ def test_explore_and_run_executes_best(tmp_path, monkeypatch):
     res = ex.explore_and_run("goal", n=2, project="p", executor=lambda g: (seen.append(g) or True))
     assert res["executed"] is True
     assert seen == ["prvi"]  # najboljši (prvi) se izvede
+
+
+def test_score_all_ohranja_vrstni_red(tmp_path, monkeypatch):
+    """Korak 7 — _score_all (vzporedno) vrača rezultate v vrstnem redu variant."""
+    db = tmp_path / "memory.db"
+    ex = Explorer(db)
+    monkeypatch.setattr(ex, "score", lambda goal, v, project: {"variant": v, "success_prob": 0.5})
+    out = ex._score_all("g", ["a", "b", "c"], "p")
+    assert [r["variant"] for r in out] == ["a", "b", "c"]

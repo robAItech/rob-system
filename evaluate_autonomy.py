@@ -29,6 +29,7 @@ import importlib
 import json
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -560,15 +561,20 @@ class AutonomyEval:
         print(f"   direktiva: {directive[:120]}...")
 
         # 1) RSI zanka (gbrain→gstack→hermes→loopx/pytest) — single ali autonomous.
+        #    Korak 7: try/except — padec enega case-a ne sme zrušiti run_all.
         from core.orchestrator import RobAIOrchestrator
         t0 = time.monotonic()
-        rsi_ok = (RobAIOrchestrator.run_autonomous(name, directive) if mode == "autonomous"
-                  else RobAIOrchestrator.run(name, directive))
+        try:
+            rsi_ok = (RobAIOrchestrator.run_autonomous(name, directive) if mode == "autonomous"
+                      else RobAIOrchestrator.run(name, directive))
+        except Exception as e:
+            rsi_ok = False
+            res["reason"] = f"RSI zanka je padla: {e!r}"
         res["wall_seconds"] = round(time.monotonic() - t0, 1)
         res["rsi_ok"] = rsi_ok
         if not rsi_ok:
-            res["reason"] = "RSI ni zelen"
-            self.results.append(res)
+            if not res["reason"]:
+                res["reason"] = "RSI ni zelen"
             return res
 
         # Best-effort meritve iz eval podatkov (attempts, LLM klici).
@@ -583,13 +589,38 @@ class AutonomyEval:
         res["checks_ok"] = ver["checks_ok"]
         res["checks_total"] = ver["checks_total"]
         res["reason"] = ver["reason"]
-        self.results.append(res)
         print(f"   → neodvisni preveri: {res['checks_ok']}/{res['checks_total']} ({res['reason']})")
         return res
 
-    def run_all(self) -> Dict[str, float]:
-        for c in self.cases:
-            self.run_case(c)
+    def _run_case_guarded(self, case: Dict) -> dict:
+        """Korak 7 — izolacija: vse izjeme posameznega case-a → dict, ne padec."""
+        try:
+            return self.run_case(case)
+        except Exception as e:
+            return {
+                "name": case.get("name", "?"),
+                "type": case.get("type", "function"),
+                "mode": case.get("mode", "single"),
+                "rsi_ok": False,
+                "checks_ok": 0,
+                "checks_total": self._expected_checks(case),
+                "func": case.get("function_key", case.get("name", "?")),
+                "reason": f"eval case je padel: {e!r}",
+                "wall_seconds": 0.0,
+            }
+
+    def run_all(self, workers: int = 2) -> Dict[str, float]:
+        """Korak 7 — vzporedno izvajanje case-ov.
+
+        `executor.map` ohranja vrstni red vhodov → `self.results` po indeksu case-ov,
+        neodvisno od tega, kdaj kateri thread konča. workers=1 → sekvenčno (a še
+        vedno izolirano per-case).
+        """
+        if workers <= 1:
+            self.results = [self._run_case_guarded(c) for c in self.cases]
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                self.results = list(ex.map(self._run_case_guarded, self.cases))
         passed = sum(1 for r in self.results if r["rsi_ok"] and r["checks_ok"] == r["checks_total"])
         total = len(self.results)
         return {"passed": passed, "total": total, "rate": (passed / total) if total else 0.0}
@@ -683,6 +714,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="zapiši Markdown poročilo teka ('-' za stdout)")
     p.add_argument("--verify-only", metavar="NAME", default=None,
                    help="interno: preveri en case iz stdin (podprocesna izolacija)")
+    p.add_argument("--workers", type=int, default=2,
+                   help="število vzporednih eval tekov (1 = sekvenčno)")
     return p
 
 
@@ -733,7 +766,7 @@ def main(argv=None) -> int:
 
     # Potrdi prisotnost tipke in Dockerja pred dragim eval zagonom.
     evaluator = AutonomyEval(cases)
-    summary = evaluator.run_all()
+    summary = evaluator.run_all(workers=max(1, args.workers))
     print("\n" + "=" * 70)
     print(f"📊 PREHOD RATE: {summary['passed']}/{summary['total']} "
           f"({summary['rate'] * 100:.0f}%)")

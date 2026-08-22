@@ -29,6 +29,15 @@ def isolated(tmp_path, monkeypatch):
     return tmp_path
 
 
+def test_build_code_graph_atomicno_zapise_veljaven_json(isolated):
+    """Korak 7 — atomični zapis: veljaven JSON, brez tmp ostankov."""
+    gb = GraphifyBridge()
+    gb.build_code_graph()
+    data = json.loads((isolated / ".rob_ai" / "graph.json").read_text(encoding="utf-8"))
+    assert "nodes" in data and "edges" in data
+    assert list((isolated / ".rob_ai").glob("graph.json.*.tmp")) == []
+
+
 def _write_graph(path: Path, nodes=None) -> None:
     """Zapiši minimalni .rob_ai/graph.json v `path`."""
     nodes = nodes or {

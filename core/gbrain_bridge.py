@@ -1,10 +1,16 @@
 import sqlite3
 import json
+import threading
 import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent  # repo koren (core/ → koren)
+
+# Korak 7 — procesni RLock za DB pisalce (memory.db). RLock = reentrantna
+# (npr. review → store gnezdenje v isti niti), ena ključavnica → ni deadlocka.
+# Bralci (get_blacklists, recall …) NISO zaklenjeni (WAL dovoljuje vzporedne bralce).
+DB_WRITE_LOCK = threading.RLock()
 
 class GBrainBridge:
     def __init__(self, db_path: Path = Path(".rob_ai/memory.db")):
@@ -38,6 +44,10 @@ class GBrainBridge:
         return conn
 
     def _init_db(self) -> None:
+        with DB_WRITE_LOCK:
+            self._init_db_locked()
+
+    def _init_db_locked(self) -> None:
         with self._get_connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS task_history (
@@ -71,22 +81,24 @@ class GBrainBridge:
             conn.commit()
 
     def record_task(self, project: str, prompt: str, status: str, traceback: str = "", verified_code: str = "") -> int:
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO task_history (project, prompt, status, traceback, verified_code) VALUES (?, ?, ?, ?, ?)",
-                (project, prompt, status, traceback, verified_code)
-            )
-            conn.commit()
-            return cursor.lastrowid
+        with DB_WRITE_LOCK:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO task_history (project, prompt, status, traceback, verified_code) VALUES (?, ?, ?, ?, ?)",
+                    (project, prompt, status, traceback, verified_code)
+                )
+                conn.commit()
+                return cursor.lastrowid
 
     def add_blacklist_pattern(self, project: str, error_pattern: str, mitigation: str) -> None:
-        with self._get_connection() as conn:
-            conn.execute(
-                "INSERT INTO blacklist_patterns (project, error_pattern, mitigation) VALUES (?, ?, ?)",
-                (project, error_pattern, mitigation)
-            )
-            conn.commit()
+        with DB_WRITE_LOCK:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "INSERT INTO blacklist_patterns (project, error_pattern, mitigation) VALUES (?, ?, ?)",
+                    (project, error_pattern, mitigation)
+                )
+                conn.commit()
 
     def get_blacklists(self, project: str) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
@@ -94,9 +106,10 @@ class GBrainBridge:
             return [dict(r) for r in rows]
 
     def store_memory_node(self, key: str, data: Dict[str, Any], tags: List[str]) -> None:
-        with self._get_connection() as conn:
-            conn.execute(
-                "INSERT OR REPLACE INTO agent_memory_nodes (key, value, tags) VALUES (?, ?, ?)",
-                (key, json.dumps(data), ",".join(tags))
-            )
-            conn.commit()
+        with DB_WRITE_LOCK:
+            with self._get_connection() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO agent_memory_nodes (key, value, tags) VALUES (?, ?, ?)",
+                    (key, json.dumps(data), ",".join(tags))
+                )
+                conn.commit()

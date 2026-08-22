@@ -114,6 +114,31 @@ def test_heal_once_prazna_spec_hint_ni_v_promptu(tmp_path, monkeypatch):
     assert "arhitekturna usmeritev izvedbe" not in captured["prompt"]
 
 
+def test_db_write_lock_je_rlock_in_pisci_delajo(tmp_path):
+    """Korak 7 — DB_WRITE_LOCK je RLock; 8 vzporednih pisalcev ne izgubi zapisov."""
+    import threading
+    from core.gbrain_bridge import DB_WRITE_LOCK, GBrainBridge
+    assert type(DB_WRITE_LOCK).__name__ == "RLock"   # threading.RLock je fabrika, ne tip
+    gb = GBrainBridge(tmp_path / "memory.db")
+    errors = []
+
+    def writer(i):
+        try:
+            gb.record_task("p", f"t{i}", "VERIFIED GREEN", verified_code="Pass")
+        except Exception as e:   # pragma: no cover — če lock ne deluje
+            errors.append(e)
+
+    ts = [threading.Thread(target=writer, args=(i,)) for i in range(8)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert not errors
+    with gb._get_connection() as conn:
+        n = conn.execute("SELECT COUNT(*) AS n FROM task_history").fetchone()["n"]
+    assert n == 8
+
+
 # ------------------------------------------------------------------ #
 #  Zgodnja prekinitev na ponavljajoči napaki (učenje, ne slepo kurjenje)
 # ------------------------------------------------------------------ #

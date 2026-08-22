@@ -1,5 +1,7 @@
 import ast
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Dict, Any, List, Set
 
@@ -53,8 +55,21 @@ class GraphifyBridge:
                 graph["nodes"][rel_path] = {"error": str(e)}
 
         self.graph_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.graph_file, "w", encoding="utf-8") as f:
-            json.dump(graph, f, indent=2)
+        # Korak 7 — atomični zapis: tmp v istem dirju + os.replace, da sočasni
+        # bralci (paralelni buildi) nikoli ne vidijo raztrganega JSON-a.
+        fd, tmp = tempfile.mkstemp(dir=str(self.graph_file.parent), prefix="graph.json.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(graph, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.graph_file)
+        except Exception:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
         return graph
 

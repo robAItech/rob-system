@@ -34,6 +34,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent  # core/ → koren repo
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from core.gbrain_bridge import DB_WRITE_LOCK   # Korak 7 — procesni DB pisački lock
+
 # Možni vzroki uspeha/neuspeha na nivoju odločitve.
 ROOT_CAUSES = (
     "correct",           # zelen — pravilna izvedba, nič za popraviti
@@ -81,7 +83,7 @@ class RunReviewer:
         return conn
 
     def _init_db(self) -> None:
-        with self._get_connection() as conn:
+        with DB_WRITE_LOCK, self._get_connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS run_reviews (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -193,7 +195,7 @@ class RunReviewer:
             return {}
 
     def _insert_review(self, run: Dict[str, Any], root_cause: str, lesson: str) -> None:
-        with self._get_connection() as conn:
+        with DB_WRITE_LOCK, self._get_connection() as conn:
             conn.execute(
                 "INSERT INTO run_reviews (project, directive, outcome, root_cause, lesson, llm_calls, attempts) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",

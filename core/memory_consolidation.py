@@ -49,6 +49,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent  # core/ → koren repo
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from core.gbrain_bridge import DB_WRITE_LOCK   # Korak 7 — procesni DB pisački lock
+
 # Zelo majhen nabor besed, ki jih pri točkovanju iskanja ignoriramo (slov. + angl.).
 _STOPWORDS = {
     "in", "the", "a", "an", "to", "of", "for", "and", "or", "is", "are", "be",
@@ -104,7 +106,7 @@ class MemoryConsolidator:
         return conn
 
     def _init_db(self) -> None:
-        with self._get_connection() as conn:
+        with DB_WRITE_LOCK, self._get_connection() as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS semantic_memories (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -418,7 +420,7 @@ class MemoryConsolidator:
         vec = self._embed_text(f"{m['theme']} {m['content']}")
         if vec:
             embedding_json = json.dumps(list(vec))
-        with self._get_connection() as conn:
+        with DB_WRITE_LOCK, self._get_connection() as conn:
             before = conn.execute(
                 "SELECT id FROM semantic_memories WHERE theme = ? AND project = ?",
                 (m["theme"], m.get("project", "")),

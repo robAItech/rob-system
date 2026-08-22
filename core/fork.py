@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -30,6 +31,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # Kazen za tvegan pristop (odšteje se od osnovne verjetnosti uspeha).
 SEVERITY_PENALTY = {"low": 0.0, "medium": 0.1, "high": 0.25}
+
+# Korak 7 — zgornja meja vzporednih LLM klicov pri točkovanju variant.
+FORK_MAX_WORKERS = 4
 
 
 class Explorer:
@@ -84,10 +88,23 @@ class Explorer:
             "objections": critique.get("objections", []),
         }
 
+    def _score_all(self, goal: str, variants: List[str], project: Optional[str]) -> List[Dict[str, Any]]:
+        """Oceni vse variante. Korak 7 — vzporedno (order-preserving), fallback na sekvenčno."""
+        if len(variants) <= 1 or FORK_MAX_WORKERS <= 1:
+            return [self.score(goal, v, project) for v in variants]
+        workers = max(1, min(len(variants), FORK_MAX_WORKERS))
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                return list(ex.map(lambda v: self.score(goal, v, project), variants))
+        except Exception:
+            # Executor-infra napaka (npr. "can't start new thread") → sekvenčno.
+            # Per-task izjeme score() se tu znova dvignejo (enako kot danes).
+            return [self.score(goal, v, project) for v in variants]
+
     def explore(self, goal: str, n: int = 3, project: Optional[str] = None) -> Dict[str, Any]:
         """Predlagaj N pristopov, oceni vsakega, vrni razvrščene + najboljšega."""
         variants = self.propose_variants(goal, n)
-        scored = [self.score(goal, v, project) for v in variants]
+        scored = self._score_all(goal, variants, project)
         scored.sort(key=lambda s: s["success_prob"], reverse=True)
         return {
             "goal": goal,
