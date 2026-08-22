@@ -588,10 +588,11 @@ async function webSearch(query: string): Promise<{ title: string; url: string; s
   return wikiSearch(query);
 }
 
-/** Ali je sporočilo NALOGA (izvedi) ali POGOVOR (odgovori). */
-function classifyMessage(message: string): 'task' | 'chat' {
+/** Ali je sporočilo NALOGA (izvedi), RAZISKAVA (globinsko preglej) ali POGOVOR. */
+function classifyMessage(message: string): 'task' | 'research' | 'chat' {
   const m = message.toLowerCase();
-  if (/(naloga|poslušaj|želim da|želim,|naredi|zgradi|ustvari|izvedi|deploy|build|zaženi|zapiši|pripravi|generiraj|ukaz|izdelaj|pripravi)/.test(m)) return 'task';
+  if (/(naloga|poslušaj|želim da|želim,|naredi|zgradi|ustvari|izvedi|deploy|build|zaženi|zapiši|pripravi|generiraj|ukaz|izdelaj)/.test(m)) return 'task';
+  if (/(preglej|analiziraj|razišči|raziskuj|poglej|preveri|razloži|primerjaj|oceni|preuči|sintetiziraj)/.test(m)) return 'research';
   return 'chat';
 }
 
@@ -617,12 +618,65 @@ async function handleTask(message: string): Promise<string> {
   }
 }
 
+/** Odstrani HTML oznake in vrne čist tekst. */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Prebere spletno stran in vrne izluščen tekst (best-effort). */
+async function fetchPage(url: string): Promise<string> {
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return '';
+    const ct = r.headers.get('content-type') || '';
+    if (!/(text|json|xml|javascript)/i.test(ct)) return '';
+    return stripHtml(await r.text()).slice(0, 3500);
+  } catch { return ''; }
+}
+
+/** Raziskovalni način: spletno iskanje + branje virov + sintetizirano poročilo s citati. */
+async function handleResearch(message: string): Promise<string> {
+  const query = message.replace(/(preglej|analiziraj|razišči|raziskuj|poglej|preveri|razloži|primerjaj|oceni|preuči|sintetiziraj)/gi, '').trim() || message;
+  const results = await webSearch(query);
+  if (!results.length) return 'Nisem našel spletnih virov za to temo. Poskusi z drugim vprašanjem.';
+  // Preberi vsebino prvih 5 virov (best-effort).
+  const sources = [];
+  for (let i = 0; i < Math.min(results.length, 5); i++) {
+    const r = results[i];
+    const content = await fetchPage(r.url);
+    sources.push({ title: r.title, url: r.url, snippet: r.snippet, content });
+  }
+  const srcTxt = sources.map((s, i) => `[${i + 1}] ${s.title}\n${s.url}\n${s.snippet}${s.content ? '\n' + s.content : ''}`).join('\n\n');
+
+  const p = resolveProvider(process.env);
+  const ledger = new Ledger(DB_PATH);
+  try {
+    const cache = new LLMCache(ledger.db);
+    const llm = new OpenAICompatibleProvider(p.name, { baseUrl: p.baseUrl, apiKey: p.apiKey, cache });
+    const res = await llm.complete({
+      provider: p.name, model: p.model, attempt: 0,
+      messages: [
+        { role: 'system', content: 'Ti si raziskovalni agent ROB. Na podlagi podanih spletnih virov napiši jedrnato raziskovalno poročilo v slovenščini. Ključne trditve citiraj z [1], [2], ... Na koncu dodaj sekcijo "Viri:" s seznamom URL-jev. Uporabi SAMO podane vire — ničesar ne izmišljuj.' },
+        { role: 'user', content: `Tema: ${query}\n\nViri:\n${srcTxt}` },
+      ],
+      temperature: 0.2, maxTokens: 1000,
+    });
+    return res.text;
+  } finally { ledger.close(); }
+}
+
 /** Neposredni pogovor z LLM (ROB) — z živim datumom/uro in (po potrebi) vremenom. */
 async function chat(message: string): Promise<string> {
-  // Naloga → zabeleži + izvedi; pogovor → odgovori.
-  if (classifyMessage(message) === 'task') {
-    return handleTask(message);
-  }
+  // Naloga → zabeleži + izvedi; raziskava → globinsko poročilo; pogovor → odgovori.
+  const kind = classifyMessage(message);
+  if (kind === 'task') return handleTask(message);
+  if (kind === 'research') return handleResearch(message);
   const p = resolveProvider(process.env);
   const ledger = new Ledger(DB_PATH);
   try {

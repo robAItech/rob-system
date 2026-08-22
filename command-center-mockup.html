@@ -549,11 +549,17 @@
     'GBRAIN spomin sinhroniziran. 259 vzorcev naučenih.',
     'Ukaz izveden. Arhiviram v ledger.',
   ];
+  function linkify(text){
+    const esc=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return esc.replace(/(https?:\/\/[^\s<>)]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:none">$1</a>');
+  }
   function addLine(who,msg){
     const el=document.createElement('div');
     el.className='convo-line '+who;
-    el.innerHTML=`<span class="who">${who==='you'?'TI':'ROB'}</span><span class="msg"></span>`;
-    el.querySelector('.msg').textContent=msg;
+    el.innerHTML=`<span class="who">${who==='you'?'TI':'ROB'}</span>`;
+    const m=document.createElement('span'); m.className='msg';
+    if(who==='ai'){ m.innerHTML=linkify(msg); } else { m.textContent=msg; }
+    el.appendChild(m);
     const box=document.getElementById('convo');
     box.appendChild(el); box.scrollTop=box.scrollHeight;
   }
@@ -622,7 +628,12 @@
     toast(voiceReply?'Glasovni odgovor: VKLOPLJEN':'Glasovni odgovor: IZKLOPLJEN');
   }
   async function processInput(text){
+    const researching=/(preglej|analiziraj|razišči|raziskuj|poglej|preveri|razloži|primerjaj|oceni|preuči|sintetiziraj)/i.test(text);
     setSpeaking(true);
+    if(researching){
+      document.getElementById('agent-state-text').textContent='raziskujem';
+      document.getElementById('agent-tag').textContent='RAZISKUJE';
+    }
     let reply;
     try{
       const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
