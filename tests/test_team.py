@@ -37,7 +37,7 @@ def test_run_flow_with_mock_executor():
 
 def test_run_revises_on_high_severity(monkeypatch):
     tc = TeamCoordinator()
-    monkeypatch.setattr(tc, "critique", lambda goal, plan: {"severity": "high", "objections": ["luknja v načrtu"]})
+    monkeypatch.setattr(tc, "critique", lambda goal, plan, context=None: {"severity": "high", "objections": ["luknja v načrtu"]})
     res = tc.run("demo", "zgradi x", executor=lambda g: True)
     assert res["revised"] is True
     assert res["severity"] == "high"

@@ -118,7 +118,9 @@ class WorldModel:
     # ------------------------------------------------------------------ #
     @staticmethod
     def _detect_kind(goal: str) -> str:
-        d = (goal or "").lower()
+        # P2 — [PLAN KONTEKST] prefiks ne sme spremeniti klasifikacije.
+        from core.plan_context import strip_plan_context
+        d = strip_plan_context(goal or "").lower()
 
         def has(word: str) -> bool:
             return re.search(rf"\b{re.escape(word)}\b", d) is not None

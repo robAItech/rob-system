@@ -36,6 +36,9 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from core.gbrain_bridge import DB_WRITE_LOCK   # Korak 7 — procesni DB pisački lock
 
+# P1 — prag za "konkretno" lekcijo (presplošna/prazna ni vredna zapisa).
+MIN_LESSON_LEN = 30
+
 # Možni vzroki uspeha/neuspeha na nivoju odločitve.
 ROOT_CAUSES = (
     "correct",           # zelen — pravilna izvedba, nič za popraviti
@@ -97,6 +100,12 @@ class RunReviewer:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            # P1 — idempotentna migracija: strukturirana polja task_lesson za
+            # obstoječe baze (nullable TEXT; stari zapisi ostanejo veljavni).
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(run_reviews)").fetchall()}
+            for col in ("goal", "plan_summary", "task_type", "what_worked", "what_failed"):
+                if col not in cols:
+                    conn.execute(f"ALTER TABLE run_reviews ADD COLUMN {col} TEXT")
             conn.commit()
 
     # ------------------------------------------------------------------ #
@@ -111,6 +120,9 @@ class RunReviewer:
         """
         outcome = run.get("outcome") if run.get("outcome") in ("green", "failed") else "failed"
         run = {**run, "outcome": outcome}
+        goal = (run.get("goal") or "").strip()
+        plan_summary = (run.get("plan_summary") or run.get("plan") or "").strip()
+        task_type = (run.get("task_type") or "").strip()
 
         if self._llm_available():
             try:
@@ -122,11 +134,19 @@ class RunReviewer:
             result = self._review_heuristic(run)
 
         root_cause = result["root_cause"] if result["root_cause"] in ROOT_CAUSES else "unknown"
+        what_worked = (result.get("what_worked") or run.get("what_worked") or "").strip()
+        what_failed = (result.get("what_failed") or run.get("what_failed") or "").strip()
+        if outcome == "green" and not what_worked:
+            what_worked = self._green_what_worked(run)
+        if outcome == "failed" and not what_failed:
+            what_failed = self._failed_what_failed(run, root_cause)
         lesson = (result.get("lesson") or "").strip()
-        if len(lesson) < 30:
+        if not lesson:
+            lesson = what_worked or what_failed
+        if len(lesson) < MIN_LESSON_LEN:
             lesson = ""  # presplošna/prazna lekcija ni vredna zapisa
 
-        self._insert_review(run, root_cause, lesson)
+        self._insert_review(run, root_cause, lesson, goal, plan_summary, task_type, what_worked, what_failed)
 
         # Zapri zanko: konkretno lekcijo takoj vpiši v semantični spomin (Zanka 1).
         if lesson:
@@ -142,7 +162,11 @@ class RunReviewer:
             except Exception as e:
                 print(f"[RUN-REVIEW] vpis lekcije ni uspel ({e})", flush=True)
 
-        return {"project": run["project"], "outcome": outcome, "root_cause": root_cause, "lesson": lesson}
+        return {
+            "project": run["project"], "outcome": outcome, "root_cause": root_cause,
+            "lesson": lesson, "goal": goal, "plan_summary": plan_summary,
+            "task_type": task_type, "what_worked": what_worked, "what_failed": what_failed,
+        }
 
     def _review_via_llm(self, run: Dict[str, Any]) -> Dict[str, Any]:
         system_prompt = (
@@ -158,9 +182,12 @@ class RunReviewer:
             f"Spec hint: {(run.get('spec_hint') or '(brez)')[:300]}\n"
             f"Razlog (traceback): {(run.get('traceback') or '(brez)')[:800]}\n\n"
             "Vrni STROGO JSON objekt (nič drugega): "
-            '{"root_cause": "<en od>", "lesson": "<kratka lekcija ali prazno ''>"}\n'
+            '{"root_cause": "<en od>", "lesson": "<kratka lekcija ali prazno>", '
+            '"what_worked": "<kaj je delovalo>", "what_failed": "<kaj ni delovalo>"}\n'
             f"root_cause ∈ {list(ROOT_CAUSES)}.\n"
-            "lesson: če ni konkretne, ponovno uporabljive lekcije, vrni prazno."
+            "lesson: če ni konkretne, ponovno uporabljive lekcije, vrni prazno.\n"
+            "what_worked/what_failed: kratka, konkretna opažanja (za zelen tek zlasti "
+            "what_worked; za rdeč zlasti what_failed)."
         )
         from core.llm_client import DeepSeekLLMClient
         llm = DeepSeekLLMClient()
@@ -168,9 +195,10 @@ class RunReviewer:
         return self._parse_json_object(raw)
 
     def _review_heuristic(self, run: Dict[str, Any]) -> Dict[str, Any]:
-        """Determinističen fallback brez LLM-a."""
+        """Determinističen fallback brez LLM-a (P1: zeleni tek tudi uči)."""
         if run.get("outcome") == "green":
-            return {"root_cause": "correct", "lesson": ""}
+            ww = (run.get("what_worked") or "").strip() or self._green_what_worked(run)
+            return {"root_cause": "correct", "what_worked": ww, "what_failed": "", "lesson": ww}
         tb = (run.get("traceback") or "")
         if "ista napaka" in tb:
             rc = "recurring_error"
@@ -180,7 +208,20 @@ class RunReviewer:
             rc = "test_gap"
         else:
             rc = "unknown"
-        return {"root_cause": rc, "lesson": f"V projektu {run.get('project')} se je pojavil vzorec '{rc}'."}
+        wf = (run.get("what_failed") or "").strip() or self._failed_what_failed(run, rc)
+        return {"root_cause": rc, "what_worked": "", "what_failed": wf, "lesson": wf}
+
+    @staticmethod
+    def _green_what_worked(run: Dict[str, Any]) -> str:
+        """P1 — hevrističen predlog 'kaj je delovalo' za zelen tek (brez LLM)."""
+        base = (f"RSI zanka je dosegla zelen izid "
+                f"({run.get('llm_calls', 0)} LLM klicev, {run.get('attempts', 0)} poskusov)")
+        d = (run.get("directive") or "").strip()
+        return f"{base}; direktiva: {d[:60]}" if d else base
+
+    @staticmethod
+    def _failed_what_failed(run: Dict[str, Any], root_cause: str) -> str:
+        return f"V projektu {run.get('project')} se je pojavil vzorec '{root_cause}'."
 
     @staticmethod
     def _parse_json_object(text: str) -> Dict[str, Any]:
@@ -194,13 +235,18 @@ class RunReviewer:
         except Exception:
             return {}
 
-    def _insert_review(self, run: Dict[str, Any], root_cause: str, lesson: str) -> None:
+    def _insert_review(self, run: Dict[str, Any], root_cause: str, lesson: str, goal: str = "",
+                       plan_summary: str = "", task_type: str = "", what_worked: str = "",
+                       what_failed: str = "") -> None:
         with DB_WRITE_LOCK, self._get_connection() as conn:
             conn.execute(
-                "INSERT INTO run_reviews (project, directive, outcome, root_cause, lesson, llm_calls, attempts) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (run.get("project", ""), run.get("directive", ""), run.get("outcome", ""),
-                 root_cause, lesson, int(run.get("llm_calls", 0) or 0), int(run.get("attempts", 0) or 0)),
+                "INSERT INTO run_reviews (project, directive, goal, plan_summary, task_type, "
+                "outcome, root_cause, lesson, what_worked, what_failed, llm_calls, attempts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (run.get("project", ""), run.get("directive", ""), goal, plan_summary[:1000], task_type,
+                 run.get("outcome", ""), root_cause, lesson,
+                 what_worked[:2000], what_failed[:2000],
+                 int(run.get("llm_calls", 0) or 0), int(run.get("attempts", 0) or 0)),
             )
             conn.commit()
 

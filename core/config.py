@@ -45,6 +45,10 @@ class SystemSettings(BaseSettings):
     # true = ob FAILED se actions/<proj>/ povrne na pred-build stanje
     # (snapshot v .loopx/rollback/). false = stara semantika (zlomljena koda ostane).
     loopx_rollback_on_fail: bool = Field(default=True, alias="LOOPX_ROLLBACK_ON_FAIL")
+    # ─── P2 — plan-time kontekst ──────────────────────────────────────────
+    # true = načrtovalci (task_planner, team, run_autonomous) dobijo pretekle
+    # lekcije + world-model napoved v prompt (core/plan_context.py).
+    llm_plan_context: bool = Field(default=True, alias="LLM_PLAN_CONTEXT")
 
     def is_real_key_available(self) -> bool:
         return bool(

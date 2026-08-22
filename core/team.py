@@ -42,12 +42,15 @@ class TeamCoordinator:
     # ------------------------------------------------------------------ #
     #  Vloge
     # ------------------------------------------------------------------ #
-    def plan(self, goal: str) -> str:
+    def plan(self, goal: str, context: Optional[str] = None) -> str:
         """Planner predlaga kratek načrt izvedbe. Fallback: cilj."""
         if not self._llm_available():
             return goal
         system_prompt = "Si planner v avtonomnem podjetju. Predlagaj KRATEK, konkreten načrt izvedbe cilja."
         prompt = f"Cilj: {goal}\n\nNačrt (kratek, markdown):"
+        if context:
+            from core.plan_context import prepend_context
+            prompt = prepend_context(prompt, context)
         try:
             from core.llm_client import DeepSeekLLMClient
             llm = DeepSeekLLMClient()
@@ -56,7 +59,7 @@ class TeamCoordinator:
         except Exception:
             return goal
 
-    def critique(self, goal: str, plan: str) -> Dict[str, Any]:
+    def critique(self, goal: str, plan: str, context: Optional[str] = None) -> Dict[str, Any]:
         """Critic adversarialno izzove načrt. Fallback: low, brez ugovorov."""
         if not self._llm_available():
             return {"severity": "low", "objections": []}
@@ -65,6 +68,9 @@ class TeamCoordinator:
             f"Cilj: {goal}\n\nNačrt:\n{plan}\n\n"
             'Vrni STROGO JSON: {"severity": "low|medium|high", "objections": ["..."]}.'
         )
+        if context:
+            from core.plan_context import prepend_context
+            prompt = prepend_context(prompt, context)
         try:
             from core.llm_client import DeepSeekLLMClient
             llm = DeepSeekLLMClient()
@@ -76,7 +82,7 @@ class TeamCoordinator:
         objections = [str(o) for o in obj.get("objections", []) if str(o).strip()]
         return {"severity": severity, "objections": objections}
 
-    def revise(self, goal: str, plan: str, objections: List[str]) -> str:
+    def revise(self, goal: str, plan: str, objections: List[str], context: Optional[str] = None) -> str:
         """Planner popravi načrt glede na ugovore. Fallback: nespremenjen."""
         if not self._llm_available() or not objections:
             return plan
@@ -86,6 +92,9 @@ class TeamCoordinator:
             + "\n".join(f"- {o}" for o in objections)
             + "\n\nPopravljen načrt:"
         )
+        if context:
+            from core.plan_context import prepend_context
+            prompt = prepend_context(prompt, context)
         try:
             from core.llm_client import DeepSeekLLMClient
             llm = DeepSeekLLMClient()
@@ -152,7 +161,7 @@ class TeamCoordinator:
         score = max(0.0, round(1.0 - penalty, 2))
         return {"score": score, "empty_funcs": empty_funcs, "bare_excepts": bare_excepts, "issues": issues[:5]}
 
-    def verify(self, project: str, goal: str) -> Dict[str, Any]:
+    def verify(self, project: str, goal: str, context: Optional[str] = None) -> Dict[str, Any]:
         """Verifier neodvisno potrdi, ali zgrajen modul izpolnjuje cilj.
 
         Dva deterministična gate-a pred LLM presojo:
@@ -173,6 +182,9 @@ class TeamCoordinator:
             f"Cilj: {goal}\n\nZgrajen modul (viri):\n{json.dumps(sources, ensure_ascii=False)[:4000]}\n\n"
             'Vrni STROGO JSON: {"ok": true|false, "reason": "..."}.'
         )
+        if context:
+            from core.plan_context import prepend_context
+            prompt = prepend_context(prompt, context)
         try:
             from core.llm_client import DeepSeekLLMClient
             llm = DeepSeekLLMClient()
@@ -185,13 +197,14 @@ class TeamCoordinator:
     # ------------------------------------------------------------------ #
     #  Cel cikel
     # ------------------------------------------------------------------ #
-    def run(self, project: str, goal: str, executor: Optional[Callable[[str], bool]] = None) -> Dict[str, Any]:
+    def run(self, project: str, goal: str, executor: Optional[Callable[[str], bool]] = None,
+            context: Optional[str] = None) -> Dict[str, Any]:
         """Cel adversarial cikel: plan → critique → (revise) → build → verify."""
-        plan = self.plan(goal)
-        critique = self.critique(goal, plan)
+        plan = self.plan(goal, context=context)
+        critique = self.critique(goal, plan, context=context)
         revised = False
         if critique.get("severity") == "high":
-            plan = self.revise(goal, plan, critique.get("objections", []))
+            plan = self.revise(goal, plan, critique.get("objections", []), context=context)
             revised = True
 
         if executor is None:
@@ -202,7 +215,7 @@ class TeamCoordinator:
         except Exception:
             built = False
 
-        verdict = self.verify(project, goal)
+        verdict = self.verify(project, goal, context=context)
         return {
             "goal": goal,
             "plan": plan[:500],

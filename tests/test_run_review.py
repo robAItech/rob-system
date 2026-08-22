@@ -32,11 +32,36 @@ def test_review_failed_run_creates_review_and_lesson(tmp_path):
     assert stats["by_cause"]["recurring_error"] == 1
 
 
-def test_review_green_run_has_no_lesson(tmp_path):
+def test_review_green_run_records_what_worked_and_lesson(tmp_path):
+    """P1 — zeleni tek zdaj uči: what_worked + lesson iz hevristike."""
     r = RunReviewer(tmp_path / "memory.db")
-    res = r.review({"project": "demo", "directive": "x", "outcome": "green", "traceback": ""})
+    res = r.review({"project": "demo", "directive": "zgradi modul", "outcome": "green",
+                    "traceback": "", "llm_calls": 2, "attempts": 1})
     assert res["root_cause"] == "correct"
-    assert res["lesson"] == ""  # uspeh nima konkretne lekcije
+    assert res["what_worked"]          # zeleni tek uči
+    assert res["lesson"]               # uspeh ima lekcijo iz what_worked
+
+    row = r.recent(limit=1)[0]
+    assert row["what_worked"]
+    assert "goal" in row               # shema ima strukturirana polja
+
+
+def test_review_records_structured_goal_plan_task_type(tmp_path):
+    """P1 — strukturirana polja task_lesson (goal, plan_summary, task_type) se zapišejo."""
+    r = RunReviewer(tmp_path / "memory.db")
+    res = r.review({
+        "project": "demo", "directive": "zgradi API",
+        "goal": "Zgradi avtentikacijski API", "plan": "Plan: FastAPI + auth",
+        "task_type": "python", "outcome": "failed",
+        "traceback": "ista napaka ValueError po 3 poskusih",
+    })
+    assert res["goal"] == "Zgradi avtentikacijski API"
+    assert res["plan_summary"] == "Plan: FastAPI + auth"
+    assert res["task_type"] == "python"
+    assert res["what_failed"]          # rdeč tek ima what_failed
+    row = r.recent(limit=1)[0]
+    assert row["goal"] == "Zgradi avtentikacijski API"
+    assert row["task_type"] == "python"
 
 
 def test_recent_returns_reviews_newest_first(tmp_path):

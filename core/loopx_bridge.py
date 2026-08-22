@@ -144,13 +144,24 @@ class LoopXEngineBridge:
         self._rollback_had_target = False  # Korak 10: je modul obstajal pred buildom?
 
     def _rsisystem_prompt(self) -> str:
-        """Zanka 3 — RSI prompt iz registra; ob napaki pade nazaj na konstanto."""
+        """Zanka 3 — RSI prompt iz registra; P3 — operativna načela; padec na konstanto."""
         try:
             if self._prompt_registry is None:
                 from core.prompt_registry import PromptRegistry
                 self._prompt_registry = PromptRegistry(self.gbrain.db_path)
-            active = self._prompt_registry.get_active("rsi_heal_system", RSI_PROMPT_SYSTEM)
-            return active or RSI_PROMPT_SYSTEM
+            active = self._prompt_registry.get_active("rsi_heal_system", RSI_PROMPT_SYSTEM) or RSI_PROMPT_SYSTEM
+            principles = self._prompt_registry.get_active("rsi_principles", "")
+            if principles:
+                try:
+                    arr = json.loads(principles)
+                    block = "OPERATIVNA NAČELA (upoštevaj pri popravilih):\n" + "\n".join(
+                        f"- {p.get('principle')}" + (f" — {p.get('rationale')}" if p.get("rationale") else "")
+                        for p in arr if isinstance(p, dict) and p.get("principle"))
+                except Exception:
+                    block = "OPERATIVNA NAČELA (upoštevaj pri popravilih):\n" + principles
+                if block.strip():
+                    active = active + "\n\n" + block
+            return active
         except Exception:
             return RSI_PROMPT_SYSTEM
 
@@ -341,7 +352,10 @@ class LoopXEngineBridge:
             out_note = "Vrni POPOLNO HTML stran v formatu ### FILE: ime.html\\n```html\\n<vsebina z </html>>\\n``` (veljavna, brez placeholdoj)."
         else:
             out_note = "Vrni POPOLNE, delujoča Python datoteko v formatu ### FILE: ime.py\\n```python\\n<koda>\\n``` (vse datoteke popolne, brez placeholdoj, dejanska implementacija)."
-        memory_note = self._gather_memory_notes(directive)
+        # P2 — recall poizvedba brez [PLAN KONTEKST] prefiksa (prepreči dvojno
+        # injiciranje spomina; direktiva za LLM obdrži poln tekst).
+        from core.plan_context import strip_plan_context
+        memory_note = self._gather_memory_notes(strip_plan_context(directive))
         # Graf-kontekst (graphify): LLM vidi dependency pregled za ciljni modul.
         # Varno: če render pade, nadaljujemo brez njega (ne blokiramo healinga).
         try:
@@ -682,7 +696,10 @@ class LoopXEngineBridge:
     # F1 — prepozna vrsto izdelka iz direktive: python | markdown | html
     @staticmethod
     def _detect_kind(directive: str) -> str:
-        d = directive.lower()
+        # P2 — [PLAN KONTEKST] prefiks ne sme spremeniti klasifikacije (npr.
+        # beseda "poročilo" v stari lekciji bi modul razglasila za markdown).
+        from core.plan_context import strip_plan_context
+        d = strip_plan_context(directive or "").lower()
 
         # Celobesedno ujemanje (NE podniz): npr. "sporočilom" NE sme sprožiti
         # "poročilo", "spletna stran" ne "spletni", itd.

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from core.gbrain_bridge import GBrainBridge
 from core.graphify_bridge import GraphifyBridge
 from core.gstack_bridge import GSTACKArchitectBridge
@@ -6,8 +8,12 @@ from core.loopx_bridge import LoopXEngineBridge
 
 class RobAIOrchestrator:
     @staticmethod
-    def _phase(project: str, directive: str, label: str) -> bool:
-        """Izvede en GStack/RSI fazni tek (gbrain → gstack → hermes → loopx)."""
+    def _phase(project: str, directive: str, label: str, goal: Optional[str] = None) -> bool:
+        """Izvede en GStack/RSI fazni tek (gbrain → gstack → hermes → loopx).
+
+        `goal` (P1): čisti cilj naloge — zapiše se v run_reviews.goal (namesto
+        morebitnega [PLAN KONTEKST] prefiksa v `directive`).
+        """
         print(f"  ── Faza '{label}' zanke ──")
         # 1. GBRAIN: kontekst in prepovedani vzorci
         gbrain = GBrainBridge()
@@ -32,12 +38,15 @@ class RobAIOrchestrator:
         # 5. LOOPX: verifikacijska + samoozdravitvena zanka
         loopx = LoopXEngineBridge(project)
         ok = loopx.execute_and_heal(directive, spec_hint=spec_hint)
-        # Zanka 2 — post-run samoevalvacija odločitev (produkcijska pot; ne blokira).
+        # Zanka 2 — post-run samoevalvacija (P1: vedno, uspeh IN neuspeh; ne blokira).
         try:
             from core.run_review import RunReviewer
             RunReviewer(loopx.gbrain.db_path).review({
                 "project": project,
                 "directive": directive,
+                "goal": goal or directive,
+                "plan": (spec_hint or "")[:1000],
+                "task_type": LoopXEngineBridge._detect_kind(goal or directive),
                 "outcome": "green" if ok else "failed",
                 "traceback": getattr(loopx, "last_reason", "") or "",
                 "llm_calls": loopx.llm_calls,
@@ -61,29 +70,42 @@ class RobAIOrchestrator:
         return success
 
     @staticmethod
-    def run_autonomous(project: str, goal: str) -> bool:
+    def run_autonomous(project: str, goal: str, context: Optional[str] = None) -> bool:
         """Faza 2 — avtonomno podjetje: nalogo razčleni na več RSI faz in
         vsako izvede (SPEC → IMPLEMENT). Menedžer načrtuje, RSI zanka gradi.
 
         Determinating (no LLM planiranje): iz cilja, če cilj zveni kot dokument/
         Markdown → samo spec; sicer spec + implement.
+
+        P2 — plan kontekst: če ni podan, se zgradi iz naučenega (pretekle lekcije
+        + world-model napoved, max 1500 znakov) in vstavi v spec/impl direktive.
         """
         print(f"🤖 [F2] Avtonomni delovnik za: '{goal}'")
+        if context is None:
+            try:
+                from core.plan_context import build_plan_context
+                context = build_plan_context(project=project, goal=goal, max_chars=1500)
+            except Exception:
+                context = ""
         g = goal.lower()
         # Preprost menedžerjev načrt: ali želiš dokument ali modul?
         wants_doc = any(w in g for w in ("markdown", "predlog", "poročilo", "roadmap", "dokument"))
         if wants_doc:
             # Samo ena faza — dokument (MD/HTML) izdelava.
-            return RobAIOrchestrator._phase(project, goal, "dokument")
+            return RobAIOrchestrator._phase(project, goal, "dokument", goal=goal)
         # Dvofaza: spec (MD) + implementacija (Python).
         spec_directive = f"Izdelaj Markdown specifikacijo v actions/{project}/ za naslednji cilj: {goal}. Vsebuj naslov #, odstavke in načrt."
         impl_directive = f"Izdelaj Python modul {project} v actions/{project}/, ki uresniči cilj: {goal}. Vsebuj funkcionalne funkcije in pytest test, vsi testi 100% zeleni."
-        ok_spec = RobAIOrchestrator._phase(project, spec_directive, "specifikacija")
+        if context:
+            from core.plan_context import prepend_context
+            spec_directive = prepend_context(spec_directive, context)
+            impl_directive = prepend_context(impl_directive, context)
+        ok_spec = RobAIOrchestrator._phase(project, spec_directive, "specifikacija", goal=goal)
         if not ok_spec:
             print(f"❌ [F2] Specifikacijska faza ni zelena — avtonomni delovnik prekinjen.")
             return False
         # Spec shranimo kot dokument zraven; nato implement.
-        ok_impl = RobAIOrchestrator._phase(project, impl_directive, "implementacija")
+        ok_impl = RobAIOrchestrator._phase(project, impl_directive, "implementacija", goal=goal)
         print("✅ [F2] Avtonomni delovnik končan."
               f" spec={'ZELEN' if ok_spec else 'X'} / implement={'ZELEN' if ok_impl else 'X'}")
         return ok_impl
@@ -97,8 +119,14 @@ class RobAIOrchestrator:
         from core.task_planner import TaskPlanner
         planner = TaskPlanner()
         print(f"🧩 [Z5] Dekompozicija cilja: '{goal}'")
+        try:
+            from core.plan_context import build_plan_context
+            ctx = build_plan_context(project=project, goal=goal, max_chars=1500)
+        except Exception:
+            ctx = ""
         return planner.execute(
             goal,
-            executor=lambda subgoal: RobAIOrchestrator._phase(project, subgoal, "podcilj"),
+            executor=lambda subgoal: RobAIOrchestrator._phase(project, subgoal, "podcilj", goal=subgoal),
             max_steps=max_steps,
+            context=ctx,
         )

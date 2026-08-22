@@ -37,8 +37,12 @@ class TaskPlanner:
     v testih mock. Dekompozicija je LLM (DeepSeek); brez ključa → hevristika [cilj].
     """
 
-    def decompose(self, goal: str, max_steps: int = MAX_STEPS) -> List[str]:
-        """LLM razbije cilj na urejene podcilje. Vrne seznam (fallback: [cilj])."""
+    def decompose(self, goal: str, max_steps: int = MAX_STEPS, context: Optional[str] = None) -> List[str]:
+        """LLM razbije cilj na urejene podcilje. Vrne seznam (fallback: [cilj]).
+
+        `context` (P2): determinističen izvleček naučenega (pretekle lekcije +
+        world-model napoved) — vstavi se pred prompt, da načrtovanje vidi izkušnje.
+        """
         goal = (goal or "").strip()
         if not goal:
             return []
@@ -55,6 +59,9 @@ class TaskPlanner:
             f"Vrni STROGO JSON array (nič drugega) oblike [\"korak 1\", \"korak 2\", ...]. "
             f"Največ {max_steps} korakov."
         )
+        if context:
+            from core.plan_context import prepend_context
+            prompt = prepend_context(prompt, context)
         try:
             from core.llm_client import DeepSeekLLMClient
             llm = DeepSeekLLMClient()
@@ -77,13 +84,14 @@ class TaskPlanner:
                     return parts[:max_steps]
         return [goal]
 
-    def execute(self, goal: str, executor: Callable[[str], bool], max_steps: int = MAX_STEPS) -> Dict[str, Any]:
+    def execute(self, goal: str, executor: Callable[[str], bool], max_steps: int = MAX_STEPS,
+                context: Optional[str] = None) -> Dict[str, Any]:
         """Dekomponiraj cilj in izvedi vsak podcilj skozi executor.
 
         Vrne povzetek: število korakov, koliko uspešnih, in posamezni rezultati.
         Neustavlja se ob neuspehu posameznega koraka — izvede vse (best-effort).
         """
-        steps = self.decompose(goal, max_steps)
+        steps = self.decompose(goal, max_steps, context=context)
         results: List[Dict[str, Any]] = []
         for step in steps:
             try:

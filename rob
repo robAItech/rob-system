@@ -71,6 +71,9 @@ elif [ "$1" == "rlaif" ]; then
 elif [ "$1" == "goals" ]; then
     # Zanka 10 — avtonomija ciljev: predlagaj naslednje naloge.
     cd "$PROJECT_DIR" && python core/goal_autonomy.py --propose
+elif [ "$1" == "reflect" ]; then
+    # P3 — strateška samorefleksija: operativna načela iz zadnjih lekcij.
+    cd "$PROJECT_DIR" && python core/strategy_reflect.py "${@:2}"
 elif [ "$1" == "deploy" ]; then
     # Zagon python skripte, ki naredi POST request na naš novi manager
     cd "$PROJECT_DIR" && activate_venv && python -c "
