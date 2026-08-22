@@ -2,7 +2,7 @@
 
 > Referenčni dokument: arhitektura, vloge, orkestracija, kje se uporabljajo
 > prompti in GStack skilli, ter popoln spisek 54 GStack skillov.
-> Stanje: 19. 8. 2026. Vir resnice: `SKILL.md` datoteke na disku, ne README.
+> Stanje: 22. 8. 2026. Vir resnice: `SKILL.md` datoteke na disku, ne README.
 
 ---
 
@@ -28,7 +28,7 @@ z dvema izvedbenima plastema in vmesnikom:
    └──────────────────────────┘
                 │
 ┌───────────────┴────────────────────────────────────────────┐
-│  REZULTAT: out/* artefakti · actions/ (28 modulov)          │
+│  REZULTAT: out/* artefakti · actions/ (18 modulov)          │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -48,6 +48,15 @@ verigi od naloge do artefakta.
 Avtonomna gradnja modulov. `RobAIOrchestrator._phase` (`orchestrator.py`)
 spelje zaporedje: **gbrain → graphify → gstack → hermes → loopx**.
 
+**Nadgradnje (koraki 1–10):** agentic tool-use v RSI zanki (`loopx_bridge._heal_agentic`
+— orodja read/write/list/search/skill, OpenAI function-calling), semantični spomin
+(`core/embedder.py` — Gemini embeddingi, kosinusni priklic z leksikalnim padcem),
+upravljanje konteksta (`LLM_HEAL_*` — budget prompta, trim messages), paralelizem
+(fork + eval `--workers`), avto-rollback (`LOOPX_ROLLBACK_ON_FAIL`), actions/ kot
+enotna runtime app (`core/actions_runtime.py` — mount vseh 18 modulov + middleware
+veriga auth→rate-limit→audit→event-bus) in realni odvisnostni graf
+(`core/actions_graph.py`), ter CI (`.github/workflows/ci.yml`).
+
 ---
 
 ## 2. Vloge — kdo vodi, kdo dela
@@ -56,8 +65,8 @@ spelje zaporedje: **gbrain → graphify → gstack → hermes → loopx**.
 |---|---|---|
 | **TS Hermes** | `Runner` — edini z zmožnostmi (disk, omrežje, `cmd.exec`). Zanka: dogodek → `foldState` → `reduce` agentov → `Command[]` → izvedi. | `planner` (plan), `builder` (piše datoteke), `qa` (verify), `screenshot` (vizualna namera) |
 | **Python RSI** | `RobAIOrchestrator._phase` | `gbrain` (spomin), `graphify` (AST), `gstack` (spec), `hermes` (ogrodje), `loopx` (pytest + heal) |
-| **LLM** | — | `DeepSeekLLMClient` (`deepseek-chat`) — generira kodo/popravke |
-| **Nad nivo** | `dev_cli.py` — orkestracija procesov | 28 `actions/` modulov — končni produkt |
+| **LLM** | — | `DeepSeekLLMClient` (`deepseek-v4-flash`) — generira kodo/popravke |
+| **Nad nivo** | `dev_cli.py` — orkestracija procesov | 18 `actions/` modulov — končni produkt |
 
 **Vodilni agent** v Python poti je en sam: `GSTACK-Architect` (privzeto iz
 `run_swarm.py --agent`), ne jata agentov. `architect`/`engineer` v TS plasti
@@ -84,7 +93,7 @@ screenshot]`).
 | **GRAPHIFY** | `graphify_bridge.py` | AST sken → `graph.json` + odvisnostni kontekst |
 | **GSTACK** | `gstack_bridge.py` | manifest + `spec_hint` (blueprint → LLM) |
 | **HERMES** | `hermes_bridge.py` | ogrodje `actions/<mod>/` (stub-i) |
-| **LOOPX** | `loopx_bridge.py` | pytest → DeepSeek heal → ≤5× → zelen ali FAILED |
+| **LOOPX** | `loopx_bridge.py` | pytest → DeepSeek heal (agentic tool-use) → ≤5× → zelen ali FAILED |
 
 ---
 
@@ -114,8 +123,11 @@ Sočasni buildi istega modula se varujejo z atomic target-lockom.
 
 **GStack skilli (54)** so **zunanji framework** (`~/.claude/skills/gstack/`) —
 specialistične vloge, ki tečejo *nad* Rob sistemom. Kličejo se prek `Skill`
-orodja, usmerja pa jih `## Skill routing` v `CLAUDE.md`. Rob-ova lastna koda
-(`core/`, `src/`) jih **ne** uvaža — sta dve ločeni stvari.
+orodja, usmerja pa jih `## Skill routing` v `CLAUDE.md`. **Od koraka 6** jih
+Rob-ova lastna koda poleg tega izpostavi kot LLM orodje: `core/skill_bridge.py`
+prebere `SKILL.md` in v RSI heal zanki lahko LLM pokliče `skill("spec")`, da dobi
+strnjen procesni vodič (cap 6k, brez ponavljajočega boilerplate-a). Za človeka
+v terminalu ostajajo dostopni kot prej — oba načina sobivata.
 
 **Prompti** so na štirih mestih v Rob kodi:
 1. `src/agents/planner.ts` → `SYSTEM_PROMPT` ("Si orkestrator programerskega podjetja… @file bloke").
