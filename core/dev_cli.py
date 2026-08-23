@@ -211,13 +211,17 @@ class SpawnedServer:
 
 
 def _kill_pid(pid: int) -> None:
-    """Poskusi terminate, nato force kill."""
+    """Poskusi terminate, nato force kill.
+
+    Windows nima `signal.SIGKILL` (AttributeError ob dostopu) → getattr fallback
+    na SIGTERM (TerminateProcess), da cleanup ne crasha na NT.
+    """
     try:
         os.kill(pid, signal.SIGTERM)
     except OSError:
         pass
     try:
-        os.kill(pid, signal.SIGKILL)
+        os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
     except OSError:
         pass
 

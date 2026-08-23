@@ -1119,9 +1119,13 @@ async function agendaAddGmail(goal: string, kind: string): Promise<boolean> {
   return true;
 }
 
-/** Preskoči očitna sistemska sporočila/obvestila (ne prava povpraševanja). */
+/** Preskoči očitna sistemska sporočila/obvestila (ne prava povpraševanja).
+    Širši vzorci: angleška obvestila (announcement/billing/notification…),
+    slovenska varnostna opozorila (opozorilo/varnostn/geslo…) in notification
+    pošiljatelji (no-reply, accounts.google, sc.mail.deepseek…). Brez tega bi
+    P1 daemon obvestila avtomatsko izvajal kot kodne naloge (strošek/junk). */
 function isSystemNotice(text: string): boolean {
-  return /(delili|deljenje|obvestilo|security|verifikac|byteplus|recovery|newsletter|novost.*google|račun.*delili|dostop.blokiran|google.*obvesti|povezavo\|podatek.*delil|sprememba.*gesla|two.?factor)/i.test(text);
+  return /(delili|deljenje|obvestilo|opozorilo|varnostn|gesl|security|verifikac|byteplus|recovery|newsletter|novost.*google|račun.*delili|dostop.blokiran|google.*obvesti|povezavo\|podatek.*delil|sprememba.*gesla|two.?factor|announcement|billing|notification|unusual|suspicious|no.?reply|noreply|accounts\.google|sc\.mail\.deepseek|peak.?off.?peak|welcome|alert)/i.test(text);
 }
 
 /**

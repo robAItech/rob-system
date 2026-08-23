@@ -50,6 +50,7 @@ from core import agenda, audit, config, dev_cli
 ROB_AI = PROJECT_ROOT / ".rob_ai"
 DAEMON_FILE = ROB_AI / "daemon.json"
 LOCK_FILE = ROB_AI / "daemon.lock"
+STOP_FILE = ROB_AI / "daemon.stop"
 DB_PATH = ROB_AI / "memory.db"
 
 _stop_requested = False
@@ -63,7 +64,21 @@ def _now() -> int:
 #  Single-instance lock
 # ------------------------------------------------------------------ #
 def _lock_pid_alive(pid: int) -> bool:
-    """Ali PID še obstaja (probe). Na Windows `os.kill(pid, 0)` velja."""
+    """Ali PID še obstaja. Unix: `os.kill(pid, 0)`. Windows: `OpenProcess`
+    probe — `os.kill(pid, 0)` tam vrže WinError 87 (param error) za vsak PID,
+    zato ga ne moremo uporabiti kot probe."""
+    if os.name == "nt":
+        try:
+            import ctypes
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            h = ctypes.windll.kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+            if not h:
+                return False
+            ctypes.windll.kernel32.CloseHandle(h)
+            return True
+        except Exception:
+            return True  # ne moremo preveriti → ne briši stale locka (varno)
     try:
         os.kill(pid, 0)
         return True
@@ -465,6 +480,11 @@ def run_loop(settings, cfg, once: bool = False) -> int:
 
     # BOOT
     _write_heartbeat("boot", current_task=None, current_tick=None)
+    # Odstrani morebiten star stop sentinel (iz prejšnje seje).
+    try:
+        STOP_FILE.unlink()
+    except OSError:
+        pass
     recovered = recover_agenda()
     if recovered:
         print(f"[daemon] obnovljenih nalog (running→pending): {recovered}")
@@ -478,6 +498,11 @@ def run_loop(settings, cfg, once: bool = False) -> int:
     last_hb = _now()
     try:
         while not _stop_requested:
+            # Stop sentinel (`rob daemon --stop`) → graceful shutdown.
+            if STOP_FILE.exists():
+                print("[daemon] prejeta stop zahteva — graceful shutdown.")
+                _stop_requested = True
+                break
             now = _now()
 
             # HEALTH GATE — brez proxyja ni nalog/tickov.
@@ -563,11 +588,16 @@ def _cmd_stop() -> int:
     if not pid:
         print("[daemon] ni tekočega daemona (ni PID v daemon.json).")
         return 1
+    # Na Windows `os.kill(pid, SIGTERM)` = TerminateProcess → TRD uboj, brez
+    # graceful handlerja (signal handler ne steče). Zato `--stop` napiše stop
+    # sentinel, ki ga daemon prebere ob naslednji iteraciji → graceful shutdown
+    # (shutdown heartbeat + release lock). Če daemon sredi dolge naloge, počaka.
     try:
-        os.kill(int(pid), signal.SIGTERM)
-        print(f"[daemon] poslan SIGTERM → PID {pid}.")
+        STOP_FILE.write_text(json.dumps({"pid": int(pid), "ts": _now()}),
+                             encoding="utf-8")
+        print(f"[daemon] stop zahteva poslana (PID {pid}) — graceful shutdown.")
     except OSError as e:
-        print(f"[daemon] ni mogoče poslati signala: {e}")
+        print(f"[daemon] ni mogoče zapisati stop zahteve: {e}")
         return 1
     return 0
 

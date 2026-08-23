@@ -7,6 +7,7 @@ Datoteke daemona/agende so usmerjene v tmp_path (nikoli realni .rob_ai).
 
 import json
 import os
+import sys
 import types
 from unittest import mock
 
@@ -71,6 +72,29 @@ def test_stale_lock_recovered(env, monkeypatch):
     assert daemon.LOCK_FILE.exists()
     assert int(daemon.LOCK_FILE.read_text(encoding="utf-8").strip()) == os.getpid()
     daemon._release_lock()
+
+
+def test_lock_pid_alive_windows_probe(monkeypatch):
+    # Windows: os.kill(pid, 0) ni probe (WinError 87) → OpenProcess.
+    monkeypatch.setattr(daemon.os, "name", "nt")
+    fake_ctypes = mock.Mock()
+    kernel32 = fake_ctypes.windll.kernel32
+    monkeypatch.setitem(sys.modules, "ctypes", fake_ctypes)
+    # Mrtav PID → OpenProcess vrne 0 → False.
+    kernel32.OpenProcess.return_value = 0
+    assert daemon._lock_pid_alive(12345) is False
+    # Živ PID → OpenProcess vrne ročico → True + CloseHandle.
+    kernel32.OpenProcess.return_value = 999
+    assert daemon._lock_pid_alive(12345) is True
+    kernel32.CloseHandle.assert_called_once_with(999)
+
+
+def test_cmd_stop_writes_sentinel(env, monkeypatch):
+    daemon._write_heartbeat("idle")
+    assert daemon._cmd_stop() == 0
+    assert daemon.STOP_FILE.exists()
+    data = json.loads(daemon.STOP_FILE.read_text(encoding="utf-8"))
+    assert data["pid"] == os.getpid()
 
 
 # ------------------------------------------------------------------ #
