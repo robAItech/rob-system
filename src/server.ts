@@ -1273,6 +1273,22 @@ const server = Bun.serve({
     if (req.method === 'GET' && url.pathname === '/api/editable') {
       return json({ editable: await listEditable() });
     }
+    // Rešitev naloge — vse datoteke modula actions/<name>/ (za kartico rezultata).
+    if (req.method === 'GET' && url.pathname === '/api/module') {
+      const name = (url.searchParams.get('name') || '').replace(/[^a-zA-Z0-9_-]/g, '');
+      if (!name) return json({ ok: false, error: 'name manjka' });
+      const dir = `${OUT_ROOT}/actions/${name}`;
+      const files: { name: string; path: string; content: string; size: number }[] = [];
+      try {
+        const glob = new Bun.Glob('*.{py,md,html,htm,txt,json,yml,yaml,ini,cfg,env}');
+        for await (const f of glob.scan({ cwd: dir, onlyFiles: true })) {
+          const content = await Bun.file(`${dir}/${f}`).text().catch(() => '');
+          files.push({ name: f, path: `actions/${name}/${f}`, content, size: content.length });
+        }
+      } catch { /* actions/<name> morda ne obstaja */ }
+      files.sort((a, b) => a.name.localeCompare(b.name));
+      return json({ ok: true, name, files });
+    }
     // Sistemske metrike (GBRAIN tasks/blacklist + GRAPHIFY nodes + moduli).
     if (req.method === 'GET' && url.pathname === '/api/metrics') {
       return json(await systemMetrics());

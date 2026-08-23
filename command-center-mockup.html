@@ -226,6 +226,21 @@
   .art-frame-wrap iframe{width:100%;height:100%;border:0;}
   .dbtn{background:transparent;border:1px solid var(--line);border-radius:5px;color:var(--muted);cursor:pointer;padding:7px 12px;font-family:var(--font-display);font-size:12px;letter-spacing:.03em;text-decoration:none;display:inline-flex;align-items:center;}
   .dbtn:hover{color:var(--accent);border-color:var(--accent);}
+  /* Kartica rešitve naloge (klik na dokončano nalogo v agendi) */
+  .modal.task-modal{width:min(920px,94vw);max-height:92vh;display:flex;flex-direction:column;}
+  .task-goal{font-size:12.5px;color:var(--muted);background:var(--surface2);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-bottom:12px;max-height:84px;overflow:auto;white-space:pre-wrap;}
+  .task-files{display:grid;grid-template-columns:230px 1fr;gap:12px;flex:1;min-height:340px;}
+  .task-files .empty{grid-column:1/-1;color:var(--faint);padding:20px;text-align:center;}
+  @media(max-width:700px){.task-files{grid-template-columns:1fr;}}
+  .file-list{border:1px solid var(--line);border-radius:6px;overflow-y:auto;}
+  .file-list .f{padding:8px 12px;cursor:pointer;font-family:var(--font-mono);font-size:12px;border-bottom:1px solid var(--line);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .file-list .f:last-child{border-bottom:none;}
+  .file-list .f:hover{background:var(--surface2);}
+  .file-list .f.on{background:var(--accent-soft);color:var(--accent);}
+  .file-view{border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+  .file-view-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--surface2);}
+  .file-view-head span{font-family:var(--font-mono);font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .file-view pre.code{flex:1;margin:0;padding:12px;overflow:auto;font-family:var(--font-mono);font-size:12px;line-height:1.5;white-space:pre;color:var(--ink);background:var(--surface);}
 
   @media (max-width:900px){
     .app{grid-template-columns:1fr;}
@@ -486,6 +501,28 @@
   </div>
 </div>
 
+<!-- Kartica rešitve dokončane naloge -->
+<div class="modal-overlay" id="task-modal">
+  <div class="modal task-modal">
+    <div class="modal-head">Rešitev · <b id="task-name">—</b></div>
+    <div class="task-goal" id="task-goal"></div>
+    <div class="task-files">
+      <div class="file-list" id="task-filelist"></div>
+      <div class="file-view">
+        <div class="file-view-head">
+          <span id="task-file-title">—</span>
+          <button class="dbtn" id="task-file-dl">⬇ Prenesi datoteko</button>
+        </div>
+        <pre class="code" id="task-file-content"></pre>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="dbtn" id="task-goal-dl" onclick="downloadTaskGoal()">⬇ Prenesi nalogo</button>
+      <button class="dbtn" onclick="closeTask()">Zapri</button>
+    </div>
+  </div>
+</div>
+
 <script>
   // ── Navigacija ────────────────────────────────────────────────────
   const crumbs = {command:'/ pregled', pogovor:'/ pogovor', research:'/ raziskovanje', agenda:'/ agenda', artifacts:'/ artefakti', gbrain:'/ gbrain', agents:'/ agenti'};
@@ -568,7 +605,8 @@
     const esc=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     return esc.replace(/(https?:\/\/[^\s<>)]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:none">$1</a>');
   }
-  function addLine(who,msg){
+  let convo=[];
+  function renderLine(who,msg){
     const el=document.createElement('div');
     el.className='convo-line '+who;
     el.innerHTML=`<span class="who">${who==='you'?'TI':'ROB'}</span>`;
@@ -577,6 +615,23 @@
     el.appendChild(m);
     const box=document.getElementById('convo');
     box.appendChild(el); box.scrollTop=box.scrollHeight;
+  }
+  function addLine(who,msg){
+    convo.push({who,msg});
+    if(convo.length>200) convo=convo.slice(-200);
+    renderLine(who,msg);
+    try{ localStorage.setItem('rob_convo', JSON.stringify(convo)); }catch(e){}
+  }
+  function restoreConvo(){
+    try{
+      const s=localStorage.getItem('rob_convo'); if(!s) return;
+      const arr=JSON.parse(s); if(!Array.isArray(arr)||!arr.length) return;
+      convo=arr;
+      const box=document.getElementById('convo'); if(!box) return;
+      box.innerHTML='';
+      for(const l of arr) renderLine(l.who,l.msg);
+      box.scrollTop=box.scrollHeight;
+    }catch(e){}
   }
   let voiceReply=true;
   let voices=[];
@@ -749,13 +804,66 @@
   // ── Živi podatki iz API (server.ts) ─────────────────────────────
   let live = false;
   function fmtTs(ts){ if(!ts) return ''; const d=new Date(ts*1000); const p=n=>String(n).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes()); }
+  let agendaCache=[];
+  let taskFiles=[];
+  let taskCurrent=null;
   function renderAgenda(items){
     const body=document.getElementById('agenda-body'); if(!body) return;
     const st={pending:['pend','čaka'],running:['run','v teku'],done:['done','končano'],failed:['crit','napaka']};
-    body.innerHTML=items.length?items.map(i=>{
+    agendaCache=items||[];
+    // Zadnja naloga (po posodobitvi) je VEDNO na vrhu.
+    const sorted=[...(items||[])].sort((a,b)=>(b.updated_at||b.created_at||0)-(a.updated_at||a.created_at||0));
+    body.innerHTML=sorted.length?sorted.map(i=>{
       const s=st[i.status]||['pend',i.status||'?'];
-      return `<tr><td><span class="pill ${s[0]}">${s[1]}</span></td><td>${(i.goal||'').replace(/</g,'&lt;')}</td><td class="mono">${i.target||''}</td><td class="mono">${i.kind||''}</td><td class="mono">${i.source||''}</td><td class="mono">${fmtTs(i.updated_at)}</td></tr>`;
+      const clickable=i.status==='done'
+        ? ` onclick="openTask('${(i.id||'').replace(/'/g,'')}')" style="cursor:pointer" title="Klikni za rešitev"`
+        : '';
+      return `<tr${clickable}><td><span class="pill ${s[0]}">${s[1]}</span></td><td>${(i.goal||'').replace(/</g,'&lt;')}</td><td class="mono">${i.target||''}</td><td class="mono">${i.kind||''}</td><td class="mono">${i.source||''}</td><td class="mono">${fmtTs(i.updated_at)}</td></tr>`;
     }).join(''):'<tr><td colspan="6" style="color:var(--faint)">agenda prazna</td></tr>';
+  }
+  function closeTask(){ document.getElementById('task-modal').classList.remove('open'); }
+  function mimeFor(name){
+    if(name.endsWith('.md')) return 'text/markdown';
+    if(name.endsWith('.json')) return 'application/json';
+    if(name.endsWith('.html')||name.endsWith('.htm')) return 'text/html';
+    if(/\.(txt|cfg|ini|env|yaml|yml)$/.test(name)) return 'text/plain';
+    return 'text/x-python';
+  }
+  function viewTaskFile(i){
+    const f=taskFiles[i]; if(!f) return;
+    document.querySelectorAll('#task-filelist .f').forEach(x=>x.classList.toggle('on',+x.dataset.i===i));
+    document.getElementById('task-file-title').textContent=f.name;
+    document.getElementById('task-file-content').textContent=f.content;
+    document.getElementById('task-file-dl').onclick=()=>download(f.name,f.content,mimeFor(f.name));
+  }
+  function downloadTaskGoal(){
+    if(!taskCurrent) return;
+    const txt='NALOGA: '+taskCurrent.goal+'\n\nSTATUS: '+(taskCurrent.status||'')+'\nTARGET: '+(taskCurrent.target||'');
+    download((taskCurrent.target||'naloga')+'.txt',txt,'text/plain');
+  }
+  async function openTask(id){
+    const task=(agendaCache||[]).find(i=>i.id===id);
+    if(!task) return;
+    taskCurrent=task;
+    const target=task.target||'';
+    document.getElementById('task-name').textContent=target||'—';
+    document.getElementById('task-goal').textContent=task.goal||'';
+    document.getElementById('task-filelist').innerHTML='<div style="padding:10px;color:var(--faint)">nalagam …</div>';
+    document.getElementById('task-file-content').textContent='';
+    document.getElementById('task-file-title').textContent='—';
+    document.getElementById('task-file-dl').onclick=null;
+    document.getElementById('task-modal').classList.add('open');
+    try{
+      const r=await fetch('/api/module?name='+encodeURIComponent(target));
+      const d=await r.json();
+      taskFiles=(d.files||[]);
+      const list=document.getElementById('task-filelist');
+      if(!taskFiles.length){ list.innerHTML='<div class="empty">Modul nima datotek (še).</div>'; return; }
+      list.innerHTML=taskFiles.map((f,i)=>`<div class="f${i===0?' on':''}" data-i="${i}" onclick="viewTaskFile(${i})">${f.name}</div>`).join('');
+      viewTaskFile(0);
+    }catch(e){
+      document.getElementById('task-filelist').innerHTML='<div class="empty">napaka pri nalaganju rešitve: '+(e.message||e)+'</div>';
+    }
   }
   function renderArtifacts(list){
     const g=document.getElementById('arts'); if(!g) return;
@@ -972,6 +1080,7 @@
   tick(); setInterval(tick,1000);
   buildWave(); renderSkills(); initGraph();
   render(); setInterval(refresh,3800);
+  restoreConvo();           // pogovor preživi refresh (localStorage)
   loadLive(); setInterval(loadLive,10000);
   loadGraph(); loadResearch();
 </script>
