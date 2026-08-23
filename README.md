@@ -239,6 +239,7 @@ Dosežene faze:
 | **P1** | Avtonomni daemon (24/7 master proces): prazni agendo, sam predlaga naloge (goal autonomy), teče periodične jobe, heartbeat `.rob_ai/daemon.json` |
 | **P2** | Zapri zanko neuspeha: fail-fast (ostri podpis), fix-task v agendo (konzumira `next_step`), poštena metrika iz `run_reviews` |
 | **P3** | Surgical fix + diagnose-first: minimalen diff brez re-scaffolda, targeted verifikacija, dejanski vzrok iz pytest izhoda (ne glava) |
+| **P4** | MODIFY false-green guard (`kind="modify"`): modifikacije morajo dejansko spremeniti modul — sicer neuspeh, ne tiho zelen |
 
 Command-Center dashboard ponuja poglede: **Command Center** (pregled + obsidian
 graf), **Pogovor** (glasovni vnos + TTS odgovor, izbira glasu Charon/Orus/...),
@@ -327,11 +328,21 @@ Vsak padel build se zdaj **samodejno popravi** — ne le zapiše lekcije:
 - **Poštena metrika**: `meta_eval` bere `run_reviews` (čista tabela), **ne**
   `task_history` (onesnažen s `test_proj`) — realna uspešnost, ne več lažnih
   številk; snapshot verzijski gate prepreči lažno regresijo.
+- **MODIFY false-green guard** (`kind="modify"`): modifikacijska naloga
+  ("izboljšaj X", refaktor) mora DEJANSKO spremeniti modul. Če je build zelen,
+  a nobena datoteka ni spremenjena (RSI samo potrdi obstoječe stanje), se šteje
+  kot **neuspeh** z jasno lekcijo — ne tiho zelen. `LoopX._module_fingerprint`
+  primerja prstni odtis modula pred/po teku.
 
-**Dogfood (realno delo, avtonomno)**: 5 realnih util modulov skozi daemon —
-uspešnost modulov **40 % → 80 %** (fix-zanka je popravila 2/3 padle); realna
-metrika 28.6 % → 33.3 %; tudi `env_config` (prej nepopravljiv stub) je bil po
-diagnose-first popravku zelen.
+**Dogfood (realno delo, avtonomno)** — več krogov:
+- **Dogfood 1** (5 util modulov): uspešnost modulov **40 % → 80 %** (fix-zanka
+  popravila 2/3 padle); metrika 28.6 % → 33.3 %; `env_config` (prej nepopravljiv
+  stub) ozdravljen po diagnose-first.
+- **Dogfood 2** (6 modulov): **100 % prva-build** (zero fix nalog) — diagnose-first
+  je ključni diferencator (40 % → 100 %); metrika → 48.4 %.
+- **Dogfood 3** (5 KOMPLEKSNIH nalog: multi-file, medmodulne odvisnosti, refaktor,
+  dvoumna direktiva, reuse): **4/5 resnično zelenih** + **odkrit false-green pri
+  refaktorju** → `kind="modify"` guard. Metrika → 55.6 %.
 
 ## 🔄 Deset zank (Zanke 1–10)
 
