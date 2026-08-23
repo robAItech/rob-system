@@ -61,6 +61,36 @@ def test_process_items_modify_kind_uses_run_modify(iso):
     assert results == [(item["id"], True)]
 
 
+def test_process_items_team_kind_uses_run_team(iso):
+    """Z6 — kind='team' → run_team (multi-agent adversarial)."""
+    item = agenda.add("kompleksna naloga", kind="team", target="calc", source="cli")
+    fake_team = mock.Mock(return_value=True)
+    with mock.patch("run_swarm.RobAIOrchestrator.run_team", fake_team):
+        results = _process_items([item])
+    fake_team.assert_called_once_with("calc", "kompleksna naloga")
+    assert results == [(item["id"], True)]
+
+
+def test_process_items_fork_kind_uses_run_fork(iso):
+    """Z8 — kind='fork' → run_fork (raziskovanje + izvedba najboljše variante)."""
+    item = agenda.add("neznan pristop", kind="fork", target="calc", source="cli")
+    fake_fork = mock.Mock(return_value=True)
+    with mock.patch("run_swarm.RobAIOrchestrator.run_fork", fake_fork):
+        results = _process_items([item])
+    fake_fork.assert_called_once_with("calc", "neznan pristop")
+    assert results == [(item["id"], True)]
+
+
+def test_process_items_plan_kind_uses_run_plan(iso):
+    """Z5 — kind='plan' → run_plan (dekompozicija → podnaloge v agendo)."""
+    item = agenda.add("velik cilj", kind="plan", target="biggoal", source="cli")
+    fake_plan = mock.Mock(return_value=True)
+    with mock.patch("run_swarm.RobAIOrchestrator.run_plan", fake_plan):
+        results = _process_items([item])
+    fake_plan.assert_called_once_with("biggoal", "velik cilj")
+    assert results == [(item["id"], True)]
+
+
 def test_process_items_failure_marks_failed(iso):
     item = agenda.add("build modul", kind="python", target="calc", source="cli")
     with mock.patch("run_swarm.RobAIOrchestrator.run", mock.Mock(return_value=False)):

@@ -65,6 +65,15 @@ def _process_items(items: list) -> list:
                 # MODIFY — modifikacija obstoječega modula: zahteva dejansko
                 # spremembo (false-green guard, če RSI samo potrdi zeleno stanje).
                 ok = RobAIOrchestrator.run_modify(it["target"], it["goal"])
+            elif it.get("kind") == "team":
+                # Z6 — multi-agent adversarial (plan→critique→build→verify).
+                ok = RobAIOrchestrator.run_team(it["target"], it["goal"])
+            elif it.get("kind") == "fork":
+                # Z8 — raziskovanje: N pristopov, izvedi najboljšega.
+                ok = RobAIOrchestrator.run_fork(it["target"], it["goal"])
+            elif it.get("kind") == "plan":
+                # Z5 — dekompozicija: velik cilj → podnaloge v agendo.
+                ok = RobAIOrchestrator.run_plan(it["target"], it["goal"])
             elif it.get("kind") == "autonomous":
                 ok = RobAIOrchestrator.run_autonomous(it["target"], it["goal"])
             else:

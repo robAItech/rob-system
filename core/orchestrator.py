@@ -137,6 +137,45 @@ class RobAIOrchestrator:
         return success
 
     @staticmethod
+    def run_team(project: str, goal: str, context: Optional[str] = None) -> bool:
+        """Z6 — multi-agent adversarial (kind="team"): plan → critique → (revise)
+        → build (RSI) → verify. Vrača True, če je modul zgrajen in verificiran."""
+        from core.team import TeamCoordinator
+        result = TeamCoordinator().run(project, goal, context=context)
+        ok = bool(result.get("built")) and bool((result.get("verdict") or {}).get("ok"))
+        print(f"🤝 [TEAM] '{project}': built={result.get('built')} "
+              f"severity={result.get('severity')} "
+              f"verdict={(result.get('verdict') or {}).get('ok')}", flush=True)
+        return ok
+
+    @staticmethod
+    def run_fork(project: str, goal: str, n: int = 3) -> bool:
+        """Z8 — raziskovanje (kind="fork"): predlagaj N pristopov, oceni vsakega,
+        izvedi NAJBOLJŠEGA (explore_and_run — za razliko od CLI --explore)."""
+        from core.fork import Explorer
+        result = Explorer().explore_and_run(goal, n=n, project=project)
+        ok = bool(result.get("executed"))
+        print(f"🍴 [FORK] '{project}': {result.get('variants', 0)} variant, "
+              f"executed={result.get('executed')}", flush=True)
+        return ok
+
+    @staticmethod
+    def run_plan(project: str, goal: str, max_steps: int = 8) -> bool:
+        """Z5 — dekompozicija (kind="plan"): velik cilj razbije na podnaloge, vsako
+        vvrže v agendo (kind=python, distinkten target), daemon jih obdela eno za
+        drugo. Vrne True, če so bile podnaloge vvržene (dekompozicija uspela)."""
+        from core import agenda
+        from core.task_planner import TaskPlanner
+        steps = TaskPlanner().decompose(goal, max_steps=max_steps)
+        enqueued = 0
+        for i, sub in enumerate(steps, 1):
+            sub_target = f"{project}__s{i}"
+            agenda.add(sub, kind="python", target=sub_target, source="plan_subtask")
+            enqueued += 1
+        print(f"🧩 [PLAN] '{project}': {enqueued} podnalog v agendo.", flush=True)
+        return enqueued > 0
+
+    @staticmethod
     def run_surgical(project: str, directive: str, target_test: Optional[str] = None,
                      goal: Optional[str] = None) -> bool:
         """C2/SURGICAL — kirurški popravek obstoječega modula (fix naloga).

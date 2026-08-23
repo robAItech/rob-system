@@ -227,3 +227,47 @@ def test_run_modify_false_green(tmp_path, monkeypatch):
          mock.patch("core.run_review.RunReviewer", return_value=reviewer):
         ok = RobAIOrchestrator.run_modify("surgical_proj", "Izboljšaj modul")
     assert ok is False
+
+
+# --------------------------------------------------------------------------- #
+#  AGENTI v daemonu — run_team / run_fork / run_plan
+# --------------------------------------------------------------------------- #
+
+def test_run_team(mock_agents=None):
+    """Z6 — run_team: built + verdict ok → True; verdict ne-ok → False."""
+    from core.orchestrator import RobAIOrchestrator
+    with mock.patch("core.team.TeamCoordinator") as tc:
+        tc.return_value.run.return_value = {
+            "built": True, "severity": "low", "verdict": {"ok": True}}
+        assert RobAIOrchestrator.run_team("p", "g") is True
+    with mock.patch("core.team.TeamCoordinator") as tc:
+        tc.return_value.run.return_value = {
+            "built": True, "severity": "high", "verdict": {"ok": False}}
+        assert RobAIOrchestrator.run_team("p", "g") is False
+
+
+def test_run_fork():
+    """Z8 — run_fork: explore_and_run izvede najboljšo varianto."""
+    from core.orchestrator import RobAIOrchestrator
+    with mock.patch("core.fork.Explorer") as ex:
+        ex.return_value.explore_and_run.return_value = {
+            "variants": 3, "executed": True}
+        assert RobAIOrchestrator.run_fork("p", "g") is True
+    with mock.patch("core.fork.Explorer") as ex:
+        ex.return_value.explore_and_run.return_value = {
+            "variants": 3, "executed": False}
+        assert RobAIOrchestrator.run_fork("p", "g") is False
+
+
+def test_run_plan(tmp_path, monkeypatch):
+    """Z5 — run_plan: dekompozicija → podnaloge v agendo (distinktni targeti)."""
+    from core import agenda
+    monkeypatch.setattr(agenda, "AGENDA_FILE", tmp_path / "agenda.json")
+    from core.orchestrator import RobAIOrchestrator
+    with mock.patch("core.task_planner.TaskPlanner") as tp:
+        tp.return_value.decompose.return_value = ["korak 1", "korak 2"]
+        assert RobAIOrchestrator.run_plan("biggoal", "velik cilj") is True
+    targets = [x["target"] for x in agenda.all_()]
+    assert targets == ["biggoal__s1", "biggoal__s2"]
+    assert all(x["kind"] == "python" for x in agenda.all_())
+    assert all(x["source"] == "plan_subtask" for x in agenda.all_())
