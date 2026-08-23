@@ -60,6 +60,13 @@ class SystemSettings(BaseSettings):
     # 1 = stara single-flight semantika; N>1 = N sočasnih buildov (distinct targets).
     # Velikost glede na HW — vsak build = LLM + Docker sandbox (~512 MB).
     daemon_workers: int = Field(default=2, alias="DAEMON_WORKERS")
+    # ─── Učinkovitost RSI (A-B toggle-a) ─────────────────────────────────────
+    # Adaptivno ciljanje: normalni buildi po prvi rdeči prevzamejo padli test →
+    # heali tečejo samo `-k <test>` (hitro), končni poln gate lovi regresije.
+    loopx_adaptive_targeting: bool = Field(default=True, alias="LOOPX_ADAPTIVE_TARGETING")
+    # Caching graph/RAG per build: render_context + retrieve_relevant (whole-repo
+    # scan) se izračunata enkrat na _heal_loop, ne na vsak heal.
+    loopx_heal_prompt_cache: bool = Field(default=True, alias="LOOPX_HEAL_PROMPT_CACHE")
     # Periodični jobi (intervali v urah).
     daemon_consolidate_hours: int = Field(default=24, alias="DAEMON_CONSOLIDATE_HOURS")
     daemon_reflect_hours: int = Field(default=168, alias="DAEMON_REFLECT_HOURS")

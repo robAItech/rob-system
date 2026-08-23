@@ -550,6 +550,86 @@ def test_verify_required_file_exists_green(tmp_path, monkeypatch):
     assert ok is True
 
 
+def test_heal_loop_adaptive_targets_failing_test(tmp_path, monkeypatch):
+    """Učinkovitost — normalni build prevzame padli test po prvi rdeči → targeted."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.surgical = False
+    engine.target_test = None
+    red = 'File "test_add.py", line 3, in test_add\nAssertionError: bad'
+    full_res = iter([(False, red), (True, "")])
+    targ_res = iter([(False, red), (True, "")])
+    def _fake_verify(kind, targeted=False):
+        return next(targ_res) if targeted else next(full_res)
+    with mock.patch.object(engine, "_verify", side_effect=_fake_verify), \
+         mock.patch.object(engine, "_heal_once", return_value=(True, "popravil")), \
+         mock.patch.object(engine.gbrain, "record_task") as rec:
+        result = engine.execute_and_heal("Popravi add", spec_hint="")
+    assert result is True
+    assert engine.target_test == "test_add"   # adaptivno prevzet
+    green = [c for c in rec.call_args_list if len(c[0]) > 2 and c[0][2] == "VERIFIED GREEN"]
+    assert len(green) == 1   # šele po polnem gate-u
+
+
+def test_heal_loop_adaptive_retargets_on_full_gate_regression(tmp_path, monkeypatch):
+    """Učinkovitost — full-gate regresija (drug test Y) → re-cilja na Y."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.surgical = False
+    engine.target_test = None
+    ta = 'File "test_a.py", line 3, in test_a\nAssertionError: a'
+    tb = 'File "test_b.py", line 3, in test_b\nAssertionError: b'
+    full_res = iter([(False, ta), (False, tb), (True, "")])
+    targ_res = iter([(True, ""), (True, "")])
+    def _fake_verify(kind, targeted=False):
+        return next(targ_res) if targeted else next(full_res)
+    with mock.patch.object(engine, "_verify", side_effect=_fake_verify), \
+         mock.patch.object(engine, "_heal_once", return_value=(True, "popravil")):
+        result = engine.execute_and_heal("Popravi", spec_hint="")
+    assert result is True
+    assert engine.target_test == "test_b"   # re-target na Y
+
+
+def test_build_heal_prompt_caches_graph_rag(tmp_path, monkeypatch):
+    """Učinkovitost — render_context/retrieve_relevant se kličejo enkrat per loop."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_dir.mkdir(parents=True, exist_ok=True)
+    (engine.target_dir / "main.py").write_text("x = 1\n", encoding="utf-8")
+    with mock.patch.object(engine.graphify, "render_context", return_value="GRAF") as rc, \
+         mock.patch.object(engine.graphify, "retrieve_relevant", return_value=[]) as rr:
+        p1 = engine._build_heal_prompt("Traceback: ValueError", "Popravi")
+        p2 = engine._build_heal_prompt("Traceback: TypeError", "Popravi")
+    rc.assert_called_once()
+    rr.assert_called_once()
+    assert "Traceback: TypeError" in p2   # 2. prompt še vedno svež traceback
+
+
+def test_heal_loop_resets_counters_and_caches(tmp_path, monkeypatch):
+    """Učinkovitost — per-build reset caches + pytest števcev."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine._ctx_cache = "stale"
+    engine.pytest_runs = 99
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(engine, "_verify_python_sandbox", return_value=(True, "ok")):
+        result = engine.execute_and_heal("Zelen", spec_hint="")
+    assert result is True
+    assert engine._ctx_cache is None
+    assert engine.pytest_runs == 0
+    assert engine.pytest_full_runs == 0
+
+
+def test_pytest_counters_host(tmp_path, monkeypatch):
+    """Učinkovitost — števci ločijo targeted vs full pytest tek."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_test = "test_add"
+    monkeypatch.setattr(engine, "_docker_available", lambda: False)
+    monkeypatch.setattr("core.loopx_bridge.subprocess.run",
+                        lambda *a, **k: mock.Mock(returncode=0, stderr="", stdout="ok"))
+    ok, _ = engine._verify_python_sandbox(targeted=True)
+    assert ok is True
+    assert engine.pytest_runs == 1
+    assert engine.pytest_targeted_runs == 1
+    assert engine.pytest_full_runs == 0
+
+
 def test_module_fingerprint_zazna_spremembo(tmp_path, monkeypatch):
     """MODIFY — fingerprint zazna spremembo datoteke, ignorira __pycache__."""
     engine = _navidezni_engine(tmp_path, monkeypatch)

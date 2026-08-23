@@ -174,6 +174,13 @@ class LoopXEngineBridge:
         self.surgical = False      # SURGICAL FIX: minimalen diff, brez re-scaffolda
         self.target_test = None    # ime padlega testa za targeted verify (pytest -k)
         self.required_files: List[str] = []   # MODIFY: testi, ki jih direktiva zahteva
+        # Učinkovitost: per-build caches (render_context / retrieve_relevant) +
+        # merilni števci pytest tek (= koliko full vs targeted).
+        self._ctx_cache = None
+        self._rag_cache = None
+        self.pytest_runs = 0
+        self.pytest_targeted_runs = 0
+        self.pytest_full_runs = 0
         self._prompt_registry = None  # Zanka 3: lazy prompt-register (verzioniran prompt)
         self._skill_bridge = None     # Korak 6: lazy GStack skill bralec
         self._rollback_had_target = False  # Korak 10: je modul obstajal pred buildom?
@@ -384,6 +391,28 @@ class LoopXEngineBridge:
         tt = (self.target_test or "").strip()
         return tt if tt and re.fullmatch(r"[A-Za-z0-9_]+", tt) else None
 
+    @staticmethod
+    def _extract_failing_test(reason: str) -> str:
+        """Zadnje `test_<ime>` iz razloga (padel test). Isto pravilo kot run_review."""
+        m = re.findall(r"\b(test_[A-Za-z0-9_]+)\b", reason or "")
+        return m[-1] if m else ""
+
+    def _adopt_target_test(self, reason: str, kind: str) -> None:
+        """ADAPTIVNO ciljanje: normalni (ne-surgical) python buildi po prvi rdeči
+        prevzamejo padli test za targeted heal. Končni poln gate še vedno lovi
+        regresije (Y/Z, ki jih targeted preskoči)."""
+        if kind != "python" or self.surgical:
+            return
+        if not settings.loopx_adaptive_targeting:
+            return
+        tt = self._extract_failing_test(reason)
+        # tt je že iz regexa `test_\w+` (varni [A-Za-z0-9_]+), zato ni potreben
+        # _safe_target_test() (ki bi bral STARI target_test = None).
+        if tt and tt != self.target_test:
+            old = self.target_test or "(celoten suite)"
+            self.target_test = tt
+            print(f"[LOOPX] ADAPTIVNO ciljanje: {old} → {tt}", flush=True)
+
     def _module_fingerprint(self) -> str:
         """Prstni odtis actions/<project>/ (rel. pot + md5 vsebine) za zaznavo
         sprememb pri MODIFIKACIJAH. Izključi __pycache__/.pytest_cache/*.pyc."""
@@ -471,17 +500,37 @@ class LoopXEngineBridge:
         from core.plan_context import strip_plan_context
         memory_note = self._gather_memory_notes(strip_plan_context(directive))
         # Graf-kontekst (graphify): LLM vidi dependency pregled za ciljni modul.
-        # Varno: če render pade, nadaljujemo brez njega (ne blokiramo healinga).
-        try:
-            graph_ctx = self.graphify.render_context(self.project)
-        except Exception:
-            graph_ctx = ""
+        # Učinkovitost: cache per build (repo se med buildom ne spreminja razen
+        # targeta) — render_context/retrieve_relevant se izračunata enkrat na loop.
+        if settings.loopx_heal_prompt_cache:
+            if self._ctx_cache is None:
+                try:
+                    self._ctx_cache = self.graphify.render_context(self.project)
+                except Exception:
+                    self._ctx_cache = ""
+            graph_ctx = self._ctx_cache
+        else:
+            try:
+                graph_ctx = self.graphify.render_context(self.project)
+            except Exception:
+                graph_ctx = ""
         graph_note = f"KODNI GRAF (dependency kontekst):\n{graph_ctx}\n\n" if graph_ctx else ""
         # Code-RAG: semantično najbolj relevantne kode po celem repu (referenca za LLM).
-        try:
-            relevant = self.graphify.retrieve_relevant(directive, limit=3)
-        except Exception:
-            relevant = []
+        if settings.loopx_heal_prompt_cache:
+            if self._rag_cache is None:
+                try:
+                    self._rag_cache = self.graphify.retrieve_relevant(directive, limit=3)
+                except Exception:
+                    self._rag_cache = []
+            relevant = self._rag_cache
+        else:
+            try:
+                relevant = self.graphify.retrieve_relevant(directive, limit=3)
+            except Exception:
+                relevant = []
+        # Target lastne datoteke so že v sources (sveže vsak heal) — ne stari RAG.
+        relevant = [r for r in relevant
+                    if not str(r.get("path", "")).startswith(f"actions/{self.project}/")]
         rag_note = ""
         if relevant:
             blocks = "\n\n".join(f"// {r['path']} (podobnost {r['overlap']})\n{r['snippet']}" for r in relevant)
@@ -920,6 +969,11 @@ class LoopXEngineBridge:
         if not self._docker_available():
             env = {"PYTHONPATH": "."}
             for try_test in (test, None):
+                self.pytest_runs += 1
+                if try_test:
+                    self.pytest_targeted_runs += 1
+                else:
+                    self.pytest_full_runs += 1
                 cmd = [sys.executable, "-m", "pytest", "-v", str(self.target_dir)]
                 if try_test:
                     cmd += ["-k", try_test]
@@ -963,6 +1017,11 @@ class LoopXEngineBridge:
                 "rob-sandbox:latest",
                 "sh", "-c", shell_cmd,
             ]
+            self.pytest_runs += 1
+            if try_test:
+                self.pytest_targeted_runs += 1
+            else:
+                self.pytest_full_runs += 1
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
             except Exception as e:
@@ -1189,6 +1248,11 @@ class LoopXEngineBridge:
         self.last_reason = ""       # Zanka 2: zadnji razlog (za post-run review)
         self.last_traceback = ""    # C2: zadnji REALEN traceback (za fix nalogo)
         self._baseline_fingerprint = self._module_fingerprint()  # MODIFY: false-green guard
+        self._ctx_cache = None      # učinkovitost: reset per-build caches
+        self._rag_cache = None
+        self.pytest_runs = 0
+        self.pytest_targeted_runs = 0
+        self.pytest_full_runs = 0
         self._load_tuning()         # Zanka 3: samorazvojni parametri (max_attempts, prag)
         for attempt in range(1, self.max_attempts + 1):
             self.update_loopx_state("RUNNING", attempt)
@@ -1206,6 +1270,7 @@ class LoopXEngineBridge:
                     reason = full_reason
             if not ok:
                 self.last_traceback = reason   # C2: zadnji realen traceback, vedno svež
+                self._adopt_target_test(reason, kind)   # ADAPTIVE: vzemi padli test
             if ok:
                 # 3.5 — zelen cikel + zabeležen rekord = resnično shipped
                 self.update_loopx_state("VERIFIED_GREEN", attempt)
@@ -1296,12 +1361,15 @@ class LoopXEngineBridge:
             print(f"[WARN] vizualni QA preskočen (ni blokirno): {e}", flush=True)
 
     def _audit(self, status: str) -> None:
-        """F5 — revizijski vnos ob koncu RSI teka (z LLM-klic števcem)."""
+        """F5 — revizijski vnos ob koncu RSI teka (z LLM-klic + pytest števci)."""
         try:
             from core.audit import record
             record(
                 event="rsi-run", project=self.project, status=status,
-                llm_calls=self.llm_calls, detail=f"max_attempts={self.max_attempts}",
+                llm_calls=self.llm_calls,
+                detail=(f"max_attempts={self.max_attempts} "
+                        f"pytest={self.pytest_runs}"
+                        f"(T={self.pytest_targeted_runs},F={self.pytest_full_runs})"),
             )
         except Exception:
             pass
