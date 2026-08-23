@@ -378,6 +378,31 @@ class LoopXEngineBridge:
         tt = (self.target_test or "").strip()
         return tt if tt and re.fullmatch(r"[A-Za-z0-9_]+", tt) else None
 
+    def _module_fingerprint(self) -> str:
+        """Prstni odtis actions/<project>/ (rel. pot + md5 vsebine) za zaznavo
+        sprememb pri MODIFIKACIJAH. Izključi __pycache__/.pytest_cache/*.pyc."""
+        import hashlib
+        parts = []
+        if self.target_dir.exists():
+            for p in sorted(self.target_dir.rglob("*")):
+                if (p.is_file() and not p.name.endswith(".pyc")
+                        and "__pycache__" not in p.parts
+                        and ".pytest_cache" not in p.parts):
+                    try:
+                        h = hashlib.md5(p.read_bytes()).hexdigest()[:12]
+                    except OSError:
+                        h = "?"
+                    parts.append(f"{p.relative_to(self.target_dir)}:{h}")
+        return "|".join(parts)
+
+    def _module_changed(self) -> bool:
+        """Ali se je actions/<project>/ spremenil od začetka tega teka.
+
+        Uporablja se pri MODIFIKACIJAH (kind="modify"): če je build zelen, a nič
+        ni spremenjeno → FALSE GREEN (zahtevana sprememba ni bila izvedena).
+        """
+        return self._module_fingerprint() != getattr(self, "_baseline_fingerprint", "")
+
     def _surgical_note(self) -> str:
         """SURGICAL FIX: omejitev minimalnega diffa, vstavljena v heal prompt."""
         if not self.surgical:
@@ -1139,6 +1164,7 @@ class LoopXEngineBridge:
         self._heal_fail_count = {}  # reset števca ponavljajočih napak za ta tek
         self.last_reason = ""       # Zanka 2: zadnji razlog (za post-run review)
         self.last_traceback = ""    # C2: zadnji REALEN traceback (za fix nalogo)
+        self._baseline_fingerprint = self._module_fingerprint()  # MODIFY: false-green guard
         self._load_tuning()         # Zanka 3: samorazvojni parametri (max_attempts, prag)
         for attempt in range(1, self.max_attempts + 1):
             self.update_loopx_state("RUNNING", attempt)

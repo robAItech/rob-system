@@ -14,11 +14,11 @@ from core.actions_graph import (build_action_edges, build_runtime_chain_edges, a
 
 ROOT = Path(__file__).resolve().parents[1]
 
+# Avto-odkritje realnih modulov (moduli se dodajajo sproti — dogfood). Izključi
+# eval bugfix klone (fix_*), ki jih pytest/graf ne sme šteti.
 ALL_NAMES = {
-    "api_gateway", "audit_trail", "auth_vault", "cache_layer", "circuit_breaker",
-    "contract_schema_engine", "currency_converter", "deployment_manager", "event_bus",
-    "feature_flag", "mailer", "nexus_command_deck", "observability_metrics",
-    "rate_limiter", "rsi_engine", "saga_orchestrator", "task_queue", "warehouse_inventory",
+    d.name for d in (ROOT / "actions").iterdir()
+    if d.is_dir() and (d / "__init__.py").exists() and not d.name.startswith("fix_")
 }
 
 

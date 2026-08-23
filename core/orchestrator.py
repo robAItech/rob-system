@@ -9,11 +9,16 @@ from core.loopx_bridge import LoopXEngineBridge
 
 class RobAIOrchestrator:
     @staticmethod
-    def _phase(project: str, directive: str, label: str, goal: Optional[str] = None) -> bool:
+    def _phase(project: str, directive: str, label: str, goal: Optional[str] = None,
+               require_change: bool = False) -> bool:
         """Izvede en GStack/RSI fazni tek (gbrain → gstack → hermes → loopx).
 
         `goal` (P1): čisti cilj naloge — zapiše se v run_reviews.goal (namesto
         morebitnega [PLAN KONTEKST] prefiksa v `directive`).
+
+        `require_change` (MODIFY): modifikacijska naloga mora DEJANSKO spremeniti
+        modul — če je build zelen, a nobena datoteka ni spremenjena (false green,
+        npr. refaktor na že-zelenem modulu), se šteje kot neuspeh.
         """
         print(f"  ── Faza '{label}' zanke ──")
         # 1. GBRAIN: kontekst in prepovedani vzorci
@@ -39,6 +44,15 @@ class RobAIOrchestrator:
         # 5. LOOPX: verifikacijska + samoozdravitvena zanka
         loopx = LoopXEngineBridge(project)
         ok = loopx.execute_and_heal(directive, spec_hint=spec_hint)
+        # MODIFY guard — modifikacijska naloga mora dejansko spremeniti modul;
+        # sicer je "zelen" le potrditev obstoječega stanja → FALSE GREEN.
+        if require_change and ok and not loopx._module_changed():
+            print(f"[ORCH] modifikacija '{project}': zelen, a nobena datoteka "
+                  f"ni spremenjena (false green).", flush=True)
+            ok = False
+            loopx.last_reason = ("zelen, a nobena datoteka ni spremenjena — "
+                                 "zahtevana sprememba ni bila izvedena")
+            loopx.last_traceback = ""
         RobAIOrchestrator._post_run_review(project, directive, goal, loopx, ok, spec_hint)
         print(f"  ── Faza '{label}': {'ZELEN' if ok else 'FAIL'} ──")
         return ok
@@ -84,6 +98,23 @@ class RobAIOrchestrator:
             print(f"✅ Modul '{project}' uspešno potrjen (100% VERIFIED GREEN)!")
         else:
             print(f"❌ Napaka pri verifikaciji modula '{project}'. Traceback zablokiran v GBRAIN.")
+        return success
+
+    @staticmethod
+    def run_modify(project: str, directive: str, goal: Optional[str] = None) -> bool:
+        """MODIFY — modifikacijska naloga na OBSTOJEČEM modulu.
+
+        Kot `run`, a z `require_change=True`: če je build zelen, a nobena
+        datoteka ni spremenjena (false green — npr. "izboljšaj X" na že-zelenem
+        modulu, kjer RSI samo potrdi obstoječe stanje), se šteje kot neuspeh.
+        """
+        print(f"🔧 [MODIFY] Modifikacija modula '{project}': '{directive[:80]}'")
+        success = RobAIOrchestrator._phase(project, directive, "modifikacija",
+                                           goal=goal, require_change=True)
+        if success:
+            print(f"✅ Modul '{project}' modificiran in potrjen (sprememba izvedena).")
+        else:
+            print(f"❌ Modifikacija '{project}' neuspešna (ali ni bila izvedena nobena sprememba).")
         return success
 
     @staticmethod

@@ -1478,7 +1478,7 @@ const server = Bun.serve({
       try { body = JSON.parse(raw); } catch { /* ignore */ }
       const goal = String(body.goal || '').trim();
       if (!goal) return json({ ok: false, error: 'goal je prazen' }, 400);
-      const kind = ['python', 'markdown', 'html', 'autonomous'].includes(String(body.kind)) ? String(body.kind) : 'python';
+      const kind = ['python', 'markdown', 'html', 'autonomous', 'modify'].includes(String(body.kind)) ? String(body.kind) : 'python';
       // Dodamo prek Python agenda (poohranja isti format kot CLI).
       const proc = Bun.spawn({
         cmd: ['python', '-c', `from core.agenda import add; import json; print(json.dumps(add(${JSON.stringify(goal)}, kind=${JSON.stringify(kind)})))`],

@@ -50,6 +50,17 @@ def test_process_items_autonomous_kind_uses_run_autonomous(iso):
     assert results == [(item["id"], True)]
 
 
+def test_process_items_modify_kind_uses_run_modify(iso):
+    """MODIFY — kind='modify' → run_modify (false-green guard)."""
+    item = agenda.add("izboljšaj modul", kind="modify", target="calc", source="cli")
+    fake_modify = mock.Mock(return_value=True)
+    with mock.patch("run_swarm.RobAIOrchestrator.run_modify", fake_modify):
+        results = _process_items([item])
+
+    fake_modify.assert_called_once_with("calc", "izboljšaj modul")
+    assert results == [(item["id"], True)]
+
+
 def test_process_items_failure_marks_failed(iso):
     item = agenda.add("build modul", kind="python", target="calc", source="cli")
     with mock.patch("run_swarm.RobAIOrchestrator.run", mock.Mock(return_value=False)):

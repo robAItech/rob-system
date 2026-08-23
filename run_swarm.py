@@ -61,6 +61,10 @@ def _process_items(items: list) -> list:
                 # (brez re-scaffolda), targeted verify na padli test (`test=`).
                 ok = RobAIOrchestrator.run_surgical(it["target"], it["goal"],
                                                     target_test=it.get("test"))
+            elif it.get("kind") == "modify":
+                # MODIFY — modifikacija obstoječega modula: zahteva dejansko
+                # spremembo (false-green guard, če RSI samo potrdi zeleno stanje).
+                ok = RobAIOrchestrator.run_modify(it["target"], it["goal"])
             elif it.get("kind") == "autonomous":
                 ok = RobAIOrchestrator.run_autonomous(it["target"], it["goal"])
             else:

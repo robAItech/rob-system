@@ -525,6 +525,22 @@ def test_build_heal_prompt_diagnose_first(tmp_path, monkeypatch):
     assert "DIAGNOSTIKA PRED POPRAVKOM" not in prompt2
 
 
+def test_module_fingerprint_zazna_spremembo(tmp_path, monkeypatch):
+    """MODIFY — fingerprint zazna spremembo datoteke, ignorira __pycache__."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_dir.mkdir(parents=True, exist_ok=True)
+    (engine.target_dir / "calc.py").write_text("x = 1\n", encoding="utf-8")
+    f1 = engine._module_fingerprint()
+    (engine.target_dir / "calc.py").write_text("x = 2\n", encoding="utf-8")
+    f2 = engine._module_fingerprint()
+    assert f1 != f2
+    # __pycache__ ne sme vplivati na fingerprint
+    pc = engine.target_dir / "__pycache__"
+    pc.mkdir()
+    (pc / "calc.cpython-311.pyc").write_bytes(b"stale")
+    assert engine._module_fingerprint() == f2
+
+
 def test_execute_and_heal_uspeh_po_healingu(tmp_path, monkeypatch):
     """3.1 — po enem uspešnem popravku naslednji cikel postane zelen."""
     engine = _navidezni_engine(tmp_path, monkeypatch)

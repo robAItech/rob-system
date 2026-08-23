@@ -10,7 +10,7 @@ from unittest import mock
 from core.orchestrator import RobAIOrchestrator
 
 
-def _fake_loopx_cls(ok, db_path, last_reason="", last_traceback=""):
+def _fake_loopx_cls(ok, db_path, last_reason="", last_traceback="", changed=True):
     class _Fake:
         _detect_kind = staticmethod(lambda goal: "python")
         def __init__(self, project):
@@ -22,10 +22,12 @@ def _fake_loopx_cls(ok, db_path, last_reason="", last_traceback=""):
             self.max_attempts = 5
         def execute_and_heal(self, directive, spec_hint=""):
             return ok
+        def _module_changed(self):
+            return changed
     return _Fake
 
 
-def _phase_with(fake_loopx_cls, reviewer):
+def _phase_with(fake_loopx_cls, reviewer, require_change=False):
     with mock.patch("core.orchestrator.GBrainBridge",
                     return_value=mock.Mock(get_blacklists=lambda p: [])), \
          mock.patch("core.orchestrator.GraphifyBridge",
@@ -38,7 +40,8 @@ def _phase_with(fake_loopx_cls, reviewer):
                     return_value=mock.Mock(write_initial_stubs_if_missing=lambda: None)), \
          mock.patch("core.orchestrator.LoopXEngineBridge", fake_loopx_cls), \
          mock.patch("core.run_review.RunReviewer", return_value=reviewer):
-        return RobAIOrchestrator._phase("fixdemo", "Popravi add", "implementacija")
+        return RobAIOrchestrator._phase("fixdemo", "Popravi add", "implementacija",
+                                        require_change=require_change)
 
 
 def test_failed_phase_enqueues_fix_task(tmp_path):
@@ -150,3 +153,58 @@ def test_run_surgical_missing_module_falls_back_to_phase(tmp_path):
         ok = RobAIOrchestrator.run_surgical("nonexistent_proj", "Popravi", target_test="test_x")
     assert ok is True
     phase.assert_called_once()
+
+
+# --------------------------------------------------------------------------- #
+#  MODIFY — false-green guard (zahteva dejansko spremembo)
+# --------------------------------------------------------------------------- #
+
+def test_phase_require_change_false_green(tmp_path):
+    """MODIFY — build zelen, a modul nespremenjen → FALSE GREEN (neuspeh)."""
+    db = tmp_path / "memory.db"
+    reviewer = mock.Mock()
+    reviewer.review.return_value = {"outcome": "failed", "root_cause": "recurring_error",
+                                    "next_step": "change_approach", "next_step_hint": "h",
+                                    "lesson": "lekcija"}
+    ok = _phase_with(_fake_loopx_cls(True, db, changed=False), reviewer, require_change=True)
+    assert ok is False
+    # review dobi outcome=failed (ne zelen)
+    run = reviewer.review.call_args[0][0]
+    assert run["outcome"] == "failed"
+
+
+def test_phase_require_change_change_made(tmp_path):
+    """MODIFY — build zelen IN modul spremenjen → uspeh."""
+    db = tmp_path / "memory.db"
+    reviewer = mock.Mock()
+    reviewer.review.return_value = {"outcome": "green", "root_cause": "correct"}
+    ok = _phase_with(_fake_loopx_cls(True, db, changed=True), reviewer, require_change=True)
+    assert ok is True
+    run = reviewer.review.call_args[0][0]
+    assert run["outcome"] == "green"
+
+
+def test_run_modify_false_green(tmp_path, monkeypatch):
+    """MODIFY end-to-end (mock pipeline): zelen + _module_changed False → False."""
+    _surgical_module(tmp_path, monkeypatch)
+    fake_loopx = mock.Mock()
+    fake_loopx.execute_and_heal.return_value = True
+    fake_loopx._module_changed.return_value = False
+    fake_loopx.last_reason = ""
+    fake_loopx.last_traceback = ""
+    fake_loopx.llm_calls = 1
+    fake_loopx.max_attempts = 5
+    fake_loopx.gbrain = mock.Mock(db_path=tmp_path / "memory.db")
+    reviewer = mock.Mock()
+    reviewer.review.return_value = {"outcome": "failed", "root_cause": "recurring_error",
+                                    "next_step": "change_approach", "next_step_hint": "h",
+                                    "lesson": "x"}
+    from core.orchestrator import RobAIOrchestrator
+    with mock.patch("core.orchestrator.LoopXEngineBridge", return_value=fake_loopx), \
+         mock.patch("core.orchestrator.GBrainBridge",
+                    return_value=mock.Mock(get_blacklists=lambda p: [])), \
+         mock.patch("core.orchestrator.GraphifyBridge",
+                    return_value=mock.Mock(build_code_graph=lambda: None)), \
+         mock.patch("core.run_review.RunReviewer", return_value=reviewer):
+        ok = RobAIOrchestrator.run_modify("surgical_proj", "Izboljšaj modul")
+    assert ok is False
