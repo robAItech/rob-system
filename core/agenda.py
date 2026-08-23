@@ -44,11 +44,16 @@ def _save(items: list) -> None:
 
 
 def add(goal: str, kind: str = "python", target: str | None = None,
-        repeat: str | None = None, source: str | None = None) -> dict:
+        repeat: str | None = None, source: str | None = None,
+        **extra) -> dict:
     """Doda naročilo v čakalno vrsto. Vrne novo naročilo.
 
     `source` (opcijsko): od koder naloga (dashboard | cli | gmail | voice) — za
     sledenje izvora na dashboardu. Ne vpliva na obdelavo.
+
+    `extra` (opcijsko): poljubna dodatna polja na itemu — npr. fix naloga
+    (source="fix_loop") nosi `test=<ime padlega testa>` strukturno, da
+    `run_surgical` ve, kateri test ciljno verifikirati.
     """
     items = _load()
     item = {
@@ -63,6 +68,7 @@ def add(goal: str, kind: str = "python", target: str | None = None,
     }
     if source:
         item["source"] = source
+    item.update(extra)         # extra zmaga ob teoretičnem kolapsu ključev
     items.append(item)
     _save(items)
     return item

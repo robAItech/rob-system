@@ -218,3 +218,15 @@ def test_extract_failing_test():
     assert RunReviewer._extract_failing_test(
         'File "test_billing.py", line 3, in test_billing\nValueError') == "test_billing"
     assert RunReviewer._extract_failing_test("") == ""
+
+
+def test_maybe_enqueue_fix_passes_test_field(tmp_path, iso_agenda):
+    """SURGICAL — fix item nosi `test=<ime>` strukturno (za targeted verify)."""
+    r = RunReviewer(tmp_path / "memory.db")
+    run = {"project": "billing", "directive": "zgradi obračun", "outcome": "failed",
+           "task_type": "python",
+           "last_traceback": 'File "test_billing.py", line 3, in test_billing\nValueError: bad'}
+    review = r.review({**run, "traceback": "ista napaka ValueError po 3 poskusih"})
+    item = r.maybe_enqueue_fix(run, review)
+    assert item is not None
+    assert item["test"] == "test_billing"

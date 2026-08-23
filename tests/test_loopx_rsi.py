@@ -263,6 +263,163 @@ def test_lock_is_stale_prazna_datoteka(tmp_path, monkeypatch):
     assert engine._lock_is_stale(lock) is True
 
 
+# --------------------------------------------------------------------------- #
+#  SURGICAL FIX — targeted verifikacija + no-regression gate
+# --------------------------------------------------------------------------- #
+
+def test_safe_target_test(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_test = "test_add"
+    assert engine._safe_target_test() == "test_add"
+    engine.target_test = "a b;rm -rf /"      # shell-injection → zavrni
+    assert engine._safe_target_test() is None
+    engine.target_test = ""
+    assert engine._safe_target_test() is None
+
+
+def test_build_heal_prompt_surgical_note(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    (engine.target_dir / "main.py").write_text("x = 1\n", encoding="utf-8")
+    engine.surgical = True
+    engine.target_test = "test_add"
+    prompt = engine._build_heal_prompt("ValueError: bad", "Popravi add")
+    assert "SURGICAL FIX NAČIN" in prompt
+    assert "test_add" in prompt
+    engine.surgical = False
+    prompt2 = engine._build_heal_prompt("ValueError: bad", "Popravi add")
+    assert "SURGICAL FIX NAČIN" not in prompt2
+
+
+def test_verify_targeted_dispatch(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    fake_sandbox = mock.Mock(return_value=(True, ""))
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(engine, "_verify_python_sandbox", fake_sandbox):
+        ok, _ = engine._verify("python", targeted=True)
+    assert ok is True
+    fake_sandbox.assert_called_once_with(targeted=True)
+
+
+def test_verify_python_sandbox_host_targeted(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_test = "test_add"
+    monkeypatch.setattr(engine, "_docker_available", lambda: False)
+    captured = []
+    def _fake_run(cmd, **k):
+        captured.append(cmd)
+        return mock.Mock(returncode=0, stderr="", stdout="ok")
+    monkeypatch.setattr("core.loopx_bridge.subprocess.run", _fake_run)
+    ok, _ = engine._verify_python_sandbox(targeted=True)
+    assert ok is True
+    assert any("-k" in c and "test_add" in c for c in captured)
+
+
+def test_verify_python_sandbox_sandbox_targeted(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_test = "test_add"
+    monkeypatch.setattr(engine, "_docker_available", lambda: True)
+    captured = []
+    def _fake_run(cmd, **k):
+        captured.append(cmd)
+        return mock.Mock(returncode=0, stderr="", stdout="ok")
+    monkeypatch.setattr("core.loopx_bridge.subprocess.run", _fake_run)
+    ok, _ = engine._verify_python_sandbox(targeted=True)
+    assert ok is True
+    shell_cmd = captured[0][-1]   # docker cmd zadnji element = "sh -c <shell_cmd>"
+    assert " -k test_add" in shell_cmd
+
+
+def test_verify_python_sandbox_rc5_falls_back_to_full(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_test = "test_add"
+    monkeypatch.setattr(engine, "_docker_available", lambda: False)
+    runs = iter([
+        mock.Mock(returncode=5, stderr="no tests ran", stdout=""),   # -k test_add → rc=5
+        mock.Mock(returncode=0, stderr="", stdout="ok"),             # poln → rc=0
+    ])
+    captured = []
+    def _fake_run(cmd, **k):
+        captured.append(cmd)
+        return next(runs)
+    monkeypatch.setattr("core.loopx_bridge.subprocess.run", _fake_run)
+    ok, _ = engine._verify_python_sandbox(targeted=True)
+    assert ok is True
+    assert len(captured) == 2
+    assert "-k" in captured[0] and "test_add" in captured[0]
+    assert "-k" not in captured[1]   # fallback na poln (brez -k)
+
+
+def test_heal_loop_surgical_targeted_then_full_green(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.surgical = True
+    engine.target_test = "test_add"
+    targeted_results = iter([
+        (False, 'File "test_add.py", line 3, in test_add\nValueError: bad'),
+        (True, ""),
+    ])
+    def _fake_verify(kind, targeted=False):
+        return next(targeted_results) if targeted else (True, "")
+    with mock.patch.object(engine, "_verify", side_effect=_fake_verify), \
+         mock.patch.object(engine, "_heal_once", return_value=(True, "popravil main.py")), \
+         mock.patch.object(engine.gbrain, "record_task") as rec:
+        result = engine.execute_and_heal("Popravi add", spec_hint="")
+    assert result is True
+    green = [c for c in rec.call_args_list if len(c[0]) > 2 and c[0][2] == "VERIFIED GREEN"]
+    assert len(green) == 1   # zelen ŠELE po polnem gate-u
+
+
+def test_heal_loop_surgical_full_failure_repeat_abort(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.surgical = True
+    engine.target_test = "test_add"
+    def _fake_verify(kind, targeted=False):
+        if targeted:
+            return (True, "")   # ciljni vedno zelen
+        return (False, 'File "test_b.py", line 5, in test_b\nValueError: bad')  # poln vedno rdeč
+    with mock.patch.object(engine, "_verify", side_effect=_fake_verify), \
+         mock.patch.object(engine, "_heal_once", return_value=(False, "x")):
+        result = engine.execute_and_heal("Popravi add", spec_hint="")
+    assert result is False
+    reg = Path(tmp_path / ".loopx" / "registry.json")
+    with reg.open(encoding="utf-8") as f:
+        state = json.load(f)
+    assert state["status"] == "FAILED"
+    assert state["current_attempt"] == engine.REPEAT_ABORT_AFTER
+    assert "test_b" in engine.last_traceback   # heal-target je bil POLN failure
+
+
+def test_surgical_fix_e2e_host_pytest(tmp_path, monkeypatch):
+    """E2E SURGICAL — real pytest (host fallback), mock heal: minimalen popravek
+    (samo calc.py → a+b), brez re-scaffolda (brez main.py/schemas.py), targeted
+    -> full gate, GREEN šele ko cel suite preide."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_dir.mkdir(parents=True, exist_ok=True)
+    (engine.target_dir / "__init__.py").write_text("", encoding="utf-8")
+    (engine.target_dir / "calc.py").write_text(
+        "def add(a, b):\n    return a - b\n", encoding="utf-8")
+    (engine.target_dir / "test_calc.py").write_text(
+        "from .calc import add\n\n\ndef test_add():\n    assert add(2, 3) == 5\n",
+        encoding="utf-8")
+    engine.surgical = True
+    engine.target_test = "test_add"
+    monkeypatch.setattr(engine, "_docker_available", lambda: False)
+
+    def _fake_heal_once(reason, directive, kind):
+        # Kirurški popravek: samo calc.py, struktura modula nespremenjena.
+        (engine.target_dir / "calc.py").write_text(
+            "def add(a, b):\n    return a + b\n", encoding="utf-8")
+        return True, "popravil calc.py"
+
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(engine, "_heal_once", side_effect=_fake_heal_once):
+        result = engine.execute_and_heal("Popravi add", spec_hint="")
+
+    assert result is True
+    assert "a + b" in (engine.target_dir / "calc.py").read_text(encoding="utf-8")
+    files = sorted(p.name for p in engine.target_dir.iterdir() if not p.name.startswith("__pycache__"))
+    assert files == ["__init__.py", "calc.py", "test_calc.py"]  # brez re-scaffolda
+
+
 def test_execute_and_heal_uspeh_po_healingu(tmp_path, monkeypatch):
     """3.1 — po enem uspešnem popravku naslednji cikel postane zelen."""
     engine = _navidezni_engine(tmp_path, monkeypatch)

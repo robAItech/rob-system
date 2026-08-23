@@ -340,7 +340,10 @@ class RunReviewer:
             test = self._extract_failing_test(
                 run.get("last_traceback") or run.get("traceback") or "")
             directive = self._build_fix_directive(run, review, test)
-            return agenda.add(directive, kind="python", target=target, source=FIX_SOURCE)
+            # test= nosi strukturno (ne samo v direktivi): run_surgical ga uporabi
+            # za targeted verifikacijo (`pytest -k <test>`). Prazen → poln suite.
+            return agenda.add(directive, kind="python", target=target,
+                              source=FIX_SOURCE, test=test)
         except Exception as e:
             print(f"[RUN-REVIEW] enqueue fix preskočen ({e})", flush=True)
             return None

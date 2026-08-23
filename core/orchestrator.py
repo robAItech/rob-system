@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 from core.gbrain_bridge import GBrainBridge
@@ -38,7 +39,15 @@ class RobAIOrchestrator:
         # 5. LOOPX: verifikacijska + samoozdravitvena zanka
         loopx = LoopXEngineBridge(project)
         ok = loopx.execute_and_heal(directive, spec_hint=spec_hint)
-        # Zanka 2 — post-run samoevalvacija (P1: vedno, uspeh IN neuspeh; ne blokira).
+        RobAIOrchestrator._post_run_review(project, directive, goal, loopx, ok, spec_hint)
+        print(f"  ── Faza '{label}': {'ZELEN' if ok else 'FAIL'} ──")
+        return ok
+
+    @staticmethod
+    def _post_run_review(project: str, directive: str, goal: Optional[str],
+                         loopx, ok: bool, spec_hint: str) -> None:
+        """Zanka 2 — post-run samoevalvacija + C2 fix-enqueue (deljeno: _phase in
+        run_surgical). Nikoli ne blokira builda."""
         run = {
             "project": project,
             "directive": directive,
@@ -65,8 +74,6 @@ class RobAIOrchestrator:
                 RunReviewer(loopx.gbrain.db_path).maybe_enqueue_fix(run, review_result)
             except Exception as e:
                 print(f"[ORCH] enqueue fix preskočen: {e}", flush=True)
-        print(f"  ── Faza '{label}': {'ZELEN' if ok else 'FAIL'} ──")
-        return ok
 
     @staticmethod
     def run(project: str, directive: str) -> bool:
@@ -78,6 +85,38 @@ class RobAIOrchestrator:
         else:
             print(f"❌ Napaka pri verifikaciji modula '{project}'. Traceback zablokiran v GBRAIN.")
         return success
+
+    @staticmethod
+    def run_surgical(project: str, directive: str, target_test: Optional[str] = None,
+                     goal: Optional[str] = None) -> bool:
+        """C2/SURGICAL — kirurški popravek obstoječega modula (fix naloga).
+
+        Reduciran RSI tek: gbrain (blacklisti) + graphify (svež graf) za kontekst,
+        nato LoopX v surgical načinu — BREZ gstack manifesta (spec_hint="") in BREZ
+        hermes stubov, da LLM ne re-scaffolda celega modula. Targeted verifikacija
+        (`pytest -k <test>`) med healom + poln no-regression gate na koncu.
+        """
+        print(f"  ── SURGICAL FIX za '{project}' (target test: {target_test or 'cel suite'}) ──")
+        # Varnost: če modul ne obstaja (ali nima .py), ni kaj kirurško popraviti → poln build.
+        target_dir = Path(f"actions/{project}")
+        if not target_dir.exists() or not list(target_dir.glob("*.py")):
+            print(f"[ORCH] '{project}' nima obstoječih .py — surgical ni možen; poln build.",
+                  flush=True)
+            return RobAIOrchestrator._phase(project, directive, "implementacija", goal=goal)
+        # 1. GBRAIN + GRAPHIFY kontekst (svež graf — vključi morebitno sveže bugirano kopijo).
+        try:
+            GBrainBridge().get_blacklists(project)
+            GraphifyBridge().build_code_graph()
+        except Exception:
+            pass
+        # 2. LOOPX v surgical načinu.
+        loopx = LoopXEngineBridge(project)
+        loopx.surgical = True
+        loopx.target_test = (target_test or "").strip() or None
+        ok = loopx.execute_and_heal(directive, spec_hint="")
+        # 3. Post-run samoevalvacija + C2 (neuspeh → nov fix item do FIX_MAX_ATTEMPTS).
+        RobAIOrchestrator._post_run_review(project, directive, goal, loopx, ok, spec_hint="")
+        return ok
 
     @staticmethod
     def run_autonomous(project: str, goal: str, context: Optional[str] = None) -> bool:

@@ -165,6 +165,8 @@ class LoopXEngineBridge:
         self.llm_calls = 0   # F5: števec LLM klicev za revizijo in cost-zavarovanje
         self._heal_fail_count: Dict[str, int] = {}   # error_signature → štev ponovitev v teku
         self.last_traceback = ""   # Z2/C2: zadnji REALEN traceback (za fix nalogo)
+        self.surgical = False      # SURGICAL FIX: minimalen diff, brez re-scaffolda
+        self.target_test = None    # ime padlega testa za targeted verify (pytest -k)
         self._prompt_registry = None  # Zanka 3: lazy prompt-register (verzioniran prompt)
         self._skill_bridge = None     # Korak 6: lazy GStack skill bralec
         self._rollback_had_target = False  # Korak 10: je modul obstajal pred buildom?
@@ -363,6 +365,31 @@ class LoopXEngineBridge:
             )
         return learned_note + cons_note
 
+    def _safe_target_test(self) -> Optional[str]:
+        """Samo varni test-names (identifiers) za `pytest -k`; sicer None → poln suite.
+
+        Varnost: `-k` gre v shell (sh -c) v sandboxu — dovoli le [A-Za-z0-9_].
+        """
+        tt = (self.target_test or "").strip()
+        return tt if tt and re.fullmatch(r"[A-Za-z0-9_]+", tt) else None
+
+    def _surgical_note(self) -> str:
+        """SURGICAL FIX: omejitev minimalnega diffa, vstavljena v heal prompt."""
+        if not self.surgical:
+            return ""
+        tt = self.target_test or "(celoten suite)"
+        return (
+            "SURGICAL FIX NAČIN (OBVEZNO):\n"
+            "To je POPRAVEK obstoječega modula, NE nova gradnja. "
+            "Naredi MINIMALNO spremembo samo tistega dela kode, ki poganja padli test.\n"
+            "- Vrni samo datoteke, ki se morajo SPREMENITI (obstoječe; NOBENE nove datoteke).\n"
+            "- Ne prestrukturiraj modula in ne spreminjaj delujočih funkcij/uvozov/razredov, "
+            "ki niso del napake.\n"
+            "- Ne dodajaj novih datotek (npr. main.py, schemas.py, novih testov).\n"
+            f"- Ciljni padli test: <{tt}>. Popravi SAMO njegovo kodno pot.\n"
+            "- Zeleno merilo: ciljni test + CELOTEN obstoječi test suite ostaneta zelena.\n\n"
+        )
+
     def _build_heal_prompt(self, traceback: str, directive: str, kind: str = "python") -> str:
         """Sestavi heal prompt: sources + direktiva + spec/memory/graph/rag + traceback + out_note.
 
@@ -401,7 +428,7 @@ class LoopXEngineBridge:
         # P0 — spec_hint: arhitekturna usmeritev iz GStack manifesta. Korak 3: cap 4000.
         spec_hint = getattr(self, "spec_hint", None) or ""
         spec_note = f"SPEC (arhitekturna usmeritev izvedbe):\n{spec_hint[:4000]}\n\n" if spec_hint else ""
-        notes = spec_note + memory_note + graph_note + rag_note
+        notes = self._surgical_note() + spec_note + memory_note + graph_note + rag_note
         directive_note = f"DIREKTIVA (kaj naj izdelek dejansko vsebuje):\n{directive[:3000]}\n\n"
         traceback_note = f"Razlog verifikacije (doseči je treba zelen):\n{traceback[:8000]}\n\n"
 
@@ -772,63 +799,75 @@ class LoopXEngineBridge:
         except Exception:
             return False
 
-    def _verify_python_sandbox(self) -> Tuple[bool, str]:
+    def _verify_python_sandbox(self, targeted: bool = False) -> Tuple[bool, str]:
         """Tier 1 — izvedba pytest v efemernem Docker peskovniku.
+
+        `targeted` (SURGICAL FIX): požene le ciljni test (`pytest -k <test>`);
+        če `-k` ne ujame nič (rc=5, zastarelo ime), pade nazaj na poln suite za
+        ta check, da se verifikacija ne ustavi.
 
         Varnostna meja: kontejner vidi SAMO ./actions, ima --network none
         (brez omrežja → ne more namestiti zlonamernih paketov / klicati ven),
         --read-only koren (ne more pisati po OS) in se uniči po teku (--rm).
         Če Docker ni na voljo → PADE NA HOST z jasno oznako »NI IZOLIRANO«.
         """
+        test = self._safe_target_test() if targeted else None
+
+        # ---- HOST fallback (NI IZOLIRANO) —------------------------------ #
         if not self._docker_available():
             env = {"PYTHONPATH": "."}
-            result = subprocess.run(
-                [sys.executable, "-m", "pytest", "-v", str(self.target_dir)],
-                capture_output=True, text=True,
-                env=dict(subprocess.os.environ, **env),
-            )
-            msg = result.stderr or result.stdout or "pytest ni zelen"
-            return result.returncode == 0, f"[NI IZOLIRANO — host] {msg[:400]}"
+            for try_test in (test, None):
+                cmd = [sys.executable, "-m", "pytest", "-v", str(self.target_dir)]
+                if try_test:
+                    cmd += ["-k", try_test]
+                result = subprocess.run(cmd, capture_output=True, text=True,
+                                        env=dict(subprocess.os.environ, **env))
+                if try_test and result.returncode == 5:
+                    # `-k` ni ujel testa (rc=5) → ponovi s polnim suiteom za ta check.
+                    print(f"[LOOPX] -k {try_test} ni ujel testa (rc=5) → poln suite.",
+                          flush=True)
+                    continue
+                msg = result.stderr or result.stdout or "pytest ni zelen"
+                return result.returncode == 0, f"[NI IZOLIRANO — host] {msg[:400]}"
+            return False, "[NI IZOLIRANO — host] pytest ni zelen (rc=5)"
 
-        # Sandbox: slika 'rob-sandbox' naj bo zgrajena prek Dockerfile.sandbox
-        # (python:3.11-slim + pytest). Runtime: brez omrežja, read-only, samo ./actions.
-        # mount ./actions → /work (V work JE actions koren, ne celoten projekt).
-        # Uporabi `sh -c "cd /work && pytest ..."` namesto `-w /work`, ker -w /work
-        # v nekaterih okoljih (Git Bash / MSYS) pretvori /work v Windows path.
+        # ---- Sandbox ----------------------------------------------------- #
+        # Slika 'rob-sandbox' zgrajena prek Dockerfile.sandbox (python:3.11-slim
+        # + pytest). Runtime: brez omrežja, read-only, samo ./actions. Mount
+        # ./actions → /work/actions (NE /work), da `from actions.<mod> import X`
+        # deluje tudi znotraj sandboxa. `sh -c "cd /work && pytest ..."` (ne -w
+        # /work — v Git Bash/MSYS pretvori /work v Windows path).
         cwd = Path.cwd()
         actions_abs = (cwd / "actions").resolve()
         target_name = self.target_dir.name  # e.g. 'sbtest' (zadnji segment)
-        # Mount actions/ na /work/actions (NE /work), da `from actions.<mod> import X`
-        # — konvencija vseh modulskih testov — deluje tudi znotraj sandboxa.
         vol = f"{actions_abs}:/work/actions"
-        shell_cmd = f"cd /work && python -m pytest -v /work/actions/{target_name}"
-        # --tmpfs /tmp:noexec,nosuid,size=64m → pytest lahko piše temp v RAM,
-        # ampak tam ne izvaja kode (noexec) in ni persistent (tmpfs). Koren OS
-        # ostane --read-only. (name izpustimo --user, ker na Windows-host volume
-        # uid 1000 ne bi prebral datotek → 'collected 0 items'.)
-        # P2 — Sandbox hardening: omeji porabo vira, da LLM-generirana koda ne
-        # more povzročiti resource-exhaustion. 512 MB RAM, 1 CPU, nofile=256
-        # (omejitev odprtih datotek), /tmp tmpfs še vedno noexec (nobene kode
-        # iz RAM). GNU timeout podvojimo na 180 s za večje testne module, ampak
-        # cgroups (--memory/--cpus) so glavni ščit pred divjo porabo.
-        cmd = [
-            "docker", "run", "--rm", "--network", "none", "--read-only",
-            "--security-opt", "no-new-privileges",
-            "--memory", "512m",
-            "--memory-swap", "512m",          # brez swap -> cgroups mora delovati v RAM
-            "--cpus", "1",
-            "--ulimit", "nofile=256:256",
-            "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
-            "-v", vol,
-            "rob-sandbox:latest",
-            "sh", "-c", shell_cmd,
-        ]
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        except Exception as e:
-            return False, f"[Docker sandbox napaka] {e}"
-        msg = result.stderr or result.stdout or "pytest ni zelen"
-        return result.returncode == 0, f"[sandbox] {msg[:400]}"
+        for try_test in (test, None):
+            shell_cmd = f"cd /work && python -m pytest -v /work/actions/{target_name}"
+            if try_test:
+                shell_cmd += f" -k {try_test}"
+            cmd = [
+                "docker", "run", "--rm", "--network", "none", "--read-only",
+                "--security-opt", "no-new-privileges",
+                "--memory", "512m",
+                "--memory-swap", "512m",          # brez swap -> cgroups v RAM
+                "--cpus", "1",
+                "--ulimit", "nofile=256:256",
+                "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+                "-v", vol,
+                "rob-sandbox:latest",
+                "sh", "-c", shell_cmd,
+            ]
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            except Exception as e:
+                return False, f"[Docker sandbox napaka] {e}"
+            if try_test and result.returncode == 5:
+                print(f"[LOOPX] -k {try_test} ni ujel testa (rc=5) → poln suite.",
+                      flush=True)
+                continue
+            msg = result.stderr or result.stdout or "pytest ni zelen"
+            return result.returncode == 0, f"[sandbox] {msg[:400]}"
+        return False, "[sandbox] pytest ni zelen (rc=5)"
 
     # ------------------------------------------------------------------ #
     #  P3 — Ruff v verigo (F821 pre-gate pred pytest).
@@ -863,14 +902,15 @@ class LoopXEngineBridge:
         return False, f"[ruff:F821] nedefiniran(i) symbol(i) pred pytest: {msg[:500]}"
 
     # F1 — verifikacija glede na vrsto izdelka. Vrne (pass, napis).
-    def _verify(self, kind: str) -> Tuple[bool, str]:
+    # `targeted` (SURGICAL FIX): python → pytest -k <target_test> (samo padel test).
+    def _verify(self, kind: str, targeted: bool = False) -> Tuple[bool, str]:
         if kind == "python":
             # P3 — Ruff pre-gate (F821) najprej; če pade, LLM dobi razlog brez
             # da bi se kuril Docker. Sicer gremo na pytest sandbox.
             ok, ruff_msg = self._verify_ruff()
             if not ok:
                 return False, ruff_msg
-            return self._verify_python_sandbox()
+            return self._verify_python_sandbox(targeted=targeted)
         if kind == "markdown":
             # Zelen = obstaja vsaj ena .md datoteka z naslovom (ni prazen stub).
             mds = list(self.target_dir.glob("*.md"))
@@ -1035,7 +1075,16 @@ class LoopXEngineBridge:
             self.update_loopx_state("RUNNING", attempt)
 
             # F1: verifikacija glede na vrsto izdelka (python→pytest, md/html→struktura).
-            ok, reason = self._verify(kind)
+            # SURGICAL FIX: najprej TARGETED (samo padel test — hitro), nato poln
+            # no-regression gate. Heal gre proti razlogu, ki je dejanski heal-target
+            # (targeted failure ALI poln failure, če je targeted šel skozi).
+            ok, reason = (self._verify(kind, targeted=True) if self.target_test
+                          else self._verify(kind))
+            if ok and self.target_test:
+                full_ok, full_reason = self._verify(kind, targeted=False)
+                if not full_ok:
+                    ok = False
+                    reason = full_reason
             if not ok:
                 self.last_traceback = reason   # C2: zadnji realen traceback, vedno svež
             if ok:

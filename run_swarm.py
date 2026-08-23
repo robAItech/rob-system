@@ -56,7 +56,12 @@ def _process_items(items: list) -> list:
         print(f"  ▶ obdelujem: {it['id']} · {it['goal'][:60]}")
         mark(it["id"], "running")
         try:
-            if it.get("kind") == "autonomous":
+            if it.get("source") == "fix_loop":
+                # C2/SURGICAL — fix naloga: kirurški popravek obstoječega modula
+                # (brez re-scaffolda), targeted verify na padli test (`test=`).
+                ok = RobAIOrchestrator.run_surgical(it["target"], it["goal"],
+                                                    target_test=it.get("test"))
+            elif it.get("kind") == "autonomous":
                 ok = RobAIOrchestrator.run_autonomous(it["target"], it["goal"])
             else:
                 ok = RobAIOrchestrator.run(it["target"], it["goal"])

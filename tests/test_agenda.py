@@ -45,3 +45,15 @@ def test_pending_iz_gmail_ni_avtomatsko_obdelan(iso):
     assert len(p) == 1
     # ni statusa running/done → ni bil samodejno obdelan
     assert p[0]["status"] == "pending"
+
+
+def test_add_extra_polja_se_zdruzijo(iso):
+    """SURGICAL — fix naloga nosi test= strukturno (ne samo v direktivi)."""
+    item = agenda.add("fix billing", kind="python", target="billing",
+                      source="fix_loop", test="test_billing")
+    assert item["test"] == "test_billing"
+    # persistirano v datoteki
+    assert agenda.all_()[0]["test"] == "test_billing"
+    # običajni klici (brez extra) delujejo naprej
+    item2 = agenda.add("Obdelaj", kind="python")
+    assert "test" not in item2
