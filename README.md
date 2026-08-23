@@ -301,7 +301,7 @@ Dosežene faze:
 | **F4** | Trajni RSI spomin (samorazvoj / RDI) — LLM se uči iz napak |
 | **F5** | Revizijski dnevnik + števec LLM-klicov (nadzor stroškov) |
 | **F6** | Poslovni avtomat: ideja → predlog → glavna knjiga (prilivi/stranke) |
-| **P0** | SWE-bench stila samo-eval avtonomnosti — eval lestvica (**14 case-ov**: 8 funkcijskih/Pydantic/FastAPI/avtonomnih + **6 realnih bugfix na zlatih modulih**), `evaluate_autonomy.py` meri prehod rate; **PR gate + nočni eval v CI** |
+| **P0** | SWE-bench stila samo-eval avtonomnosti — eval lestvica (**14 case-ov**: 8 funkcijskih/Pydantic/FastAPI/avtonomnih + **6 realnih bugfix na zlatih modulih**), `evaluate_autonomy.py` meri prehod rate; **PR gate + nočni eval v CI** — **rezultat 14/14 (100 %)** |
 | **P1** | Avtonomni daemon (24/7 master proces): prazni agendo, sam predlaga naloge (goal autonomy), teče periodične jobe, heartbeat `.rob_ai/daemon.json` |
 | **P2** | Zapri zanko neuspeha: fail-fast (ostri podpis), fix-task v agendo (konzumira `next_step`), poštena metrika iz `run_reviews` |
 | **P3** | Surgical fix + diagnose-first: minimalen diff brez re-scaffolda, targeted verifikacija, dejanski vzrok iz pytest izhoda (ne glava) |
@@ -310,6 +310,32 @@ Dosežene faze:
 | **P6** | **P1 konsolidacija prek daemona**: String Core (`slugify`+`truncate_text`+`text_proc` → `string_ops`) + Config Core (`env_config`+`ini_config`+`config_manager` → `config_loader`) — 6 → 2 modulov, daemon zgradil z Test-Locked testi |
 | **P7** | **Paralelni daemon**: `DAEMON_WORKERS=N` sočasnih nalog (subprocesov `run_swarm.py --item`) — distinct targets, cross-process lock v agendi, tick samo ko idle, drain-on-stop. 2-4× prepustnost |
 | **P8** | **Učinkovitost**: adaptivno ciljanje (heali tečejo samo `-k <padel test>`, poln gate za regresije) + caching graph/RAG per build — 2-3× ceneje na nalogo |
+
+### 🎯 P0 Eval rezultat — 14/14 (100 %)
+
+**23. 8. 2026 — poln 14-case eval (realni LLM + Docker sandbox, SWE-bench stil):**
+
+| # | Case | Tip | RSI | Preveri |
+|---|---|---|---|---|
+| 1 | fizzbuzz | function | ✅ ZELEN | 6/6 |
+| 2 | divide_safe | function | ✅ ZELEN | 5/5 |
+| 3 | count_words | function | ✅ ZELEN | 5/5 |
+| 4 | text_stats | function | ✅ ZELEN | 4/4 |
+| 5 | money_formatter | function | ✅ ZELEN | 6/6 |
+| 6 | order_schema | pydantic | ✅ ZELEN | 6/6 |
+| 7 | inventory_api | http | ✅ ZELEN | 4/4 |
+| 8 | growth_report | autonomous | ✅ ZELEN | 4/4 |
+| 9 | fix_currency_inverted_rate | bugfix | ✅ ZELEN | 4/4 |
+| 10 | fix_currency_jpy_rate | bugfix | ✅ ZELEN | 4/4 |
+| 11 | fix_event_bus_payload | bugfix | ✅ ZELEN | 2/2 |
+| 12 | fix_contract_type_check | bugfix | ✅ ZELEN | 2/2 |
+| 13 | fix_contract_return_valid | bugfix | ✅ ZELEN | 3/3 |
+| 14 | fix_audit_hash_formula | bugfix | ✅ ZELEN | 2/2 |
+
+Vseh 14 case-ov **RSI=ZELEN in neodvisno verificiranih** (bugfix = realna
+regresija vnešena v zlati modul → RSI jo poišče in popravi, test-lock).
+Trend: 18. 8. `2/3` → 23. 8. `11/14 (79 %)` → **`14/14 (100 %)`**. Podrobnosti
+v `.rob_ai/eval_report.md`, zgodovina v `.rob_ai/eval_history.json`.
 
 Command-Center dashboard ponuja poglede: **Command Center** (pregled + obsidian
 graf), **Pogovor** (glasovni vnos + TTS odgovor, izbira glasu Charon/Orus/...),
