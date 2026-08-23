@@ -1,8 +1,11 @@
 <#
     register-autostart.ps1 — registracija/odstranitev/preverba avtonomnega zagona (HKCU Run).
 
-    Dvigne system (proxy :4010 + dashboard :8787) ob PRIJAVI Windows, v ozadju,
-    brez terminala. UI (dashboard) je glavni vnos; Terminal/rescue = "rob dev".
+    Dvigne P1 daemon (core/daemon.py) ob PRIJAVI Windows, v ozadju, brez
+    terminala. Daemon je edini 24/7 master proces: dvigne proxy :4010 +
+    dashboard :8787 (idempotentno), prazni agendo, predlaga naloge, teče
+    periodične jobe, piše heartbeat. UI (dashboard) je glavni vnos;
+    Terminal/rescue = "rob dev".
 
     Uporablja HKCU Run (registry autorun) namesto Task Scheduler — ker
     `schtasks /sc onlogon` v tem okolju zahteva admin (Access denied), medtem ko
@@ -69,8 +72,9 @@ if ($vExisting) {
     Set-ItemProperty -Path $RunKey -Name $Name -Value $Value
     Write-Host "[OK] Autostart '$Name' registriran (HKCU Run)." -ForegroundColor Green
 }
-Write-Host "      Ob naslednji prijavi se dvigne proxy+dashboard v ozadju."
+Write-Host "      Ob naslednji prijavi se dvigne P1 daemon (proxy+dashboard+obdelava nalog)."
 Write-Host "      Dashboard: http://localhost:8787   (vnos nalog prek UI)"
+Write-Host "      Stanje daemona: rob daemon --status   |   Stop: rob daemon --stop"
 Write-Host "      Terminal/rescue: rob dev (v PowerShell) - za rocni nadzor/claude."
 Write-Host "      ODSTRANI: powershell -File scripts\register-autostart.ps1 -Remove"
 if ($OpenBrowser) {

@@ -80,6 +80,10 @@ elif [ "$1" == "patterns" ]; then
 elif [ "$1" == "learn" ]; then
     # P7 — learning dashboard: eval trend + lekcije + načela + vzorci.
     cd "$PROJECT_DIR" && python core/learning_dashboard.py "${@:2}"
+elif [ "$1" == "daemon" ]; then
+    # P1 — avtonomni daemon (24/7): agendo prazni, sam predlaga naloge,
+    # teče periodične jobe, piše heartbeat. --once/--status/--stop/--serve.
+    cd "$PROJECT_DIR" && python core/daemon.py "${@:2}"
 elif [ "$1" == "deploy" ]; then
     # Zagon python skripte, ki naredi POST request na naš novi manager
     cd "$PROJECT_DIR" && activate_venv && python -c "
@@ -119,4 +123,5 @@ else
     echo "  ./rob visual-qa <pot|url> - Neobvezen vizualni QA (Gemma 4 prek Ollama pogleda HTML)"
     echo "  ./rob patterns    - P5: prečni vzorci neuspehov (≥2 projektov)"
     echo "  ./rob learn       - P7: learning dashboard (eval trend, lekcije, načela, vzorci)"
+    echo "  ./rob daemon      - P1: avtonomni daemon 24/7 (--once/--status/--stop/--serve)"
 fi

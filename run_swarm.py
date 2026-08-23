@@ -43,6 +43,31 @@ def validate_environment() -> None:
         gbrain = GBrainBridge(db_path=db_file)
         gbrain._init_db()
 
+def _process_items(items: list) -> list:
+    """Obdela dane naloge skozi RSI zanko (mark running → run → mark done/failed).
+
+    Deljeno jedro F3 (`--process-agenda`) in daemonovega `--item <id>` (P1), da se
+    mark/run/mark logika ne podvaja. Vrne [(id, ok), ...].
+    """
+    from core.agenda import mark
+    results = []
+    for it in items:
+        ok = False
+        print(f"  ▶ obdelujem: {it['id']} · {it['goal'][:60]}")
+        mark(it["id"], "running")
+        try:
+            if it.get("kind") == "autonomous":
+                ok = RobAIOrchestrator.run_autonomous(it["target"], it["goal"])
+            else:
+                ok = RobAIOrchestrator.run(it["target"], it["goal"])
+            mark(it["id"], "done" if ok else "failed")
+        except Exception as e:
+            print(f"  ❌ napaka: {e}")
+            mark(it["id"], "failed")
+        results.append((it["id"], ok))
+    return results
+
+
 def print_banner(target: str, directive: str, agent: str) -> None:
     """Izpiše sistemsko glavo izvajanja."""
     print("=" * 80)
@@ -90,6 +115,11 @@ def main() -> None:
         help="Faza 3: obdela vso čakalno vrsto naročil (agenda) skozi RSI zanko"
     )
     parser.add_argument(
+        "--item",
+        metavar="ID",
+        help="Faza 3b: obdela ENO naročilo iz agende (po id) — kljub daemonu"
+    )
+    parser.add_argument(
         "--business",
         metavar="IDEJA",
         help="Faza 6: iz poslovne ideje izdela predlog (RSI Sales delovnik), ga presodi"
@@ -115,8 +145,8 @@ def main() -> None:
     validate_environment()
 
     # Ročna validacija: --target/--directive sta potrebna le za redni/autonomous build
-    # (ne za --process-agenda ali --business ali --visual-qa).
-    if not (args.process_agenda or args.business or args.visual_qa):
+    # (ne za --process-agenda ali --item ali --business ali --visual-qa).
+    if not (args.process_agenda or args.item or args.business or args.visual_qa):
         if not args.target or not args.directive:
             parser.error("--target in --directive sta obvezna (ali uporabi --process-agenda / --business / --visual-qa)")
 
@@ -161,31 +191,34 @@ def main() -> None:
 
     # Faza 3 — obdelaj čakalno vrsto (agenda) skozi RSI.
     if args.process_agenda:
-        from core.agenda import pending, mark
+        from core.agenda import pending
         print("🤖 [F3] Začenjam obdelavo čakalne vrste (agenda):")
         items = pending()
         if not items:
             print("  Agenda je prazna. Dodaj naloge (npr. prek dashboarda).")
             sys.exit(0)
-        results = []
-        for it in items:
-            ok = False
-            print(f"  ▶ obdelujem: {it['id']} · {it['goal'][:60]}")
-            mark(it["id"], "running")
-            try:
-                if it.get("kind") == "autonomous":
-                    ok = RobAIOrchestrator.run_autonomous(it["target"], it["goal"])
-                else:
-                    ok = RobAIOrchestrator.run(it["target"], it["goal"])
-                mark(it["id"], "done" if ok else "failed")
-            except Exception as e:
-                print(f"  ❌ napaka: {e}")
-                mark(it["id"], "failed")
-            results.append((it["id"], ok))
+        results = _process_items(items)
         # F3 repeat — ponavljajoča naročila znova postavimo v pending (schedule).
         from core.agenda import rearm_repeat
         rearmed = rearm_repeat()
         print(f"🤖 [F3] Agenda obdelana. Ponovno aktiviranih (repeat): {rearmed}.")
+        sys.exit(0 if all(r[1] for r in results) else 1)
+
+    # Faza 3b — obdelaj ENO naročilo iz agende (po id) — kljub daemonu (P1).
+    # Daemon poganja naloge eno po eno skozi RSI zanko v subprocesu s trdim
+    # timeoutom; `--item` omogoči, da se mark/run/mark logika ne duplicira.
+    if args.item:
+        from core.agenda import get
+        print(f"🤖 [DAEMON] Obdelujem naročilo: {args.item}")
+        item = get(args.item)
+        if item is None:
+            print(f"  ❌ naročilo {args.item} ne obstaja.")
+            sys.exit(2)
+        results = _process_items([item])
+        from core.agenda import rearm_repeat
+        rearmed = rearm_repeat()
+        print(f"🤖 [DAEMON] Naročilo {args.item} obdelano. "
+              f"Ponovno aktiviranih (repeat): {rearmed}.")
         sys.exit(0 if all(r[1] for r in results) else 1)
 
     # 2. Prikaz sistemskega statusa

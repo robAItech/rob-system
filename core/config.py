@@ -49,6 +49,25 @@ class SystemSettings(BaseSettings):
     # true = načrtovalci (task_planner, team, run_autonomous) dobijo pretekle
     # lekcije + world-model napoved v prompt (core/plan_context.py).
     llm_plan_context: bool = Field(default=True, alias="LLM_PLAN_CONTEXT")
+    # ─── P1 — avtonomni daemon (core/daemon.py) ───────────────────────────
+    daemon_idle_seconds: int = Field(default=5, alias="DAEMON_IDLE_SECONDS")
+    daemon_heartbeat_seconds: int = Field(default=30, alias="DAEMON_HEARTBEAT_SECONDS")
+    daemon_proxy_retry_seconds: int = Field(default=60, alias="DAEMON_PROXY_RETRY_SECONDS")
+    # 0 = brez trdega timeouta (notranji LoopX/Docker timeouts že omejijo poskus).
+    daemon_task_timeout_seconds: int = Field(default=0, alias="DAEMON_TASK_TIMEOUT_SECONDS")
+    # Periodični jobi (intervali v urah).
+    daemon_consolidate_hours: int = Field(default=24, alias="DAEMON_CONSOLIDATE_HOURS")
+    daemon_reflect_hours: int = Field(default=168, alias="DAEMON_REFLECT_HOURS")
+    daemon_improve_hours: int = Field(default=168, alias="DAEMON_IMPROVE_HOURS")
+    daemon_meta_check_hours: int = Field(default=168, alias="DAEMON_META_CHECK_HOURS")
+    daemon_full_eval_hours: int = Field(default=168, alias="DAEMON_FULL_EVAL_HOURS")  # 0 = onemogoči
+    daemon_goal_hours: int = Field(default=6, alias="DAEMON_GOAL_HOURS")
+    # Goal tick: max število novo vvrženih nalog na cikel + flood guard (če je
+    # v agendi že >= cap pending nalog, ne vvrzi novih).
+    daemon_goal_max_enqueue: int = Field(default=2, alias="DAEMON_GOAL_MAX_ENQUEUE")
+    daemon_goal_pending_cap: int = Field(default=3, alias="DAEMON_GOAL_PENDING_CAP")
+    # Guard pred polnim diskom za težek full_eval.
+    daemon_min_free_gb: float = Field(default=2.0, alias="DAEMON_MIN_FREE_GB")
 
     def is_real_key_available(self) -> bool:
         return bool(

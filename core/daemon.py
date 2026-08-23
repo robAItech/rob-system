@@ -1,0 +1,609 @@
+"""core/daemon.py — P1: avtonomni daemon (24/7).
+
+En master proces, ki poganja Rob AI Studio sam (skok na 10x):
+  - idempotentno dvigne LiteLLM proxy (:4010) + Command-Center dashboard (:8787)
+    z reuse `core/dev_cli.cmd_serve`,
+  - prazni agendo (`core/agenda`) skozi RSI zanko — subprocess `run_swarm.py --item`,
+    ena naloga naenkrat (single-flight) s trdim timeoutom,
+  - periodično predlaga nove naloge iz šibkosti sistema (`core/goal_autonomy`) —
+    polna avtonomija: tudi kodne naloge gredo v agendo brez človeške potrditve,
+  - teče vzdrževalne jobe: konsolidacija spomina, strateška refleksija,
+    samorazvoj, meta-eval in polni eval,
+  - piše heartbeat v `.rob_ai/daemon.json` (opazljivost prek `GET /api/daemon`).
+
+Sinhronska `while True` zanka — RSI je blokirajoč, naloge so single-flight,
+tikovi tečejo le ko je daemon idle (vsi pišejo memory.db/actions, ne smejo se
+prekrivati). Windows: brez systemd, avtozagon prek HKCU Run (autostart.bat).
+
+UPORABA:
+  python core/daemon.py            # teči v nedogled (avtozagon)
+  python core/daemon.py --once     # ena enota dela, nato izhod (smoke test)
+  python core/daemon.py --status   # izpiši stanje daemona, izhod
+  python core/daemon.py --stop     # graceful shutdown tekočega daemona
+  python core/daemon.py --serve    # dvigni proxy+dashboard in izhod
+"""
+
+import argparse
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+# Vsili UTF-8 izhod tudi, ko je stdout preusmerjen na pipe (ne terminal).
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass  # reconfigure ni vedno na voljo (nekateri okolji)
+
+# Koren projekta vedno na PYTHONPATH (daemon se lahko požene od kjerkoli).
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from core import agenda, audit, config, dev_cli
+
+ROB_AI = PROJECT_ROOT / ".rob_ai"
+DAEMON_FILE = ROB_AI / "daemon.json"
+LOCK_FILE = ROB_AI / "daemon.lock"
+DB_PATH = ROB_AI / "memory.db"
+
+_stop_requested = False
+
+
+def _now() -> int:
+    return int(time.time())
+
+
+# ------------------------------------------------------------------ #
+#  Single-instance lock
+# ------------------------------------------------------------------ #
+def _lock_pid_alive(pid: int) -> bool:
+    """Ali PID še obstaja (probe). Na Windows `os.kill(pid, 0)` velja."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True  # nismo prepričani → smatramo živega (varno: ne briši)
+
+
+def _acquire_lock() -> None:
+    """Zagotovi, da teče SAMO en daemon. Stale lock (mrtav PID) se pobere."""
+    ROB_AI.mkdir(parents=True, exist_ok=True)
+    while True:
+        try:
+            fd = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode("utf-8"))
+            os.close(fd)
+            return
+        except FileExistsError:
+            try:
+                pid = int(LOCK_FILE.read_text(encoding="utf-8").strip())
+            except Exception:
+                pid = None
+            if pid is not None and _lock_pid_alive(pid):
+                raise RuntimeError(f"daemon že teče (PID {pid})")
+            # Stale lock — lastnik je mrtev; odstrani in poskusi znova.
+            try:
+                LOCK_FILE.unlink()
+            except OSError:
+                pass
+            time.sleep(0.5)
+
+
+def _release_lock() -> None:
+    try:
+        LOCK_FILE.unlink()
+    except OSError:
+        pass
+
+
+# ------------------------------------------------------------------ #
+#  Heartbeat (.rob_ai/daemon.json)
+# ------------------------------------------------------------------ #
+def _load_heartbeat() -> dict:
+    if not DAEMON_FILE.exists():
+        return {}
+    try:
+        data = json.loads(DAEMON_FILE.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_heartbeat(state: str, **extra) -> None:
+    """Prepiše daemon.json z novim stanjem. Nikoli ne pade (disk poln → skip)."""
+    hb = _load_heartbeat()
+    hb["state"] = state
+    hb["pid"] = os.getpid()
+    hb["started_at"] = hb.get("started_at", _now())
+    hb["heartbeat_ts"] = _now()
+    for k, v in extra.items():
+        if v is None:
+            hb.pop(k, None)  # None = počisti polje (npr. stale current_task ob restartu)
+        else:
+            hb[k] = v
+    try:
+        tmp = DAEMON_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(hb, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, DAEMON_FILE)
+    except OSError:
+        pass
+
+
+def _append_error(msg: str) -> None:
+    """Ring buffer zadnjih 5 napak v daemon.json."""
+    hb = _load_heartbeat()
+    errs = hb.get("last_errors") or []
+    errs.append({"ts": _now(), "error": str(msg)[:300]})
+    hb["last_errors"] = errs[-5:]
+    try:
+        tmp = DAEMON_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(hb, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, DAEMON_FILE)
+    except OSError:
+        pass
+
+
+# ------------------------------------------------------------------ #
+#  Scheduler (periodični jobi)
+# ------------------------------------------------------------------ #
+class Scheduler:
+    """Tabela jobov z intervali. `next_due`/`last_run` preživita restart
+    (perzistirana v daemon.json pod "jobs")."""
+
+    def __init__(self) -> None:
+        self._jobs: list[dict] = []
+
+    def add(self, name: str, run_fn, interval_seconds: int) -> None:
+        self._jobs.append({
+            "name": name,
+            "run_fn": run_fn,
+            "interval_seconds": int(interval_seconds),
+            "last_run": 0,
+            "next_due": 0,
+        })
+
+    def load_persisted(self, persisted: dict | None) -> None:
+        for j in self._jobs:
+            p = (persisted or {}).get(j["name"])
+            if isinstance(p, dict):
+                j["last_run"] = int(p.get("last_run") or 0)
+                j["next_due"] = int(p.get("next_due") or 0)
+
+    def warm_up(self, now: int) -> None:
+        """Prvi zagon brez perzistiranega stanja: staggered, index+1 minut
+        v prihodnost (da se ob boot ne zaleti vseh jobov naenkrat)."""
+        for i, j in enumerate(self._jobs):
+            if j["next_due"] <= 0:
+                j["next_due"] = now + 60 * (i + 1)
+
+    def due(self, now: int) -> dict | None:
+        """Prvi job, ki je na vrsti (po vrstnem redu dodajanja)."""
+        for j in self._jobs:
+            if j["next_due"] <= now:
+                return j
+        return None
+
+    def complete(self, name: str, now: int) -> None:
+        """Po izvedbi joba zamakni naslednji termin za en interval (tudi ob
+        napaki — da napaka ne hot-loopa)."""
+        for j in self._jobs:
+            if j["name"] == name:
+                j["last_run"] = now
+                j["next_due"] = now + j["interval_seconds"]
+                return
+
+    def to_dict(self) -> dict:
+        return {
+            j["name"]: {
+                "last_run": j["last_run"],
+                "next_due": j["next_due"],
+                "interval_seconds": j["interval_seconds"],
+            }
+            for j in self._jobs
+        }
+
+
+# ------------------------------------------------------------------ #
+#  Periodični jobi (run_fn signature: (settings, cfg) -> dict)
+# ------------------------------------------------------------------ #
+def _tick_consolidate(settings, cfg) -> dict:
+    """Zanka 1 — spominska konsolidacija: surove epizode → semantične lekcije."""
+    from core.memory_consolidation import MemoryConsolidator
+    return MemoryConsolidator(DB_PATH).consolidate()
+
+
+def _tick_reflect(settings, cfg) -> dict:
+    """P3 — strateška samorefleksija: operativna načela iz lekcij (z varovanjem)."""
+    from core.strategy_reflect import StrategyReflector
+    return StrategyReflector(DB_PATH).run_cycle(dry_run=False)
+
+
+def _tick_improve(settings, cfg) -> dict:
+    """Zanka 3 — samorazvoj RSI sistemskega prompta (predlog→guard→test→promocija)."""
+    from core.loopx_bridge import RSI_PROMPT_SYSTEM
+    from core.self_improve import SelfImprover
+    imp = SelfImprover(DB_PATH)
+    current = imp.registry.get_active("rsi_heal_system", RSI_PROMPT_SYSTEM)
+    return imp.run_cycle(current, imp.gather_context(), dry_run=False)
+
+
+def _tick_meta_check(settings, cfg) -> dict:
+    """Zanka 4 — meta-eval: primerjaj s snapshot-om po zadnji nalogi; ob
+    regresiji avtomatsko rollback samorazvojnih sprememb."""
+    from core.meta_eval import MetaEvaluator
+    last_id = _load_heartbeat().get("last_snapshot_id")
+    if not last_id:
+        return {"skipped": "še ni snapshot-a (daemon še ni obdelal naloge)"}
+    return MetaEvaluator(DB_PATH).check(int(last_id), auto_rollback=True)
+
+
+def _tick_full_eval(settings, cfg) -> dict:
+    """P0 eval — polni SWE-bench stil eval avtonomnosti. Le ko je agenda prazna
+    in je dovolj prostora na disku (težek: LLM + Docker)."""
+    if agenda.pending():
+        return {"skipped": "agenda ni prazna"}
+    try:
+        free = shutil.disk_usage(PROJECT_ROOT).free
+        if free < settings.daemon_min_free_gb * (2 ** 30):
+            return {"skipped": f"premalo prostora na disku ({free / 2**30:.1f} GiB)"}
+    except OSError:
+        pass
+    env = dict(os.environ)
+    env["PYTHONUTF8"] = "1"
+    r = subprocess.run(
+        [sys.executable, "evaluate_autonomy.py"],
+        env=env, cwd=PROJECT_ROOT,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return {"ok": r.returncode == 0, "returncode": r.returncode}
+
+
+def _tick_goal(settings, cfg) -> dict:
+    """P4 + P1 — goal autonomy: predlagaj naslednje naloge iz šibkosti sistema
+    in jih POLNO AVTONOMNO vvrzi v agendo (tudi kodne). tune/consolidate/improve
+    predlogi so že pokriti s periodicnimi jobi (ne grejo skozi RSI build)."""
+    if len(agenda.pending()) >= settings.daemon_goal_pending_cap:
+        return {"enqueued": 0, "reason": "cap"}
+    from core.goal_autonomy import GoalProposer
+    proposals = GoalProposer(DB_PATH).propose(limit=settings.daemon_goal_max_enqueue)
+    existing = {str(g.get("goal", ""))[:120] for g in agenda.all_() if g.get("goal")}
+    enqueued = 0
+    for p in proposals:
+        if p.get("action") != "build":
+            continue
+        goal_text = str(p.get("goal", "")).strip()
+        if not goal_text or goal_text[:120] in existing:
+            continue
+        agenda.add(goal_text, kind="autonomous", target=p.get("project"),
+                   source="goal_autonomy")
+        existing.add(goal_text[:120])
+        enqueued += 1
+    return {"enqueued": enqueued, "proposed": len(proposals)}
+
+
+def build_scheduler(settings) -> Scheduler:
+    """Tabela periodicnih jobov, krmiljena z DAEMON_* nastavitvami."""
+    sched = Scheduler()
+    sched.add("consolidate", _tick_consolidate, settings.daemon_consolidate_hours * 3600)
+    sched.add("reflect", _tick_reflect, settings.daemon_reflect_hours * 3600)
+    sched.add("improve", _tick_improve, settings.daemon_improve_hours * 3600)
+    sched.add("meta_check", _tick_meta_check, settings.daemon_meta_check_hours * 3600)
+    if settings.daemon_full_eval_hours > 0:
+        sched.add("full_eval", _tick_full_eval, settings.daemon_full_eval_hours * 3600)
+    sched.add("goal", _tick_goal, settings.daemon_goal_hours * 3600)
+    return sched
+
+
+# ------------------------------------------------------------------ #
+#  Čista odločitvena funkcija
+# ------------------------------------------------------------------ #
+def decide(agenda_pending: list, scheduler: Scheduler) -> tuple:
+    """Vrne ("task", item) | ("tick", job) | ("idle", None).
+
+    Prioritetni red (single-flight): naloga iz agende > periodični tick > idle.
+    """
+    if agenda_pending:
+        return ("task", agenda_pending[0])
+    job = scheduler.due(_now())
+    if job is not None:
+        return ("tick", job)
+    return ("idle", None)
+
+
+# ------------------------------------------------------------------ #
+#  Storitve (proxy + dashboard)
+# ------------------------------------------------------------------ #
+def _proxy_base(cfg) -> str:
+    return f"http://127.0.0.1:{dev_cli.PORT}"
+
+
+def _proxy_ok(cfg) -> bool:
+    return dev_cli.proxy_health(_proxy_base(cfg), cfg.master_key)
+
+
+def _ensure_services(cfg) -> bool:
+    """Idempotentno dvigne proxy+dashboard (reuse dev_cli.cmd_serve).
+    Vrne True, če je proxy dosegljiv."""
+    try:
+        dev_cli.cmd_serve(cfg)
+    except Exception as e:
+        print(f"[daemon] cmd_serve napaka: {e}")
+        _append_error(f"cmd_serve: {e}")
+    return _proxy_ok(cfg)
+
+
+# ------------------------------------------------------------------ #
+#  Izvajanje dela
+# ------------------------------------------------------------------ #
+def run_task(item: dict, settings, cfg) -> dict:
+    """Izvede ENO nalogo iz agende v subprocesu (run_swarm.py --item)."""
+    item_id = item["id"]
+    _write_heartbeat("running_task", current_task={
+        "id": item_id,
+        "goal": str(item.get("goal", ""))[:400],
+        "target": item.get("target", ""),
+        "kind": item.get("kind", "python"),
+        "started_at": _now(),
+    }, current_tick=None)
+    audit.record(event="daemon-task", project=item.get("target", item_id),
+                 status="started", detail=str(item.get("goal", ""))[:400])
+
+    started = time.time()
+    ok = True
+    timeout = settings.daemon_task_timeout_seconds or None
+    try:
+        env = dict(os.environ)
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        env["PYTHONUTF8"] = "1"
+        r = subprocess.run(
+            [sys.executable, "run_swarm.py", "--item", item_id],
+            timeout=timeout, env=env, cwd=PROJECT_ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        ok = r.returncode == 0
+    except subprocess.TimeoutExpired:
+        ok = False
+        agenda.mark(item_id, "failed")
+        audit.record(event="daemon-task", project=item.get("target", item_id),
+                     status="failed", detail="timeout (trdi daemon timeout)")
+    except Exception as e:
+        ok = False
+        agenda.mark(item_id, "failed")
+        audit.record(event="daemon-task", project=item.get("target", item_id),
+                     status="failed", detail=str(e)[:400])
+    # Če je subprocess padel tako trdo, da itema ni označil (še running) → failed.
+    if not ok:
+        after = agenda.get(item_id)
+        if after and after.get("status") == "running":
+            agenda.mark(item_id, "failed")
+
+    # Po vsakem izidu: ponovno aktiviraj ponavljajoče naloge + meta snapshot.
+    try:
+        agenda.rearm_repeat()
+    except Exception as e:
+        _append_error(f"rearm_repeat: {e}")
+    snapshot_id = None
+    try:
+        from core.meta_eval import MetaEvaluator
+        snapshot_id = MetaEvaluator(DB_PATH).snapshot(label=f"after-{item_id}")
+    except Exception as e:
+        _append_error(f"meta snapshot: {e}")
+
+    duration = round(time.time() - started, 1)
+    audit.record(event="daemon-task", project=item.get("target", item_id),
+                 status="ok" if ok else "failed",
+                 detail=f"duration_s={duration}"
+                        + (f" snapshot={snapshot_id}" if snapshot_id else ""))
+    _write_heartbeat("idle", current_task=None, current_tick=None,
+                     last_run_summary={"kind": "task", "id": item_id, "ok": ok,
+                                       "duration_s": duration},
+                     last_snapshot_id=snapshot_id)
+    return {"ok": ok, "duration_s": duration, "snapshot_id": snapshot_id}
+
+
+def run_tick(job: dict, settings, cfg, scheduler: Scheduler) -> dict:
+    """Izvede en periodični job. Napaka ne hot-loopa — naslednji termin je
+    čez en interval."""
+    name = job["name"]
+    _write_heartbeat("running_tick", current_tick=name, current_task=None)
+    started = time.time()
+    ok = True
+    error = None
+    try:
+        result = job["run_fn"](settings, cfg)
+    except Exception as e:
+        ok = False
+        error = str(e)[:400]
+        print(f"[daemon] tick {name} napaka: {error}")
+        _append_error(f"tick {name}: {error}")
+        result = None
+    scheduler.complete(name, _now())
+    audit.record(event="daemon-tick", project=name, status="ok" if ok else "failed",
+                 detail=error or "ok")
+    duration = round(time.time() - started, 1)
+    _write_heartbeat("idle", current_tick=None, current_task=None,
+                     last_run_summary={"kind": "tick", "name": name, "ok": ok,
+                                       "duration_s": duration})
+    return {"ok": ok, "duration_s": duration, "result": result}
+
+
+def recover_agenda() -> int:
+    """Ob boot: itemi v 'running' → 'pending' (daemon/subprocess je padel sredi
+    naloge — running sme obstajati samo med aktivno izvedbo)."""
+    n = 0
+    for it in agenda.all_():
+        if it.get("status") == "running":
+            agenda.mark(it["id"], "pending")
+            n += 1
+    return n
+
+
+# ------------------------------------------------------------------ #
+#  Signal handling + glavna zanka
+# ------------------------------------------------------------------ #
+def _handle_signal(signum, frame) -> None:
+    global _stop_requested
+    _stop_requested = True
+
+
+def run_loop(settings, cfg, once: bool = False) -> int:
+    """Glavna zanka daemona. once=True → ena enota dela in izhod (smoke test)."""
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
+    scheduler = build_scheduler(settings)
+    scheduler.load_persisted(_load_heartbeat().get("jobs"))
+    scheduler.warm_up(_now())
+
+    # BOOT
+    _write_heartbeat("boot", current_task=None, current_tick=None)
+    recovered = recover_agenda()
+    if recovered:
+        print(f"[daemon] obnovljenih nalog (running→pending): {recovered}")
+
+    _write_heartbeat("ensure_services")
+    if not _ensure_services(cfg):
+        print("[daemon] proxy ni dosegljiv po zagonu — stanje degraded, retry v zanki.")
+        _write_heartbeat("degraded")
+    print(f"[daemon] zagnan (PID {os.getpid()}, once={once})")
+
+    last_hb = _now()
+    try:
+        while not _stop_requested:
+            now = _now()
+
+            # HEALTH GATE — brez proxyja ni nalog/tickov.
+            if not _proxy_ok(cfg):
+                if now - last_hb >= settings.daemon_proxy_retry_seconds:
+                    print("[daemon] proxy dol — ponovni poskus dviga storitev.")
+                    _ensure_services(cfg)
+                    last_hb = now
+                _write_heartbeat("degraded", agenda_pending=len(agenda.pending()))
+                if once:
+                    return 0
+                time.sleep(settings.daemon_idle_seconds)
+                continue
+
+            kind, payload = decide(agenda.pending(), scheduler)
+            if kind == "task":
+                run_task(payload, settings, cfg)
+            elif kind == "tick":
+                run_tick(payload, settings, cfg, scheduler)
+            else:
+                if now - last_hb >= settings.daemon_heartbeat_seconds:
+                    _write_heartbeat("idle", current_task=None, current_tick=None,
+                                     jobs=scheduler.to_dict(),
+                                     agenda_pending=len(agenda.pending()))
+                    last_hb = now
+                if once:
+                    return 0
+                time.sleep(settings.daemon_idle_seconds)
+                continue
+
+            # Po enoti dela (task/tick) perzistiraj job termine, da preživijo restart.
+            _write_heartbeat("idle", current_task=None, current_tick=None,
+                             jobs=scheduler.to_dict(),
+                             agenda_pending=len(agenda.pending()))
+            last_hb = now
+
+            if once:
+                return 0
+            time.sleep(settings.daemon_idle_seconds)
+    except KeyboardInterrupt:
+        print("\n[daemon] Ctrl+C — graceful shutdown.")
+    finally:
+        _write_heartbeat("shutdown", current_task=None, current_tick=None,
+                         jobs=scheduler.to_dict())
+        _release_lock()
+    return 0
+
+
+# ------------------------------------------------------------------ #
+#  CLI
+# ------------------------------------------------------------------ #
+def _cmd_status() -> int:
+    hb = _load_heartbeat()
+    if not hb:
+        print("[daemon] ni heartbeat datoteke — daemon še ni tekel.")
+    else:
+        print(f"State       : {hb.get('state')}")
+        print(f"PID         : {hb.get('pid')}")
+        print(f"started_at  : {hb.get('started_at')}")
+        print(f"heartbeat   : {hb.get('heartbeat_ts')}")
+        if hb.get("current_task"):
+            print(f"Trenutna naloga: {hb.get('current_task')}")
+        if hb.get("current_tick"):
+            print(f"Trenutni tick  : {hb.get('current_tick')}")
+        if hb.get("last_run_summary"):
+            print(f"Zadnji zagon: {hb.get('last_run_summary')}")
+        jobs = hb.get("jobs") or {}
+        print("Jobi (next_due / last_run):")
+        for name, j in sorted(jobs.items()):
+            print(f"  {name:<12} next_due={j.get('next_due')} last_run={j.get('last_run')}")
+        errs = hb.get("last_errors") or []
+        if errs:
+            print("Zadnje napake:")
+            for e in errs[-3:]:
+                print(f"  {e.get('ts')}  {e.get('error')}")
+    print(f"Agenda pending: {len(agenda.pending())}")
+    return 0
+
+
+def _cmd_stop() -> int:
+    hb = _load_heartbeat()
+    pid = hb.get("pid")
+    if not pid:
+        print("[daemon] ni tekočega daemona (ni PID v daemon.json).")
+        return 1
+    try:
+        os.kill(int(pid), signal.SIGTERM)
+        print(f"[daemon] poslan SIGTERM → PID {pid}.")
+    except OSError as e:
+        print(f"[daemon] ni mogoče poslati signala: {e}")
+        return 1
+    return 0
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="rob daemon",
+        description="P1 — avtonomni daemon: agendo prazni, sam predlaga naloge, "
+                    "teče periodične jobe in piše heartbeat (24/7).",
+    )
+    parser.add_argument("--once", action="store_true",
+                        help="ena enota dela, nato izhod (smoke test)")
+    parser.add_argument("--status", action="store_true",
+                        help="izpiši stanje daemona in izhod")
+    parser.add_argument("--stop", action="store_true",
+                        help="graceful shutdown tekočega daemona")
+    parser.add_argument("--serve", action="store_true",
+                        help="dvigni proxy+dashboard in izhod (wrapper na dev_cli)")
+    args = parser.parse_args(argv)
+
+    if args.serve:
+        return dev_cli.cmd_serve(dev_cli.Config.from_root(PROJECT_ROOT))
+    if args.status:
+        return _cmd_status()
+    if args.stop:
+        return _cmd_stop()
+
+    settings = config.settings
+    cfg = dev_cli.Config.from_root(PROJECT_ROOT)
+    try:
+        _acquire_lock()
+    except RuntimeError as e:
+        print(f"[daemon] {e}")
+        return 2
+    return run_loop(settings, cfg, once=args.once)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

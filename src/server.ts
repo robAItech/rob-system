@@ -627,7 +627,7 @@ function classifyMessage(message: string): 'task' | 'research' | 'chat' {
   return 'chat';
 }
 
-/** Zabeleži nalogo v agendo in jo zažene v izvedbo (run_swarm --process-agenda). */
+/** Zabeleži nalogo v agendo. Izvedbo prevzame P1 daemon (core/daemon.py). */
 async function handleTask(message: string): Promise<string> {
   const kind = detectGmailKind(message);
   try {
@@ -641,9 +641,8 @@ async function handleTask(message: string): Promise<string> {
     let item: Record<string, unknown> = {};
     try { item = JSON.parse(out.trim() || '{}'); } catch { /* */ }
     const target = String(item.target || '');
-    // Izvedba v ozadju (ne čakamo — dolg proces).
-    Bun.spawn({ cmd: ['python', 'run_swarm.py', '--process-agenda'], cwd: OUT_ROOT, stdio: ['ignore', 'ignore', 'ignore'], env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
-    return `Naloga zabeležena (target: ${target || 'v pripravi'}, tip: ${kind}) in zagnana v izvedbo. Spremljaj napredek v pogledu Agenda.`;
+    // Izvedba ni tukaj — P1 daemon (core/daemon.py) je edini drainer agende.
+    return `Naloga zabeležena (target: ${target || 'v pripravi'}, tip: ${kind}). Daemon jo bo obdelal. Spremljaj napredek v pogledu Agenda.`;
   } catch (e) {
     return `Naloga ni zabeležena: ${String(e instanceof Error ? e.message : e)}`;
   }
@@ -1461,6 +1460,13 @@ const server = Bun.serve({
       let items: Record<string, unknown>[] = [];
       if (await f.exists()) { try { items = JSON.parse(await f.text()) as Record<string, unknown>[]; } catch { /* */ } }
       return json({ ok: true, items });
+    }
+    // P1 — daemon status: heartbeat iz .rob_ai/daemon.json (stanje, tek. naloga, jobi).
+    if (req.method === 'GET' && url.pathname === '/api/daemon') {
+      const f = Bun.file(`${OUT_ROOT}/.rob_ai/daemon.json`);
+      let d: Record<string, unknown> = {};
+      if (await f.exists()) { try { d = JSON.parse(await f.text()) as Record<string, unknown>; } catch { /* */ } }
+      return json({ ok: true, ...d });
     }
     if (req.method === 'POST' && url.pathname === '/api/agenda') {
       const raw = await req.text().catch(() => '');

@@ -160,19 +160,27 @@ Vsi načini delegirajo na isti Python modul `core/dev_cli.py`.
 
 #### Avtonomen zagon (PC kot centralni server) — brez terminala
 
-Dashboard :8787 je spletni UI za **vnos nalog** (`POST /api/build`) in **ogled
-izida** (GREEN/FAILED + stdout/stderr) — glavni način uporabe, ni terminala.
-System (proxy+dashboard) se dvigne **samodejno ob prijavi** v ozadju, idempotentno:
+Dashboard :8787 je spletni UI za **vnos nalog** in **ogled izida**
+(GREEN/FAILED + stdout/stderr) — glavni način uporabe, ni terminala.
+**P1 avtonomni daemon** (`core/daemon.py`) je edini 24/7 master proces: ob
+prijavi idempotentno dvigne proxy+dashboard, **sam prazni agendo** skozi RSI,
+**sam predlaga nove naloge** iz šibkosti sistema (goal autonomy, polna
+avtonomija), teče periodične jobe (konsolidacija spomina, refleksija,
+samorazvoj, meta-eval, eval) in piše heartbeat v `.rob_ai/daemon.json`:
 
 ```powershell
-python core/dev_cli.py --serve       # dvigne vse v ozadju, izpiše Dashboard URL, ne blokira
-pwsh -File scripts\register-autostart.ps1   # registrira Task Scheduler (ob prijavi)
+rob daemon --serve              # dvigne proxy+dashboard (idempotentno), izhod
+rob daemon --once               # ena enota dela (smoke test), izhod
+rob daemon --status             # stanje: heartbeat, tek. naloga, jobi
+rob daemon --stop               # graceful shutdown tekočega daemona
+pwsh -File scripts\register-autostart.ps1   # registrira autostart (ob prijavi)
 pwsh -File scripts\register-autostart.ps1 -Query   # preveri
 ```
 
 **CLI/terminal ostaja kot varnostna (rescue) pot** — `rob dev` še vedno deluje
-za ročni nadzor, stop/start/reset, ročni claude itd. Avtonomen zagon NE zamenja
-CLI-ja; oba sobivata (idempotentno prepozna že-tekoč system).
+za ročni nadzor, stop/start/reset, ročni claude itd. Daemon in CLI sobivata
+(`dev_cli.cmd_serve` je idempotenten — daemon ne podvaja že-tekočih storitev).
+Ročni `dev_cli.py --serve` ostane delujoč za trenutni dvig storitev brez daemona.
 
 **Tailscale** (varen remote dostop iz drugih naprav) je **ročni predpogoj**:
 namesti Tailscale (`tailscale.com/download`), `tailscale login`, `tailscale up` —
@@ -204,6 +212,7 @@ Vsa avtonomna orkestracija prek CLI:
 python run_swarm.py --target <modul> --directive "<navodilo>"        # RSI build (Python/Markdown/HTML)
 python run_swarm.py --autonomous --target <m> --directive "<cikel>"  # F2: spec + implement
 python run_swarm.py --process-agenda                                 # F3: obdela čakalno vrsto naročil
+python run_swarm.py --item <id>                                     # P1: obdela ENO naročilo (daemon)
 python run_swarm.py --business "<poslovna ideja>"                    # F6: predlog → glavna knjiga
 python evaluate_autonomy.py --dry-run                               # P5: strukturna preverba eval-a (brez LLM)
 python evaluate_autonomy.py --workers 4                             # P5: eval lestvica z vzporednimi case-i

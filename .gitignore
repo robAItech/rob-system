@@ -39,6 +39,9 @@ __pycache__/
 
 # Runtime stanje podjetja (generirano, izven gita)
 .rob_ai/agenda.json
+.rob_ai/daemon.json
+.rob_ai/daemon.lock
+.rob_ai/*.tmp
 .rob_ai/business_ledger.json
 .rob_ai/audit.jsonl
 .rob_ai/eval_history.json

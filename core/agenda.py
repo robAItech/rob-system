@@ -10,6 +10,7 @@ RSI zanka obdela po vrsti. Naročila so shranjena v `.rob_ai/agenda.json`
 """
 
 import json
+import os
 import time
 import uuid
 from pathlib import Path
@@ -28,8 +29,18 @@ def _load() -> list:
 
 
 def _save(items: list) -> None:
+    """Atomičen zapis: piši v temp + `os.replace`, da dva procesa (server.ts
+    Gmail poll, daemon subprocess) nikoli ne pustita agenda.json pokvarjenega.
+
+    Opomba: to prepreči korupcijo datoteke, ne izgubljene posodobitve (klasičen
+    read-modify-write race med dvema procesoma ostaja — za P1 sprejemljivo, ker
+    klici prihajajo redko in `mark`/`add` imata en kratek vmesni čas).
+    """
     AGENDA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    AGENDA_FILE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(items, ensure_ascii=False, indent=2)
+    tmp = AGENDA_FILE.with_suffix(".json.tmp")
+    tmp.write_text(payload, encoding="utf-8")
+    os.replace(tmp, AGENDA_FILE)
 
 
 def add(goal: str, kind: str = "python", target: str | None = None,
@@ -60,6 +71,14 @@ def add(goal: str, kind: str = "python", target: str | None = None,
 def pending() -> list:
     """Vsa še ne obdelana naročila (in ponavljajoča)."""
     return [i for i in _load() if i.get("status") == "pending"]
+
+
+def get(item_id: str) -> dict | None:
+    """Vrne naročilo po id (ali None). Uporablja daemon (--item)."""
+    for it in _load():
+        if it.get("id") == item_id:
+            return it
+    return None
 
 
 def mark(item_id: str, status: str) -> None:
