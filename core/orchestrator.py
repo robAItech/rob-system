@@ -9,8 +9,20 @@ from core.loopx_bridge import LoopXEngineBridge
 
 class RobAIOrchestrator:
     @staticmethod
+    def _required_test_files(directive: str) -> list:
+        """Izvleci imena test datotek iz MODIFY direktive (npr. test_x.py / x_test.py).
+
+        Heal zanka mora te teste USTVARITI (in morajo preiti) — sicer bi bil
+        "zelen" le potrditev obstojecih testov, ne izvedba spremembe.
+        """
+        import re
+        return sorted({f"{m}.py" for m in re.findall(
+            r"\b(test_[A-Za-z0-9_]+|[A-Za-z0-9_]+_test)\.py\b", directive or "")})
+
+    @staticmethod
     def _phase(project: str, directive: str, label: str, goal: Optional[str] = None,
-               require_change: bool = False) -> bool:
+               require_change: bool = False,
+               required_files: Optional[list] = None) -> bool:
         """Izvede en GStack/RSI fazni tek (gbrain → gstack → hermes → loopx).
 
         `goal` (P1): čisti cilj naloge — zapiše se v run_reviews.goal (namesto
@@ -43,6 +55,7 @@ class RobAIOrchestrator:
         hermes.write_initial_stubs_if_missing()
         # 5. LOOPX: verifikacijska + samoozdravitvena zanka
         loopx = LoopXEngineBridge(project)
+        loopx.required_files = required_files or []   # MODIFY: testi iz direktive
         ok = loopx.execute_and_heal(directive, spec_hint=spec_hint)
         # MODIFY guard — modifikacijska naloga mora dejansko spremeniti modul;
         # sicer je "zelen" le potrditev obstoječega stanja → FALSE GREEN.
@@ -109,8 +122,14 @@ class RobAIOrchestrator:
         modulu, kjer RSI samo potrdi obstoječe stanje), se šteje kot neuspeh.
         """
         print(f"🔧 [MODIFY] Modifikacija modula '{project}': '{directive[:80]}'")
+        # MODIFY: testi iz direktive (npr. test_truncate_start.py) morajo obstajati
+        # in preiti — heal jih mora ustvariti, da sprememba res nastane.
+        required = RobAIOrchestrator._required_test_files(directive)
+        if required:
+            print(f"🔧 [MODIFY] zahtevani novi testi: {', '.join(required)}", flush=True)
         success = RobAIOrchestrator._phase(project, directive, "modifikacija",
-                                           goal=goal, require_change=True)
+                                           goal=goal, require_change=True,
+                                           required_files=required)
         if success:
             print(f"✅ Modul '{project}' modificiran in potrjen (sprememba izvedena).")
         else:

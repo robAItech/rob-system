@@ -172,6 +172,7 @@ class LoopXEngineBridge:
         self.last_traceback = ""   # Z2/C2: zadnji REALEN traceback (za fix nalogo)
         self.surgical = False      # SURGICAL FIX: minimalen diff, brez re-scaffolda
         self.target_test = None    # ime padlega testa za targeted verify (pytest -k)
+        self.required_files: List[str] = []   # MODIFY: testi, ki jih direktiva zahteva
         self._prompt_registry = None  # Zanka 3: lazy prompt-register (verzioniran prompt)
         self._skill_bridge = None     # Korak 6: lazy GStack skill bralec
         self._rollback_had_target = False  # Korak 10: je modul obstajal pred buildom?
@@ -402,6 +403,15 @@ class LoopXEngineBridge:
         ni spremenjeno → FALSE GREEN (zahtevana sprememba ni bila izvedena).
         """
         return self._module_fingerprint() != getattr(self, "_baseline_fingerprint", "")
+
+    def _missing_required_files(self) -> List[str]:
+        """MODIFY — zahtevani testi iz direktive, ki (še) ne obstajajo.
+
+        Če direktiva imenuje npr. `test_truncate_start.py` (nov test za zahtevano
+        funkcijo), mora heal zanka ta test USTVARITI — sicer je "zelen" le
+        potrditev obstoječih testov, ne izvedba spremembe.
+        """
+        return [f for f in self.required_files if not (self.target_dir / f).exists()]
 
     def _surgical_note(self) -> str:
         """SURGICAL FIX: omejitev minimalnega diffa, vstavljena v heal prompt."""
@@ -1004,7 +1014,16 @@ class LoopXEngineBridge:
             ok, ruff_msg = self._verify_ruff()
             if not ok:
                 return False, ruff_msg
-            return self._verify_python_sandbox(targeted=targeted)
+            ok, msg = self._verify_python_sandbox(targeted=targeted)
+            # MODIFY — zahtevan test file iz direktive mora obstajati; sicer je
+            # "zelen" le potrditev obstoječih testov → rdeč, da heal ustvari test
+            # + implementira zahtevano spremembo.
+            if ok:
+                missing = self._missing_required_files()
+                if missing:
+                    return False, (f"manjka zahtevan test file: {', '.join(missing)} "
+                                   "(direktiva MODIFY zahteva, da ga ustvariš)")
+            return ok, msg
         if kind == "markdown":
             # Zelen = obstaja vsaj ena .md datoteka z naslovom (ni prazen stub).
             mds = list(self.target_dir.glob("*.md"))

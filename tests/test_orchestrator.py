@@ -184,6 +184,25 @@ def test_phase_require_change_change_made(tmp_path):
     assert run["outcome"] == "green"
 
 
+def test_required_test_files_parser():
+    from core.orchestrator import RobAIOrchestrator
+    assert RobAIOrchestrator._required_test_files(
+        "dodaj test_truncate_start.py, ne spreminjaj test_truncate_text.py") == \
+        ["test_truncate_start.py", "test_truncate_text.py"]
+    assert RobAIOrchestrator._required_test_files("izboljšaj modul") == []
+
+
+def test_run_modify_passes_required_test_files(tmp_path):
+    """MODIFY — run_modify iz direktive izvleče test file in ga posreduje _phase."""
+    from core.orchestrator import RobAIOrchestrator
+    with mock.patch("core.orchestrator.RobAIOrchestrator._phase", return_value=True) as phase:
+        ok = RobAIOrchestrator.run_modify("m", "dodaj funkcijo X, nov test file test_new.py")
+    assert ok is True
+    kwargs = phase.call_args[1]
+    assert kwargs["require_change"] is True
+    assert kwargs["required_files"] == ["test_new.py"]
+
+
 def test_run_modify_false_green(tmp_path, monkeypatch):
     """MODIFY end-to-end (mock pipeline): zelen + _module_changed False → False."""
     _surgical_module(tmp_path, monkeypatch)

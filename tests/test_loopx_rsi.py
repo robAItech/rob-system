@@ -525,6 +525,31 @@ def test_build_heal_prompt_diagnose_first(tmp_path, monkeypatch):
     assert "DIAGNOSTIKA PRED POPRAVKOM" not in prompt2
 
 
+def test_verify_missing_required_file_returns_red(tmp_path, monkeypatch):
+    """MODIFY — direktiva zahteva test file, ki ga ni → rdeč (heal ga mora ustvariti)."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_dir.mkdir(parents=True, exist_ok=True)
+    (engine.target_dir / "calc.py").write_text("x = 1\n", encoding="utf-8")
+    engine.required_files = ["test_truncate_start.py"]
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(engine, "_verify_python_sandbox", return_value=(True, "ok")):
+        ok, reason = engine._verify("python")
+    assert ok is False
+    assert "test_truncate_start.py" in reason
+
+
+def test_verify_required_file_exists_green(tmp_path, monkeypatch):
+    """MODIFY — zahtevan test file obstaja → zelen."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    engine.target_dir.mkdir(parents=True, exist_ok=True)
+    (engine.target_dir / "test_truncate_start.py").write_text("x = 1\n", encoding="utf-8")
+    engine.required_files = ["test_truncate_start.py"]
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(engine, "_verify_python_sandbox", return_value=(True, "ok")):
+        ok, _ = engine._verify("python")
+    assert ok is True
+
+
 def test_module_fingerprint_zazna_spremembo(tmp_path, monkeypatch):
     """MODIFY — fingerprint zazna spremembo datoteke, ignorira __pycache__."""
     engine = _navidezni_engine(tmp_path, monkeypatch)
