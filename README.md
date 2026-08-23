@@ -85,8 +85,11 @@ Rob AI Studio/
 ├── dev.bat                           # Windows launcher za rob dev
 ├── core/                             # Python jedro
 │   ├── dev_cli.py                    # Orkestracija (proxy+dashboard+claude, --serve)
+│   ├── daemon.py                     # P1 — avtonomni daemon (24/7 master proces)
 │   ├── orchestrator.py               # RSI/GStack faza (gbrain→graphify→gstack→loopx)
 │   ├── loopx_bridge.py               # RSI zanka (pytest→LLM→100% zelen) + test-lock
+│   ├── run_review.py                 # Z2 — post-run presoja + fix-task enqueue
+│   ├── meta_eval.py                  # Z4 — poštena metrika (iz run_reviews, ne task_history)
 │   ├── embedder.py                   # Semantični embeddingi spomina (Gemini, korak 2)
 │   ├── skill_bridge.py               # GStack skilli kot LLM orodje (korak 6)
 │   ├── actions_runtime.py            # actions/ kot enotna runtime app (korak 5)
@@ -98,9 +101,9 @@ Rob AI Studio/
 ├── actions/                          # Produkcijski moduli (RSI jih gradi/popravlja)
 ├── bridges/litellm_config.yaml       # DeepSeek proxy routing
 ├── scripts/                          # autostart.bat + register-autostart.ps1 (HKCU Run)
-├── evaluate_autonomy.py              # P5 — SWE-bench stila samo-eval (rob eval)
+├── evaluate_autonomy.py              # P0 — SWE-bench stila samo-eval (rob eval)
 ├── .github/workflows/ci.yml          # CI: PR gate (pytest + eval dry-run) + nočni eval
-└── tests/                            # Pytest suite (476 testov)
+└── tests/                            # Pytest suite (302 testov, CI zelen)
 ```
 
 ## 🛠️ Hitra namestitev in zagon
@@ -214,6 +217,7 @@ python run_swarm.py --autonomous --target <m> --directive "<cikel>"  # F2: spec 
 python run_swarm.py --process-agenda                                 # F3: obdela čakalno vrsto naročil
 python run_swarm.py --item <id>                                     # P1: obdela ENO naročilo (daemon)
 python run_swarm.py --business "<poslovna ideja>"                    # F6: predlog → glavna knjiga
+rob daemon --status / --once / --stop                               # P1: upravljanje 24/7 daemona
 python evaluate_autonomy.py --dry-run                               # P5: strukturna preverba eval-a (brez LLM)
 python evaluate_autonomy.py --workers 4                             # P5: eval lestvica z vzporednimi case-i
 python -m core.actions_runtime --port 8788                          # Korak 5: enotna runtime app vseh 18 modulov
@@ -231,7 +235,10 @@ Dosežene faze:
 | **F4** | Trajni RSI spomin (samorazvoj / RDI) — LLM se uči iz napak |
 | **F5** | Revizijski dnevnik + števec LLM-klicov (nadzor stroškov) |
 | **F6** | Poslovni avtomat: ideja → predlog → glavna knjiga (prilivi/stranke) |
-| **P5** | SWE-bench stila samo-eval avtonomnosti — eval lestvica (8 case-ov: funkcije, Pydantic, FastAPI, avtonomni), `evaluate_autonomy.py` meri prehod rate; **PR gate + nočni eval v CI** (`.github/workflows/ci.yml`) |
+| **P0** | SWE-bench stila samo-eval avtonomnosti — eval lestvica (**14 case-ov**: 8 funkcijskih/Pydantic/FastAPI/avtonomnih + **6 realnih bugfix na zlatih modulih**), `evaluate_autonomy.py` meri prehod rate; **PR gate + nočni eval v CI** |
+| **P1** | Avtonomni daemon (24/7 master proces): prazni agendo, sam predlaga naloge (goal autonomy), teče periodične jobe, heartbeat `.rob_ai/daemon.json` |
+| **P2** | Zapri zanko neuspeha: fail-fast (ostri podpis), fix-task v agendo (konzumira `next_step`), poštena metrika iz `run_reviews` |
+| **P3** | Surgical fix + diagnose-first: minimalen diff brez re-scaffolda, targeted verifikacija, dejanski vzrok iz pytest izhoda (ne glava) |
 
 Command-Center dashboard ponuja poglede: **Command Center** (pregled + obsidian
 graf), **Pogovor** (glasovni vnos + TTS odgovor, izbira glasu Charon/Orus/...),
@@ -288,14 +295,43 @@ RSI zanka (`_heal_loop`) deluje takole:
 2. **Zelen** — ob uspehu se v GBRAIN zapiše `VERIFIED GREEN` in zanka konča.
 3. **Rdeč → heal** — traceback se posreduje DeepSeek-u (`_heal_once`), ki vrne
    popravke; ti se zapišejo v `actions/<mod>/` in verifikacija se ponovi.
-4. **Ponavljanje** — do 5 poskusov (`max_attempts`); enaka ponavljajoča se
-   napaka (≥ 3×, `REPEAT_ABORT_AFTER`) zgodaj prekine zanko.
+4. **Ponavljanje** — do 5 poskusov (`max_attempts`); identična ponavljajoča se
+   napaka (ostri podpis `tip + padel test`, ≥ 3×) zgodaj prekine zanko (fail-fast).
 5. **Neuspeh** — tek se zaključi kot `FAILED`, napaka se zapiše v GBRAIN
    blacklist (učenje). Ob neuspelem buildu se modul avtomatsko povrne na pred-build stanje (snapshot v `.loopx/rollback/`; izklop: `LOOPX_ROLLBACK_ON_FAIL=false`).
 
 Sočasni buildi istega modula se varujejo z atomic target-lockom. Ločena
 `RSISelfHealingEngine` živi kot samostojen modul v
 `actions/rsi_engine/`, ne kot jedro.
+
+### 🔁 Zapri zanko neuspeha (fix-loop + surgical + diagnose-first)
+
+Vsak padel build se zdaj **samodejno popravi** — ne le zapiše lekcije:
+
+- **C1 — Fail-fast**: ponavljajoče napake se štejejo po **ostrem podpisu**
+  (`tip + padel test`, `_error_signature`) — dve različni napaki istega tipa se
+  ne seštejeta (napredek se ne prekine). `last_traceback` ohrani REALEN traceback
+  za diagnozo; stale per-target locki se poberejo (`_pid_alive`).
+- **C2 — Fix-task**: ob neuspehu `RunReviewer.maybe_enqueue_fix` vvrže v agendo
+  **konkretno fix nalogo**, ki **konzumira `next_step`** (odločitev iz presoje),
+  nosi padel test + napako + `CHANGE APPROACH` direktivo. Guarda: max 3/target,
+  skip če pending.
+- **C3 — Surgical fix**: fix naloga teče prek `run_surgical` — **minimalen diff
+  brez re-scaffolda** (preskoči gstack manifest + hermes stube), **ciljna
+  verifikacija** (`pytest -k <test>` med healom) + **poln no-regression gate** na
+  koncu. 1-vrstični bug → zelen v 1 poskusu (prej: re-scaffold celega modula).
+- **Diagnose-first**: `_verify` zdaj iz pytest izhoda izlušči **dejanski vzrok**
+  (prvi FAILURES blok + short summary), ne 400-znakovne glave; `NoTestsCollected`
+  klasifikacija za stub module; kadar vzrok ni jasen, LLM **najprej prebere vse
+  datoteke in diagnosticira**, šele nato popravi.
+- **Poštena metrika**: `meta_eval` bere `run_reviews` (čista tabela), **ne**
+  `task_history` (onesnažen s `test_proj`) — realna uspešnost, ne več lažnih
+  številk; snapshot verzijski gate prepreči lažno regresijo.
+
+**Dogfood (realno delo, avtonomno)**: 5 realnih util modulov skozi daemon —
+uspešnost modulov **40 % → 80 %** (fix-zanka je popravila 2/3 padle); realna
+metrika 28.6 % → 33.3 %; tudi `env_config` (prej nepopravljiv stub) je bil po
+diagnose-first popravku zelen.
 
 ## 🔄 Deset zank (Zanke 1–10)
 
@@ -307,9 +343,9 @@ zanko učenja uteži (RLAIF) in eno meta-zanko (avtonomija ciljev):
 | Zanka | Modul | Kaj dela |
 |---|---|---|
 | **1 · spomin** | `core/memory_consolidation.py` | Konsolidacija: surove epizode (`task_history`) → semantične lekcije (`semantic_memories`). Lekcije se vbrizgajo v heal prompt (kumulativno učenje). |
-| **2 · presoja** | `core/run_review.py` | Post-run samoevalvacija: klasificira VZROK izida na nivoju odločitve (`spec_mismatch`/`llm_error`/…), ne le testa. |
+| **2 · presoja** | `core/run_review.py` | Post-run samoevalvacija: klasificira VZROK izida na nivoju odločitve (`spec_mismatch`/`llm_error`/…), ne le testa; **ob neuspehu vvrže konkreten fix task v agendo** (`maybe_enqueue_fix`, konzumira `next_step`). |
 | **3 · orkestracija** | `core/self_improve.py` + `core/prompt_registry.py` + `core/tuning.py` | RSI nase: samorazvoj **promptov** (guard + regresijski testi + rollback) in **parametrov** (`max_attempts`, `repeat_abort_after` — z mejami + rollback). |
-| **4 · meta-evalvacija** | `core/meta_eval.py` | Meri, ali izboljšave dejansko pomagajo (uspešnost, povp. LLM klici); ob regresiji **avtomatsko povrne** prompt + parametre. |
+| **4 · meta-evalvacija** | `core/meta_eval.py` | Meri, ali izboljšave dejansko pomagajo (uspešnost, povp. LLM klici); **poštena metrika iz `run_reviews`** (ne `task_history` — brez `test_proj` onesnaženja), verzijski gate; ob regresiji **avtomatsko povrne** prompt + parametre. |
 | **5 · načrtovanje** | `core/task_planner.py` | Dolgoročno načrtovanje: LLM razbije kompleksen cilj na urejene podcilje in vsakega izvede skozi RSI (večkorakne naloge). |
 | **6 · koordinacija** | `core/team.py` | Multi-agent adversarial: planner → critic → builder → verifier; critic izzove načrt pred izvedbo. |
 | **7 · napoved** | `core/world_model.py` | Svetovni model: iz lastnih trajektorij napove uspešnost, pričakovan LLM strošek in verjeten vzrok neuspeha. |
