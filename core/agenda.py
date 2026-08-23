@@ -11,6 +11,7 @@ RSI zanka obdela po vrsti. Naročila so shranjena v `.rob_ai/agenda.json`
 
 import json
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -28,15 +29,32 @@ def _load() -> list:
         return []
 
 
+_REPLACE_RETRIES = 20   # Windows: os.replace je lahko začasno blokiran (WinError 5/32)
+
+
 def _save(items: list) -> None:
     """Atomičen zapis: piši v temp + `os.replace`, da dva procesa nikoli ne
     pustita agenda.json pokvarjenega. Mutatorji so dodatno pod `_locked`
-    (cross-process lock), da se ne izgubi posodobitev (read-modify-write)."""
+    (cross-process lock), da se ne izgubi posodobitev (read-modify-write).
+
+    Windows: temp ime je UNIKATNO po piscu (pid + naključno) — deljen `*.tmp`
+    bi pri konkurenčnih `_save` (deadline fallback v `_locked`, brez locka)
+    trčil: dve niti pišeta isti tmp → WinError 32 (file in use). `os.replace`
+    se ob začasnem WinError 5/32 (Defender/handle) ponovi z backoff — če bi
+    padel takoj, bi se nit umrla sredi `_do`, lock.unlink() bi na Windows
+    obvisel (zaporedni create/delete locka) → osiroten lock → 10 s čakanja."""
     AGENDA_FILE.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(items, ensure_ascii=False, indent=2)
-    tmp = AGENDA_FILE.with_suffix(".json.tmp")
+    tmp = AGENDA_FILE.with_name(f"{AGENDA_FILE.name}.{os.getpid()}.{uuid.uuid4().hex[:6]}.tmp")
     tmp.write_text(payload, encoding="utf-8")
-    os.replace(tmp, AGENDA_FILE)
+    for attempt in range(_REPLACE_RETRIES):
+        try:
+            os.replace(tmp, AGENDA_FILE)
+            return
+        except OSError:
+            if attempt == _REPLACE_RETRIES - 1:
+                raise
+            time.sleep(0.02 * (attempt + 1))
 
 
 # ── Cross-process lock (paralelni daemon: N subprocesov kliče mark/add) ── #
@@ -84,35 +102,47 @@ def _lock_stale() -> bool:
         return False
 
 
+# Thread-varnost (Windows): niti ZNOTRAJ procesa serializiramo s threading.Lock
+# PRED file-lockom. Rapidni create/delete lock datoteke s 5 nitmi na Windows
+# trči (os.replace WinError 5 / osiroten lock → 10 s čakanja → best-effort
+# brez locka → izgubljen update). threading.Lock reši to brez file-operacij;
+# file lock ostane za cross-process (paralelni daemon).
+_thread_guard = threading.Lock()
+
+
 def _locked(fn):
-    """Izvede `fn` pod cross-process lockom — agenda.json read-modify-write je
-    atomičen MED PROCESI. Nujno za paralelni daemon: N subprocesov kliče
-    `mark`/`add`/`rearm_repeat` hkrati; brez locka bi se posodobitve izgubile."""
-    AGENDA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    lock = _agenda_lock()
-    deadline = time.monotonic() + _LOCK_TIMEOUT
-    while True:
-        try:
-            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode("utf-8"))
-            os.close(fd)
+    """Izvede `fn` pod lockom — agenda.json read-modify-write je atomičen.
+
+    Dvonivojski lock: (1) `threading.Lock` serializira niti v tem procesu
+    (brez dragih file-operacij), (2) file-lock `O_CREAT|O_EXCL` ščiti med
+    procesi (paralelni daemon: N subprocesov kliče mark/add/rearm_repeat).
+    """
+    with _thread_guard:
+        AGENDA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        lock = _agenda_lock()
+        deadline = time.monotonic() + _LOCK_TIMEOUT
+        while True:
             try:
-                return fn()
-            finally:
+                fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(fd, str(os.getpid()).encode("utf-8"))
+                os.close(fd)
                 try:
-                    lock.unlink()
-                except OSError:
-                    pass
-        except FileExistsError:
-            if _lock_stale():
-                try:
-                    lock.unlink()
-                except OSError:
-                    pass
-                continue
-            if time.monotonic() >= deadline:
-                return fn()   # zadnja možnost: best-effort, brez deadlocka
-            time.sleep(0.02)
+                    return fn()
+                finally:
+                    try:
+                        lock.unlink()
+                    except OSError:
+                        pass
+            except FileExistsError:
+                if _lock_stale():
+                    try:
+                        lock.unlink()
+                    except OSError:
+                        pass
+                    continue
+                if time.monotonic() >= deadline:
+                    return fn()   # zadnja možnost: best-effort, brez deadlocka
+                time.sleep(0.02)
 
 
 def add(goal: str, kind: str = "python", target: str | None = None,
