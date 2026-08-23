@@ -420,6 +420,104 @@ def test_surgical_fix_e2e_host_pytest(tmp_path, monkeypatch):
     assert files == ["__init__.py", "calc.py", "test_calc.py"]  # brez re-scaffolda
 
 
+# --------------------------------------------------------------------------- #
+#  Diagnose-first — dejanski vzrok iz pytest izhoda (ne glava)
+# --------------------------------------------------------------------------- #
+
+def _pytest_izhod_z_napako():
+    """Realističen pytest izhod: header spredaj, napaka na koncu."""
+    return (
+        "===== test session starts =====\n"
+        "platform linux -- Python 3.11.16, pytest-9.1.1\n"
+        "rootdir: /work\n"
+        "collecting ... collected 2 items\n"
+        "________ test_add ________\n"
+        "test_calc.py:5: in test_add\n"
+        "    assert add(2, 3) == 5\n"
+        "E   AssertionError: assert 2 - 3 == 5\n"
+        "________ test_sub ________\n"
+        "test_calc.py:9: in test_sub\n"
+        "    assert sub(5, 2) == 3\n"
+        "E   ValueError: bad\n"
+        "________ short test summary info ________\n"
+        "FAILED test_calc.py::test_add - AssertionError\n"
+        "FAILED test_calc.py::test_sub - ValueError\n"
+    )
+
+
+def test_extract_pytest_failure_rdeč_pravi_vzrok():
+    out = LoopXEngineBridge._extract_pytest_failure(_pytest_izhod_z_napako(), returncode=1)
+    assert "test_add" in out
+    assert "AssertionError" in out
+    assert "test session starts" not in out      # ne glava!
+    assert "short test summary info" in out
+
+
+def test_extract_pytest_failure_mnogo_padlih_prvi_blok():
+    out = LoopXEngineBridge._extract_pytest_failure(_pytest_izhod_z_napako(), returncode=1)
+    # Začne s PRVIM padlim testom (korenski vzrok), ne z zadnjim.
+    assert out.startswith("________ test_add ________")
+    assert "test_sub" in out.split("________ short test summary")[0]  # blok do summary
+
+
+def test_extract_pytest_failure_rc5_stub():
+    out = LoopXEngineBridge._extract_pytest_failure(
+        "===== test session starts =====\nplatform linux\ncollected 0 items\n===== no tests ran =====",
+        returncode=5)
+    assert "no tests ran" in out or "collected 0 items" in out
+
+
+def test_extract_pytest_failure_green_rc0():
+    assert LoopXEngineBridge._extract_pytest_failure("neki izhod", returncode=0) == ""
+
+
+def test_verify_python_sandbox_rdeč_vrne_pravi_vzrok(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    monkeypatch.setattr(engine, "_docker_available", lambda: False)
+    izhod = _pytest_izhod_z_napako()
+    monkeypatch.setattr("core.loopx_bridge.subprocess.run",
+                        lambda *a, **k: mock.Mock(returncode=1, stderr=izhod, stdout=""))
+    ok, reason = engine._verify_python_sandbox()
+    assert ok is False
+    assert "test_add" in reason and "AssertionError" in reason
+    assert "test session starts" not in reason    # ne več glava (prej msg[:400])
+
+
+def test_verify_python_sandbox_rc5_vrne_no_tests(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    monkeypatch.setattr(engine, "_docker_available", lambda: False)
+    monkeypatch.setattr("core.loopx_bridge.subprocess.run",
+                        lambda *a, **k: mock.Mock(returncode=5, stderr="collected 0 items\nno tests ran", stdout=""))
+    ok, reason = engine._verify_python_sandbox()
+    assert ok is False
+    assert "no tests ran" in reason
+
+
+def test_classify_error_no_tests_collected():
+    assert LoopXEngineBridge._classify_error("collected 0 items") == "NoTestsCollected"
+    assert LoopXEngineBridge._classify_error("no tests ran in 0.00s") == "NoTestsCollected"
+
+
+def test_classify_error_f821_nameerror():
+    assert LoopXEngineBridge._classify_error("[ruff:F821] Undefined name 'x'") == "NameError"
+
+
+def test_error_signature_stub():
+    assert LoopXEngineBridge._error_signature("collected 0 items\nno tests ran") == "NoTestsCollected|"
+
+
+def test_build_heal_prompt_diagnose_first(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    (engine.target_dir / "main.py").write_text("x = 1\n", encoding="utf-8")
+    # stub (no tests) → diagnose-first nota prisotna
+    prompt = engine._build_heal_prompt("collected 0 items\nno tests ran", "Popravi modul")
+    assert "DIAGNOSTIKA PRED POPRAVKOM" in prompt
+    # jasna napaka (znan test + izjema) → nota odsotna
+    prompt2 = engine._build_heal_prompt(
+        'File "test_a.py", line 5, in test_a\nValueError: bad', "Popravi modul")
+    assert "DIAGNOSTIKA PRED POPRAVKOM" not in prompt2
+
+
 def test_execute_and_heal_uspeh_po_healingu(tmp_path, monkeypatch):
     """3.1 — po enem uspešnem popravku naslednji cikel postane zelen."""
     engine = _navidezni_engine(tmp_path, monkeypatch)

@@ -100,6 +100,11 @@ TEST_PREFIXES = ("test_", "tests_")
 TEST_SUFFIX_E = ("_test",)          # za basenames (po odstranitvi .py)
 TEST_HARDNAME = {"conftest.py"}
 
+# Diagnose-first: iz pytest izhoda izlušči DEJANSKI vzrok, ne glavo (header).
+_PYTEST_FAILURE_TAIL = 1200   # padec: konec izhoda (FAILURES blok + summary)
+_PYTEST_FAILURE_MAX = 2000    # skupni cap (heal traceback budget je 8000)
+_PYTEST_SUMMARY_MAX = 700     # cap 'short test summary info' sekcije
+
 
 def is_test_filename(name: str) -> bool:
     """True, če je datoteka test (Test-Locking predikat — LLM je ne sme spreminjati)."""
@@ -390,6 +395,22 @@ class LoopXEngineBridge:
             "- Zeleno merilo: ciljni test + CELOTEN obstoječi test suite ostaneta zelena.\n\n"
         )
 
+    def _diagnose_first_note(self, traceback: str) -> str:
+        """DIAGNOSTIKA PRED POPRAVKOM — ko vzrok ni razvrščen ali ni padlega
+        testa (stub, import napaka, ruff), naj LLM NAJPREJ ugotovi dejanski
+        vzrok, šele nato popravi. Ne ponavlja istega ugiba."""
+        tb = traceback or ""
+        has_test = bool(re.search(r"\btest_[A-Za-z0-9_]+\b", tb))
+        if self._classify_error(tb) != "UNKNOWN" and has_test:
+            return ""   # znan tip + znan padel test → normalen popravek
+        return (
+            "DIAGNOSTIKA PRED POPRAVKOM (OBVEZNO):\n"
+            "Vzrok verifikacije ni jasno razvrščen ali ni prepoznanega padlega testa. "
+            "Najprej PREBERI vse datoteke modula in identificiraj TOČEN vzrok: "
+            "manjkajoč uvoz, struktura, stub/prazna datoteka, logika. "
+            "Nato popravi. NE ponavljaj istega ugiba kot prejšnji poskus.\n\n"
+        )
+
     def _build_heal_prompt(self, traceback: str, directive: str, kind: str = "python") -> str:
         """Sestavi heal prompt: sources + direktiva + spec/memory/graph/rag + traceback + out_note.
 
@@ -428,7 +449,8 @@ class LoopXEngineBridge:
         # P0 — spec_hint: arhitekturna usmeritev iz GStack manifesta. Korak 3: cap 4000.
         spec_hint = getattr(self, "spec_hint", None) or ""
         spec_note = f"SPEC (arhitekturna usmeritev izvedbe):\n{spec_hint[:4000]}\n\n" if spec_hint else ""
-        notes = self._surgical_note() + spec_note + memory_note + graph_note + rag_note
+        notes = (self._surgical_note() + self._diagnose_first_note(traceback)
+                 + spec_note + memory_note + graph_note + rag_note)
         directive_note = f"DIREKTIVA (kaj naj izdelek dejansko vsebuje):\n{directive[:3000]}\n\n"
         traceback_note = f"Razlog verifikacije (doseči je treba zelen):\n{traceback[:8000]}\n\n"
 
@@ -739,12 +761,53 @@ class LoopXEngineBridge:
         eksplicitnega 'AssertionError:' vzorca.
         """
         tb = traceback or ""
+        tb_lower = tb.lower()
+        # Diagnose-first: modul brez testov (stub) je posebna, smiselna klasifikacija
+        # — ne UNKNOWN. LLM razume: "modul nima pravega testa → implementiraj kodo+test".
+        if ("no tests collected" in tb_lower or "no tests ran" in tb_lower
+                or "collected 0 items" in tb_lower):
+            return "NoTestsCollected"
+        # Ruff F821 pre-gate: undefined name → NameError (namesto UNKNOWN).
+        if "f821" in tb_lower or "undefined name" in tb_lower:
+            return "NameError"
         m = re.search(r"\b(\w+(?:Error|Exception))\b", tb)
         if m:
             return m.group(1)
         if "assert" in tb.lower():
             return "AssertionError"
         return "UNKNOWN"
+
+    @staticmethod
+    def _extract_pytest_failure(msg: str, returncode: int) -> str:
+        """Iz celotnega pytest izhoda izlušči DEJANSKI vzrok, ne glavo (header).
+
+        - rc==0 (zelen)      → "" (klicatelj doda kratko ok-sporočilo)
+        - rc==5 (ni testov)  → konec izhoda ('collected 0 items' / 'no tests ran'):
+            LLM mora razumeti, da modul NIMA pravega testa (stub), ne da je koda padla.
+        - rc!=0 (rdeč)       → prvi FAILURES blok (poln traceback + izvorna vrstica)
+            + 'short test summary info' (vsi padli testi z izjemami). Padec na tail.
+        """
+        msg = msg or ""
+        if returncode == 0:
+            return ""
+        if returncode == 5:
+            tail = msg[-800:].strip()
+            return tail or "pytest: no tests collected (stub / nobene testne datoteke)"
+        parts = []
+        # (1) prvi neuspeh blok: separator '____ test_x ____' → naslednji sep / summary
+        sep = re.search(r"_{6,}\s+.+?\s+_{6,}", msg)
+        if sep:
+            rest = msg[sep.end():]
+            nxt = re.search(r"_{6,}\s+.+?\s+_{6,}|short test summary info", rest)
+            block = rest[: nxt.start()] if nxt else rest
+            parts.append((msg[sep.start():sep.end()] + "\n" + block).strip()[:1000])
+        # (2) kompakten seznam vseh padlih testov z izjemami
+        sm = re.search(r"short test summary info", msg, re.IGNORECASE)
+        if sm:
+            parts.append(msg[sm.start():].strip()[:_PYTEST_SUMMARY_MAX])
+        if parts:
+            return "\n\n".join(parts)[:_PYTEST_FAILURE_MAX]
+        return msg[-_PYTEST_FAILURE_TAIL:].strip()
 
     @staticmethod
     def _error_signature(reason: str) -> str:
@@ -827,8 +890,11 @@ class LoopXEngineBridge:
                     print(f"[LOOPX] -k {try_test} ni ujel testa (rc=5) → poln suite.",
                           flush=True)
                     continue
-                msg = result.stderr or result.stdout or "pytest ni zelen"
-                return result.returncode == 0, f"[NI IZOLIRANO — host] {msg[:400]}"
+                raw = (result.stderr or "") + "\n" + (result.stdout or "")
+                if result.returncode == 0:
+                    return True, "[NI IZOLIRANO — host] pytest zelen"
+                detail = self._extract_pytest_failure(raw, result.returncode) or "pytest ni zelen"
+                return False, f"[NI IZOLIRANO — host] {detail}"
             return False, "[NI IZOLIRANO — host] pytest ni zelen (rc=5)"
 
         # ---- Sandbox ----------------------------------------------------- #
@@ -865,8 +931,11 @@ class LoopXEngineBridge:
                 print(f"[LOOPX] -k {try_test} ni ujel testa (rc=5) → poln suite.",
                       flush=True)
                 continue
-            msg = result.stderr or result.stdout or "pytest ni zelen"
-            return result.returncode == 0, f"[sandbox] {msg[:400]}"
+            raw = (result.stderr or "") + "\n" + (result.stdout or "")
+            if result.returncode == 0:
+                return True, "[sandbox] pytest zelen"
+            detail = self._extract_pytest_failure(raw, result.returncode) or "pytest ni zelen"
+            return False, f"[sandbox] {detail}"
         return False, "[sandbox] pytest ni zelen (rc=5)"
 
     # ------------------------------------------------------------------ #
@@ -899,7 +968,7 @@ class LoopXEngineBridge:
         if result.returncode == 0:
             return True, ""
         msg = (result.stdout or result.stderr or "F821 offline").strip()
-        return False, f"[ruff:F821] nedefiniran(i) symbol(i) pred pytest: {msg[:500]}"
+        return False, f"[ruff:F821] nedefiniran(i) symbol(i) pred pytest: {msg[:1500]}"
 
     # F1 — verifikacija glede na vrsto izdelka. Vrne (pass, napis).
     # `targeted` (SURGICAL FIX): python → pytest -k <target_test> (samo padel test).

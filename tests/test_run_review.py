@@ -230,3 +230,23 @@ def test_maybe_enqueue_fix_passes_test_field(tmp_path, iso_agenda):
     item = r.maybe_enqueue_fix(run, review)
     assert item is not None
     assert item["test"] == "test_billing"
+
+
+def test_extract_error_no_tests_collected():
+    assert RunReviewer._extract_error("collected 0 items\nno tests ran") == "NoTestsCollected"
+
+
+def test_fix_directive_no_tests(tmp_path, iso_agenda):
+    """Diagnose-first — stub modul (no tests) → fix direktiva pove LLM, da mora
+    implementirati kodo+test (ne ugibati na runtime izjemo)."""
+    r = RunReviewer(tmp_path / "memory.db")
+    run = {"project": "env_config", "directive": "Izdelaj modul", "outcome": "failed",
+           "task_type": "python", "goal": "Izdelaj env_config",
+           "last_traceback": "collected 0 items\n===== no tests ran ====="}
+    review = r.review({**run, "traceback": "ista napaka NoTestsCollected po 3 poskusih"})
+    assert review["root_cause"] == "recurring_error"
+    item = r.maybe_enqueue_fix(run, review)
+    assert item is not None
+    g = item["goal"]
+    assert "NoTestsCollected" in g
+    assert "failing test <(ni najden)>" in g
