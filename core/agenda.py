@@ -218,6 +218,18 @@ def purge_history(keep: tuple = ("pending", "running")) -> int:
     return _locked(_do)
 
 
+def delete_item(item_id: str) -> bool:
+    """Odstrani ENO nalogo iz agende po id. Vrne True, če je bila odstranjena."""
+    def _do() -> bool:
+        items = _load()
+        kept = [i for i in items if i.get("id") != item_id]
+        if len(kept) == len(items):
+            return False
+        _save(kept)
+        return True
+    return _locked(_do)
+
+
 def all_() -> list:
     return _load()
 

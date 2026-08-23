@@ -29,7 +29,7 @@ import { LLMCache } from './bridges/cache.ts';
 import { resolveProvider } from './bridges/provider.ts';
 import { SqliteMemoryStore } from './memory/sqlite-store.ts';
 import { BunExec } from './bridges/exec.ts';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 
 // Pretvorba in prikaz artefaktov (Word / PDF / Markdown-ogled)
 import {
@@ -1370,6 +1370,19 @@ const server = Bun.serve({
     if (req.method === 'GET' && url.pathname === '/api/research') {
       return json({ research: await listResearch() });
     }
+    // Izbriši raziskovalno poročilo iz arhiva (gumb Delete v pogledu Raziskovanje).
+    if (req.method === 'POST' && url.pathname === '/api/research/delete') {
+      const raw = await req.text().catch(() => '');
+      let body: { name?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const name = String(body.name || '').replace(/[\\/]/g, '');   // samo basename — brez traversal
+      if (!name) return json({ ok: false, error: 'name je obvezen' }, 400);
+      const dir = `${OUT_ROOT}/.rob_ai/research/${name}`;
+      try {
+        if (await Bun.file(dir).exists()) { unlinkSync(dir); }
+      } catch { /* napaka pri brisanju */ }
+      return json({ ok: true, name });
+    }
     // Progressive disclosure: ujemi sporočilo z relevantnimi gstack skilli.
     if (req.method === 'GET' && url.pathname === '/api/skills/match') {
       const q = normalize((url.searchParams.get('q') || '').toLowerCase());
@@ -1551,6 +1564,24 @@ const server = Bun.serve({
       });
       await proc.exited;
       return json({ ok: true, id, status });
+    }
+    // Izbriši ENO nalogo iz agende (gumb Delete v pogledu Agenda).
+    if (req.method === 'POST' && url.pathname === '/api/agenda/delete') {
+      const raw = await req.text().catch(() => '');
+      let body: { id?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const id = String(body.id || '').trim();
+      if (!id) return json({ ok: false, error: 'id je obvezen' }, 400);
+      const proc = Bun.spawn({
+        cmd: ['python', '-c', `from core.agenda import delete_item; import json; print(json.dumps(delete_item(${JSON.stringify(id)})))`],
+        cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+      });
+      const out = await new Response(proc.stdout).text();
+      await proc.exited;
+      let removed = false;
+      try { removed = JSON.parse(out.trim() || 'false'); } catch { /* */ }
+      return json({ ok: true, removed });
     }
 
     // Faza 6: poslovna knjiga (glavna knjiga podjetja) — branje in nov delovnik.

@@ -241,6 +241,10 @@
   .file-view-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--surface2);}
   .file-view-head span{font-family:var(--font-mono);font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .file-view pre.code{flex:1;margin:0;padding:12px;overflow:auto;font-family:var(--font-mono);font-size:12px;line-height:1.5;white-space:pre;color:var(--ink);background:var(--surface);}
+  /* Gumbi za odstranjevanje (Agenda / Raziskovanje / Pogovor) */
+  .del-btn{background:transparent;border:1px solid var(--line);border-radius:5px;color:var(--muted);cursor:pointer;padding:3px 7px;font-size:12px;line-height:1;}
+  .del-btn:hover{color:var(--bad);border-color:var(--bad);}
+  .convo-tools{display:flex;justify-content:flex-end;margin-top:8px;}
 
   @media (max-width:900px){
     .app{grid-template-columns:1fr;}
@@ -360,7 +364,8 @@
 
       <div class="convo-wrap">
         <div class="terminal">
-          <div class="thead"><span class="tdot" style="background:var(--crit)"></span><span class="tdot" style="background:var(--warn)"></span><span class="tdot" style="background:var(--good)"></span> &nbsp;rob-terminal · povezan</div>
+          <div class="thead"><span class="tdot" style="background:var(--crit)"></span><span class="tdot" style="background:var(--warn)"></span><span class="tdot" style="background:var(--good)"></span> &nbsp;rob-terminal · povezan
+            <span style="margin-left:auto;display:inline-flex"><button class="del-btn" onclick="clearConvo()" title="Počisti pogovor (odstrani iz spomina)">🗑 Počisti pogovor</button></span></div>
           <div class="tbody" id="convo">
             <div class="convo-line ai"><span class="who">ROB</span><span class="msg">Pozdravljen. Jaz sem ROB — govori mi prek terminala ali glasu. Kaj naj izvedem?</span></div>
             <div class="convo-line you"><span class="who">TI</span><span class="msg">stanje sistema?</span></div>
@@ -403,8 +408,8 @@
         <div class="phead"><span class="ptitle">Naročila</span><span class="ptag" id="agenda-active">0 aktivna</span></div>
         <div class="pbody" style="overflow-x:auto;">
           <table>
-            <thead><tr><th>Status</th><th>Naloga</th><th>Target</th><th>Tip</th><th>Vir</th><th>Čas</th></tr></thead>
-            <tbody id="agenda-body"><tr><td colspan="6" style="color:var(--faint)">nalaganje …</td></tr></tbody>
+            <thead><tr><th>Status</th><th>Naloga</th><th>Target</th><th>Tip</th><th>Vir</th><th>Čas</th><th></th></tr></thead>
+            <tbody id="agenda-body"><tr><td colspan="7" style="color:var(--faint)">nalaganje …</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -623,6 +628,13 @@
       box.scrollTop=box.scrollHeight;
     }catch(e){}
   }
+  function clearConvo(){
+    if(!confirm('Počistim pogovor (odstranim iz spomina)?')) return;
+    convo=[];
+    try{ localStorage.removeItem('rob_convo'); }catch(e){}
+    const box=document.getElementById('convo'); if(!box) return;
+    box.innerHTML='<div class="convo-line ai"><span class="who">ROB</span><span class="msg">Pozdravljen. Jaz sem ROB — govori mi prek terminala ali glasu. Kaj naj izvedem?</span></div>';
+  }
   let voiceReply=true;
   let voices=[];
   const GEMINI_VOICES=['Charon','Orus','Zephyr','Puck','Kore','Fenrir','Leda','Aoede'];
@@ -811,13 +823,21 @@
     const sorted=[...(items||[])].sort((a,b)=>(b.updated_at||b.created_at||0)-(a.updated_at||a.created_at||0));
     body.innerHTML=sorted.length?sorted.map(i=>{
       const s=st[i.status]||['pend',i.status||'?'];
+      const id=(i.id||'').replace(/'/g,'');
       const clickable=i.status==='done'
-        ? ` onclick="openTask('${(i.id||'').replace(/'/g,'')}')" style="cursor:pointer" title="Klikni za rešitev"`
+        ? ` onclick="openTask('${id}')" style="cursor:pointer" title="Klikni za rešitev"`
         : '';
-      return `<tr${clickable}><td><span class="pill ${s[0]}">${s[1]}</span></td><td>${(i.goal||'').replace(/</g,'&lt;')}</td><td class="mono">${i.target||''}</td><td class="mono">${i.kind||''}</td><td class="mono">${i.source||''}</td><td class="mono">${fmtTs(i.updated_at)}</td></tr>`;
-    }).join(''):'<tr><td colspan="6" style="color:var(--faint)">agenda prazna</td></tr>';
+      return `<tr${clickable}><td><span class="pill ${s[0]}">${s[1]}</span></td><td>${(i.goal||'').replace(/</g,'&lt;')}</td><td class="mono">${i.target||''}</td><td class="mono">${i.kind||''}</td><td class="mono">${i.source||''}</td><td class="mono">${fmtTs(i.updated_at)}</td><td><button class="del-btn" onclick="event.stopPropagation();deleteAgendaItem('${id}')" title="Odstrani iz agende">🗑</button></td></tr>`;
+    }).join(''):'<tr><td colspan="7" style="color:var(--faint)">agenda prazna</td></tr>';
   }
   function closeTask(){ document.getElementById('task-modal').classList.remove('open'); }
+  async function deleteAgendaItem(id){
+    if(!confirm('Odstranim nalogo iz agende?')) return;
+    try{
+      await fetch('/api/agenda/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+      loadLive();
+    }catch(e){ toast('Napaka: '+String(e.message||e)); }
+  }
   function mimeFor(name){
     if(name.endsWith('.md')) return 'text/markdown';
     if(name.endsWith('.json')) return 'application/json';
@@ -884,7 +904,14 @@
   }
   function renderResearch(list){
     const g=document.getElementById('research-list'); if(!g) return;
-    g.innerHTML=list.length?list.map(r=>`<div class="research-item" data-path="${r.path}" data-name="${r.title}"><div class="rt">${r.title}</div><div class="rm">${r.name} · ${(r.sizeBytes/1024).toFixed(1)} KB</div></div>`).join(''):'<div style="color:var(--faint)">Še ni arhiviranih raziskav. V pogovoru vprašaj "preglej / razišči ...".</div>';
+    g.innerHTML=list.length?list.map(r=>`<div class="research-item" data-path="${r.path}" data-name="${r.name}" style="position:relative"><button class="del-btn" onclick="event.stopPropagation();deleteResearchItem('${(r.name||'').replace(/'/g,'')}')" style="position:absolute;top:8px;right:8px" title="Odstrani raziskavo">🗑</button><div class="rt">${r.title}</div><div class="rm">${r.name} · ${(r.sizeBytes/1024).toFixed(1)} KB</div></div>`).join(''):'<div style="color:var(--faint)">Še ni arhiviranih raziskav. V pogovoru vprašaj "preglej / razišči ...".</div>';
+  }
+  async function deleteResearchItem(name){
+    if(!confirm('Odstranim raziskavo iz arhiva?')) return;
+    try{
+      await fetch('/api/research/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+      loadResearch();
+    }catch(e){ toast('Napaka: '+String(e.message||e)); }
   }
   async function loadResearch(){
     try{
