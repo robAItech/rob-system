@@ -286,10 +286,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
         Agenda
       </button>
-      <button data-view="artifacts" onclick="show('artifacts')">
-        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>
-        Artefakti
-      </button>
       <button data-view="gbrain" onclick="show('gbrain')">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
         GBRAIN
@@ -328,7 +324,6 @@
       <div class="view-head"><h1>Pregled sistema</h1><span class="meta">most · živo</span></div>
 
       <div class="kpis">
-        <div class="kpi good" onclick="show('artifacts')" title="Odpri Artefakti"><div class="k">Zeleni moduli</div><div class="v" id="kpi-modules">18<em style="font-style:normal;color:var(--accent)">/18</em></div><div class="d">100% pokritost</div></div>
         <div class="kpi" onclick="show('agents')" title="Odpri Agenti"><div class="k">Aktivni agenti</div><div class="v">6</div><div class="d">4 v toku · 2 registrirana</div></div>
         <div class="kpi" onclick="show('agenda')" title="Odpri Agenda"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">17</div><div class="d">GBRAIN task_history</div></div>
         <div class="kpi warn" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">259</div><div class="d">blacklist vzorcev</div></div>
@@ -416,11 +411,6 @@
     </section>
 
     <!-- ARTEFAKTI -->
-    <section class="view" id="view-artifacts">
-      <div class="view-head"><h1>Artefakti</h1><span class="meta">moduli + izdelki · out/</span></div>
-      <div class="arts" id="arts"><div style="color:var(--faint)">nalaganje …</div></div>
-    </section>
-
     <!-- GBRAIN -->
     <section class="view" id="view-gbrain">
       <div class="view-head"><h1>GBRAIN · skills</h1><span class="meta">54 gstack skillov · direktni zagon</span></div>
@@ -525,7 +515,7 @@
 
 <script>
   // ── Navigacija ────────────────────────────────────────────────────
-  const crumbs = {command:'/ pregled', pogovor:'/ pogovor', research:'/ raziskovanje', agenda:'/ agenda', artifacts:'/ artefakti', gbrain:'/ gbrain', agents:'/ agenti'};
+  const crumbs = {command:'/ pregled', pogovor:'/ pogovor', research:'/ raziskovanje', agenda:'/ agenda', gbrain:'/ gbrain', agents:'/ agenti'};
   function show(view){
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
     document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
@@ -865,10 +855,6 @@
       document.getElementById('task-filelist').innerHTML='<div class="empty">napaka pri nalaganju rešitve: '+(e.message||e)+'</div>';
     }
   }
-  function renderArtifacts(list){
-    const g=document.getElementById('arts'); if(!g) return;
-    g.innerHTML=list.length?list.map(a=>`<div class="art" data-path="${a.path}" data-name="${a.name}"><span class="type">${a.kind==='modul'?'modul':a.type}</span><div class="an">${a.name}</div><div class="am"><span>${a.type||''}</span><span>${a.kind||''}</span></div></div>`).join(''):'<div style="color:var(--faint)">ni artefaktov</div>';
-  }
   function openArtifact(path, name){
     document.getElementById('art-name').textContent=name;
     document.getElementById('art-frame').src='/api/view?path='+encodeURIComponent(path);
@@ -911,10 +897,6 @@
     try{
       const r=await fetch('/api/agenda');
       if(r.ok){ const a=await r.json(); if(a.items) renderAgenda(a.items); }
-    }catch(e){}
-    try{
-      const r=await fetch('/api/artifacts');
-      if(r.ok){ const a=await r.json(); if(a.artifacts) renderArtifacts(a.artifacts); }
     }catch(e){}
     try{
       const r=await fetch('/api/agents');
