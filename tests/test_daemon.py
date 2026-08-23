@@ -163,14 +163,27 @@ def test_scheduler_complete_advances_interval():
 
 
 def test_scheduler_warm_up_staggers(monkeypatch):
+    # Prvi termin je sorazmeren intervalu (3600s → 3600//24 = 150s) + index*60.
     s = daemon.Scheduler()
     s.add("a", lambda settings, cfg: {}, 3600)
     s.add("b", lambda settings, cfg: {}, 3600)
     monkeypatch.setattr(daemon, "_now", lambda: 500)
     s.warm_up(500)
-    assert s.due(500) is None            # nič še ni na vrsti (staggered)
-    assert s.due(560) is not None        # prvi job dozori po index+1 minut
-    assert s.due(560).get("name") == "a"
+    # a dozori pri +150s (3600//24), b pri +150s + index*60 = +210s.
+    assert s.due(500 + 149) is None
+    assert s.due(500 + 150).get("name") == "a"
+    assert s._jobs[1]["next_due"] == 500 + 210
+
+
+def test_scheduler_warm_up_weekly_job_ne_firi_v_prvih_minutah(monkeypatch):
+    # Tedenski job (168h) ob svežem boot-u ne sme biti na vrsti v prvi uri —
+    # prvi termin je ~7h (interval//24), ne index+1 minut.
+    s = daemon.Scheduler()
+    s.add("weekly", lambda settings, cfg: {}, 168 * 3600)
+    monkeypatch.setattr(daemon, "_now", lambda: 1000)
+    s.warm_up(1000)
+    assert s.due(1000 + 3600) is None                    # ni po 1h
+    assert s.due(1000 + 7 * 3600).get("name") == "weekly"  # ~7h
 
 
 # ------------------------------------------------------------------ #

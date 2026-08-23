@@ -193,11 +193,15 @@ class Scheduler:
                 j["next_due"] = int(p.get("next_due") or 0)
 
     def warm_up(self, now: int) -> None:
-        """Prvi zagon brez perzistiranega stanja: staggered, index+1 minut
-        v prihodnost (da se ob boot ne zaleti vseh jobov naenkrat)."""
+        """Prvi zagon brez perzistiranega stanja: prvi termin vsakega joba je
+        SORAZMEREN njegovemu intervalu (interval//24 → dnevni v ~1h, tedenski
+        v ~7h, goal 6h v ~15 min) + majhen index offset (da se jobi z istim
+        intervalom ne zaženejo vsi naenkrat). Tedenski jobi se ob svežem
+        boot-u torej NE poženejo v prvih minutah (prej = drag self-check)."""
         for i, j in enumerate(self._jobs):
             if j["next_due"] <= 0:
-                j["next_due"] = now + 60 * (i + 1)
+                interval = max(int(j["interval_seconds"]), 1)
+                j["next_due"] = now + max(interval // 24, 60) + 60 * i
 
     def due(self, now: int) -> dict | None:
         """Prvi job, ki je na vrsti (po vrstnem redu dodajanja)."""
