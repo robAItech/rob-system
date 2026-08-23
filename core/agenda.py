@@ -202,6 +202,22 @@ def mark(item_id: str, status: str) -> None:
     _locked(_do)
 
 
+def purge_history(keep: tuple = ("pending", "running")) -> int:
+    """Odstrani zaključene naloge (done/failed) iz agende; obdrži aktivne.
+
+    Dashboard čiščenje: zaključene naloge niso več potrebne v vrsti (moduli
+    ostanejo v actions/). Vrne število odstranjenih. Pod lockom (varno ob
+    daemonovih add/mark)."""
+    def _do() -> int:
+        items = _load()
+        kept = [i for i in items if i.get("status") in keep]
+        removed = len(items) - len(kept)
+        if removed:
+            _save(kept)
+        return removed
+    return _locked(_do)
+
+
 def all_() -> list:
     return _load()
 

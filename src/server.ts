@@ -302,6 +302,7 @@ async function listEditable(): Promise<Record<string, unknown>[]> {
     for await (const dir of glob.scan({ cwd: base, onlyFiles: false })) {
       const name = dir.replace(/\/$/, '');
       if (!name || name.startsWith('.')) continue;
+      if (name === '__pycache__' || name === '.pytest_cache') continue;   // ne modul
       // Glavni artefakt: .py/.html/.md/.pyc iz actions/<name>/ (preskoči test_).
       let type = 'python';
       let artefact = '';
