@@ -895,12 +895,15 @@
       const r=await fetch('/api/metrics');
       if(r.ok){ const m=await r.json(); if(m.tasks!==undefined){
         state.tasks=m.tasks; state.errors=m.errors; state.nodes=m.nodes; live=true;
-        document.getElementById('kpi-modules').innerHTML=`${m.modules}<em style="font-style:normal;color:var(--accent)">/${m.modules}</em>`;
       }}
     }catch(e){}
     try{
       const r=await fetch('/api/agenda');
       if(r.ok){ const a=await r.json(); if(a.items) renderAgenda(a.items); }
+    }catch(e){}
+    try{
+      const r=await fetch('/api/events');
+      if(r.ok){ const d=await r.json(); if(d.events && d.events.length){ state.events=d.events; } }
     }catch(e){}
     try{
       const r=await fetch('/api/agents');

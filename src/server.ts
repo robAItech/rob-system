@@ -1294,6 +1294,34 @@ const server = Bun.serve({
     if (req.method === 'GET' && url.pathname === '/api/metrics') {
       return json(await systemMetrics());
     }
+    // Živi dogodki (zadnji realni dogodki iz audit.jsonl — dashboard feed).
+    if (req.method === 'GET' && url.pathname === '/api/events') {
+      const f = Bun.file(`${OUT_ROOT}/.rob_ai/audit.jsonl`);
+      const events: { t: string; s: string; c: string; m: string }[] = [];
+      try {
+        if (await f.exists()) {
+          const text = await f.text();
+          const lines = text.trim().split('\n').slice(-25);
+          for (const line of lines) {
+            try {
+              const d = JSON.parse(line);
+              const ts = new Date(d.ts * 1000);
+              const p = (n: number) => String(n).padStart(2, '0');
+              const t = `${p(ts.getHours())}:${p(ts.getMinutes())}:${p(ts.getSeconds())}`;
+              const ev = String(d.event || '');
+              let s = (ev === 'daemon-task' ? 'TASK' : ev === 'rsi-run' ? 'RSI' : ev === 'build' ? 'BUILD' : ev === 'agent' ? 'AGENT' : ev.toUpperCase().slice(0, 6));
+              let c = 's-run';
+              const st = String(d.status || '');
+              if (st === 'ok' || st === 'done' || st === 'success' || st === 'VERIFIED GREEN') c = 's-ok';
+              if (st === 'failed' || st === 'FAILED') c = 's-crit';
+              const m = `${d.project || ''} ${String(d.detail || '').slice(0, 60)}`.trim();
+              events.push({ t, s, c, m });
+            } catch { /* neveljavna vrstica JSON — preskoči */ }
+          }
+        }
+      } catch { /* audit morda ne obstaja */ }
+      return json({ ok: true, events });
+    }
     // Agenti + bridge-i (iz src/agents/ in core/).
     if (req.method === 'GET' && url.pathname === '/api/agents') {
       return json({ agents: await listAgents() });
