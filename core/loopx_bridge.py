@@ -105,6 +105,7 @@ TEST_HARDNAME = {"conftest.py"}
 _PYTEST_FAILURE_TAIL = 1200   # padec: konec izhoda (FAILURES blok + summary)
 _PYTEST_FAILURE_MAX = 2000    # skupni cap (heal traceback budget je 8000)
 _PYTEST_SUMMARY_MAX = 700     # cap 'short test summary info' sekcije
+_PYTEST_BLOCK_MAX = 1200      # cap jedra bloka (>/E/! vrstice) ko ni signalnih vrstic
 
 
 def is_test_filename(name: str) -> bool:
@@ -393,8 +394,28 @@ class LoopXEngineBridge:
 
     @staticmethod
     def _extract_failing_test(reason: str) -> str:
-        """Zadnje `test_<ime>` iz razloga (padel test). Isto pravilo kot run_review."""
-        m = re.findall(r"\b(test_[A-Za-z0-9_]+)\b", reason or "")
+        """Ciljni padel test za `pytest -k` — iz FAILED summary vrstic, sicer traceback.
+
+        Collection napake (ERROR .../test_x.py) NISO padel test: ciljanje nanje
+        (pytest -k <test_x>) bi teklo na modulu, ki se ne zbere (npr. manjkajoča
+        sandbox odvisnost → ModuleNotFoundError). V takem primeru vrni "" → poln
+        suite, da RSI vidi PRAVI vzrok in ne lovi imena modula iz ERROR vrstice.
+
+        Raw traceback (brez pytest summary) → zadnje `test_<ime>` (običajen padel
+        test), da se P8 adaptivno ciljanje ohrani tudi brez summary bloka.
+        """
+        reason = reason or ""
+        # (1) Pravi padel test iz FAILED summary vrstic (najbolj zanesljivo).
+        failed = [ln for ln in reason.splitlines() if ln.startswith("FAILED")]
+        if failed:
+            m = re.findall(r"\b(test_[A-Za-z0-9_]+)\b", failed[-1])
+            if m:
+                return m[-1]
+        # (2) Collection napaka (ERROR .../test_x.py) → brez cilja (poln suite).
+        if re.search(r"(?m)^ERROR\s+\S*test_[A-Za-z0-9_]+\.py", reason):
+            return ""
+        # (3) Raw traceback brez summary → zadnje test_ ime.
+        m = re.findall(r"\b(test_[A-Za-z0-9_]+)\b", reason)
         return m[-1] if m else ""
 
     def _adopt_target_test(self, reason: str, kind: str) -> None:
@@ -867,13 +888,33 @@ class LoopXEngineBridge:
         return "UNKNOWN"
 
     @staticmethod
+    def _pytest_block_essence(block: str) -> str:
+        """Jedro failure/error bloka: vrstice `> ` (izvor), `E ` (izjema), `! `.
+
+        pytest postavi `>  ...` (izvorna vrstica) in `E  <Exception>: ...` na
+        KONEC bloka — za velikimi fixture repr-ji in traceback okviri. Head-
+        trunckacija (`block[:N]`) bi te vrstice odrezala → `_classify_error`
+        bi vrnil UNKNOWN (pravi vzrok skrit pred LLM). Tukaj vzamemo prav te
+        vrstice + rep bloka (za `file:line: Exception` lokacijo).
+        """
+        lines = block.splitlines()
+        sig = [ln for ln in lines if ln.lstrip().startswith(("> ", "E ", "! "))]
+        if sig:
+            body = "\n".join(sig)[:1200]
+            tail = block[-300:].strip()
+            if tail and tail not in body:
+                body += f"\n...\n{tail}"
+            return body
+        return block[-_PYTEST_BLOCK_MAX:].strip()
+
+    @staticmethod
     def _extract_pytest_failure(msg: str, returncode: int) -> str:
         """Iz celotnega pytest izhoda izlušči DEJANSKI vzrok, ne glavo (header).
 
         - rc==0 (zelen)      → "" (klicatelj doda kratko ok-sporočilo)
         - rc==5 (ni testov)  → konec izhoda ('collected 0 items' / 'no tests ran'):
             LLM mora razumeti, da modul NIMA pravega testa (stub), ne da je koda padla.
-        - rc!=0 (rdeč)       → prvi FAILURES blok (poln traceback + izvorna vrstica)
+        - rc!=0 (rdeč)       → prvi FAILURES blok — JEDRO napake (`>/E/!` vrstice)
             + 'short test summary info' (vsi padli testi z izjemami). Padec na tail.
         """
         msg = msg or ""
@@ -883,13 +924,16 @@ class LoopXEngineBridge:
             tail = msg[-800:].strip()
             return tail or "pytest: no tests collected (stub / nobene testne datoteke)"
         parts = []
-        # (1) prvi neuspeh blok: separator '____ test_x ____' → naslednji sep / summary
-        sep = re.search(r"_{6,}\s+.+?\s+_{6,}", msg)
+        # (1) prvi blok: separator '___ test_x ___' ALI '___ ERROR collecting ... ___'.
+        #    `_{4,}` (ne `_{6,}`): varno pokrije FAILURE in collection napake
+        #    (različna števila podčrtaj po pytest verzijah) → E vrstica se ohrani.
+        sep = re.search(r"_{4,}\s+.*?\s+_{4,}", msg)
         if sep:
             rest = msg[sep.end():]
-            nxt = re.search(r"_{6,}\s+.+?\s+_{6,}|short test summary info", rest)
+            nxt = re.search(r"_{4,}\s+.*?\s+_{4,}|short test summary info", rest)
             block = rest[: nxt.start()] if nxt else rest
-            parts.append((msg[sep.start():sep.end()] + "\n" + block).strip()[:1000])
+            header = msg[sep.start():sep.end()]
+            parts.append((header + "\n\n" + LoopXEngineBridge._pytest_block_essence(block)).strip()[:1400])
         # (2) kompakten seznam vseh padlih testov z izjemami
         sm = re.search(r"short test summary info", msg, re.IGNORECASE)
         if sm:

@@ -513,6 +513,81 @@ def test_error_signature_stub():
     assert LoopXEngineBridge._error_signature("collected 0 items\nno tests ran") == "NoTestsCollected|"
 
 
+# --------------------------------------------------------------------------- #
+#  Diagnose-first hardening — collection napake in obrezane assert vrstice
+# --------------------------------------------------------------------------- #
+
+def _pytest_izhod_kolekcijska_napaka():
+    """Realističen collection ERROR izhod: manjkajoča odvisnost v test modulu."""
+    return (
+        "===== test session starts =====\n"
+        "collecting ... collected 0 items / 1 error\n"
+        "========= ERRORS =========\n"
+        "______________ ERROR collecting actions/broken/test_broken.py ______________\n"
+        "ImportError while importing test module 'actions/broken/test_broken.py'.\n"
+        "Traceback:\n"
+        "/usr/local/lib/python3.11/importlib/__init__.py:126: in import_module\n"
+        "    return _bootstrap._gcd_import(name[level:], package, level)\n"
+        "actions/broken/test_broken.py:1: in <module>\n"
+        "    import missing_pkg\n"
+        "E   ModuleNotFoundError: No module named 'missing_pkg'\n"
+        "========= short test summary info =========\n"
+        "ERROR actions/broken/test_broken.py\n"
+        "!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!\n"
+    )
+
+
+def test_extract_pytest_failure_kolekcijska_napaka_ohrani_izjemo():
+    """Collection napaka: jedro bloka (E ModuleNotFoundError) se ne izgubi."""
+    out = LoopXEngineBridge._extract_pytest_failure(
+        _pytest_izhod_kolekcijska_napaka(), returncode=2)
+    assert "ModuleNotFoundError" in out
+    assert "missing_pkg" in out
+    assert LoopXEngineBridge._classify_error(out[:2000]) == "ModuleNotFoundError"
+
+
+def test_extract_failing_test_ignorira_collection_error():
+    """Collection napaka NIMA padlega testa → brez cilja (poln suite), ne ime modula."""
+    out = LoopXEngineBridge._extract_pytest_failure(
+        _pytest_izhod_kolekcijska_napaka(), returncode=2)
+    assert LoopXEngineBridge._extract_failing_test(out) == ""
+
+
+def test_extract_failing_test_vzame_iz_failed_vrstice():
+    """Pravi padel test se vzame iz FAILED summary vrstice (ne ERROR modula)."""
+    izhod = (
+        "______ test_x ______\n"
+        ">       assert x == 1\n"
+        "E       assert 2 == 1\n"
+        "______ short test summary info ______\n"
+        "FAILED actions/m/test_calc.py::TestM::test_verify_ok\n"
+        "FAILED actions/m/test_other.py::TestO::test_registry_ok\n"
+    )
+    assert LoopXEngineBridge._extract_failing_test(izhod) == "test_registry_ok"
+
+
+def test_extract_failing_test_prazno_brez_failed():
+    assert LoopXEngineBridge._extract_failing_test("ERROR actions/m/test_a.py\n") == ""
+
+
+def test_pytest_block_essence_vzame_assert_in_rep():
+    """Obrezan blok (veliki repr-ji) → JEDRO (>/E vrstice) se ohrani, ne glava."""
+    blok = (
+        "self = <obj at 0x123456>\n"
+        "valid_schema = {'properties': {'address': {'properties': {'city': {'type': 'string'},"
+        "'street': {'type': 'string'}}, 'required': ['street'], 'type': 'object'}, 'id': {'type': 'integer'},"
+        "'name': {'type': 'string'}}, 'required': ['id', 'name', 'email'], 'type': 'object'}\n"
+        "    is_valid, errors, warnings = manager.verify_contract(valid_consumer_schema, valid_p\n"
+        ">       assert is_valid is True\n"
+        "E       assert False is True\n"
+        "test_contracts.py:158: AssertionError\n"
+    )
+    essence = LoopXEngineBridge._pytest_block_essence(blok)
+    assert "assert is_valid is True" in essence
+    assert "assert False is True" in essence
+    assert "AssertionError" in essence
+
+
 def test_build_heal_prompt_diagnose_first(tmp_path, monkeypatch):
     engine = _navidezni_engine(tmp_path, monkeypatch)
     (engine.target_dir / "main.py").write_text("x = 1\n", encoding="utf-8")
