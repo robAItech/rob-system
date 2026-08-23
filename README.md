@@ -239,6 +239,13 @@ pwsh -File scripts\register-autostart.ps1   # registrira autostart (ob prijavi)
 pwsh -File scripts\register-autostart.ps1 -Query   # preveri
 ```
 
+**Routing agentov (P5)** — daemon obdela nalogo z agentom po `kind` (v agendo prek
+dashboarda ali `core.agenda.add(..., kind=...)`):
+`python` (standardni RSI build) · `modify` (refaktor, zahteva spremembo) ·
+`autonomous` (spec+implement) · `team` (multi-agent adversarial) · `fork`
+(raziskovanje N pristopov → izvedi najboljšega) · `plan` (dekompozicija velikega
+cilja → podnaloge v agendo).
+
 **CLI/terminal ostaja kot varnostna (rescue) pot** — `rob dev` še vedno deluje
 za ročni nadzor, stop/start/reset, ročni claude itd. Daemon in CLI sobivata
 (`dev_cli.cmd_serve` je idempotenten — daemon ne podvaja že-tekočih storitev).
@@ -299,6 +306,7 @@ Dosežene faze:
 | **P2** | Zapri zanko neuspeha: fail-fast (ostri podpis), fix-task v agendo (konzumira `next_step`), poštena metrika iz `run_reviews` |
 | **P3** | Surgical fix + diagnose-first: minimalen diff brez re-scaffolda, targeted verifikacija, dejanski vzrok iz pytest izhoda (ne glava) |
 | **P4** | MODIFY false-green guard (`kind="modify"`): modifikacije morajo dejansko spremeniti modul — sicer neuspeh, ne tiho zelen |
+| **P5** | **Routing agentov v daemonu**: naloga iz agende se obdela z agentom po `kind` — `team` (adversarial), `fork` (raziskovanje), `plan` (dekompozicija), `modify`, `autonomous`, `fix_loop`, `python` |
 
 Command-Center dashboard ponuja poglede: **Command Center** (pregled + obsidian
 graf), **Pogovor** (glasovni vnos + TTS odgovor, izbira glasu Charon/Orus/...),
@@ -418,10 +426,10 @@ zanko učenja uteži (RLAIF) in eno meta-zanko (avtonomija ciljev):
 | **2 · presoja** | `core/run_review.py` | Post-run samoevalvacija: klasificira VZROK izida na nivoju odločitve (`spec_mismatch`/`llm_error`/…), ne le testa; **ob neuspehu vvrže konkreten fix task v agendo** (`maybe_enqueue_fix`, konzumira `next_step`). |
 | **3 · orkestracija** | `core/self_improve.py` + `core/prompt_registry.py` + `core/tuning.py` | RSI nase: samorazvoj **promptov** (guard + regresijski testi + rollback) in **parametrov** (`max_attempts`, `repeat_abort_after` — z mejami + rollback). |
 | **4 · meta-evalvacija** | `core/meta_eval.py` | Meri, ali izboljšave dejansko pomagajo (uspešnost, povp. LLM klici); **poštena metrika iz `run_reviews`** (ne `task_history` — brez `test_proj` onesnaženja), verzijski gate; ob regresiji **avtomatsko povrne** prompt + parametre. |
-| **5 · načrtovanje** | `core/task_planner.py` | Dolgoročno načrtovanje: LLM razbije kompleksen cilj na urejene podcilje in vsakega izvede skozi RSI (večkorakne naloge). |
-| **6 · koordinacija** | `core/team.py` | Multi-agent adversarial: planner → critic → builder → verifier; critic izzove načrt pred izvedbo. |
+| **5 · načrtovanje** | `core/task_planner.py` | Dolgoročno načrtovanje: LLM razbije kompleksen cilj na urejene podcilje in vsakega izvede skozi RSI (večkorakne naloge). **V daemonu**: `kind="plan"` → podnaloge v agendo. |
+| **6 · koordinacija** | `core/team.py` | Multi-agent adversarial: planner → critic → builder → verifier; critic izzove načrt pred izvedbo. **V daemonu**: `kind="team"`. |
 | **7 · napoved** | `core/world_model.py` | Svetovni model: iz lastnih trajektorij napove uspešnost, pričakovan LLM strošek in verjeten vzrok neuspeha. |
-| **8 · raziskovanje** | `core/fork.py` | Paralelni sprint: razišče N pristopov, vsakega oceni (world model + critic), vrne najboljšega. |
+| **8 · raziskovanje** | `core/fork.py` | Paralelni sprint: razišče N pristopov, vsakega oceni (world model + critic), **izvede najboljšega** (explore_and_run). **V daemonu**: `kind="fork"`. |
 | **9 · učenje uteži** | `core/rlaif.py` | RLAIF podatkovni cevovod: iz trajektorij izlušči (chosen, rejected) pare in izvozi JSONL (DPO) za fine-tuning. |
 | **10 · avtonomija** | `core/goal_autonomy.py` | Avtonomija ciljev: sistem iz svojih šibkih točk predlaga naslednjo nalogo; varni reverzibilni koraki se izvedejo samodejno. |
 
