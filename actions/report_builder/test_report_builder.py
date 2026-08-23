@@ -20,7 +20,7 @@ from actions.report_builder.report_builder import (
     build_report_async,
 )
 from actions.report_builder.schemas import BuildReportRequest, BuildReportResponse
-from actions.slugify import slug
+from actions.string_ops import slug
 
 
 def _first_value(row: Any) -> Any:

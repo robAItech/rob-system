@@ -3,9 +3,9 @@
 ``build_report(csv_tekst)`` prebere CSV besedilo prek
 ``actions.csv_parser.parse_csv``, združi vrstice po stolpcu ``naslov``
 (fallback: ``title``, nato prva vrednost v vrstici) in vrne
-``dict {slug(naslov): [vrstice]}`` — ključe generira ``actions.slugify.slug``.
+``dict {slug(naslov): [vrstice]}`` — ključe generira ``actions.string_ops.slug``.
 
-Namerno brez Pydantic/async plasti v jedru (glej lekcijo slugify):
+Namerno brez Pydantic/async plasti v jedru (glej lekcijo string_ops):
 preprosta čista funkcija = standardna knjižnica + obstoječi moduli.
 """
 
@@ -19,10 +19,7 @@ try:  # pragma: no cover - odvisno od postavitve paketa
 except ImportError:  # pragma: no cover
     from actions.csv_parser.parse_csv import parse_csv  # type: ignore
 
-try:  # pragma: no cover
-    from actions.slugify import slug
-except ImportError:  # pragma: no cover
-    from actions.slugify.slug import slug  # type: ignore
+from actions.string_ops import slug
 
 TITLE_COLUMN = "naslov"
 FALLBACK_TITLE_COLUMN = "title"
