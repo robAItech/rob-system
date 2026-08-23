@@ -108,6 +108,65 @@ Rob AI Studio/
 
 ## 🛠️ Hitra namestitev in zagon
 
+### 0. Predpogoji — orodja (nov računalnik)
+
+Vse, kar sistem potrebuje na svežem računalniku, v enem povzetku:
+
+**Orodja na PATH:**
+
+| Orodje | Namestitev | Za kaj |
+|---|---|---|
+| **Python 3.11+** | python.org/downloads ali `winget install Python.Python.3.11` | jedro, RSI zanka, daemon |
+| **git** | git-scm.com | klon + CI |
+| **Node.js + npm** | nodejs.org | bun + TS odvisnosti |
+| **Bun** | `npm i -g bun` | dashboard (`src/server.ts`), TS |
+| **LiteLLM** | `pip install litellm` | proxy :4010 (DeepSeek routing) |
+| **Docker Desktop** | docker.com (Windows: mora biti zagnan) | RSI peskovnik (`rob-sandbox`) |
+| **Playwright + chromium** | `pip install playwright` + `playwright install chromium` | vizualni QA (HTML screenshot) — neobvezno |
+| **Ruff** | v requirements-dev.txt | F821 pre-gate v RSI (če manjka, se preskoči) |
+| **Tailscale** | tailscale.com — neobvezno | varen remote dostop do dashboarda |
+
+**Python paketi** (edina zahtevana Python odvisnost):
+```bash
+pip install -r requirements-dev.txt
+pip install litellm playwright        # playwright le za vizualni QA
+playwright install chromium           # neobvezno (screenshot HTML)
+```
+
+**TS paketi (dashboard):**
+```bash
+bun install
+```
+
+**Docker RSI peskovnik** (Tier 1 — izolirana pytest verifikacija v `--network none`):
+```bash
+docker build -f Dockerfile.sandbox -t rob-sandbox .
+```
+> Brez Dockerja RSI pade na host pytest (oznaka `[NI IZOLIRANO]`) — deluje, a ni izolirano.
+
+**Preverba namestitve (ključni ukazi):**
+```bash
+./rob test                  # celotna testna matrika (307 testov) — mora biti zelena
+./rob eval --dry-run        # strukturna preverba eval lestvice (brez LLM)
+./dev                       # dvigne proxy :4010 + dashboard :8787 (ročni/rescue)
+./rob daemon --serve        # P1 daemon: proxy+dashboard v ozadju, 24/7
+./rob daemon --status       # stanje daemona (heartbeat, tek. naloga, jobi)
+```
+
+Prvi resničen smoke test — preveri, da RSI/GStack zanka deluje od nule:
+```bash
+./rob build testmod "Izdelaj Python modul testmod v actions/testmod/. Funkcija add(a,b) vrne a+b. Vsebuj pytest test, vsi testi 100% zeleni."
+```
+
+**.env** — ustvari iz `.env.example`: **obvezen `DEEPSEEK_API_KEY`**; opcijsko
+`GEMINI_API_KEY` (semantični spomin + TTS), `SERPER_API_KEY` (spletno iskanje).
+
+**(Windows) avtomatski zagon ob prijavi (daemon 24/7):**
+```powershell
+pwsh -File scripts\register-autostart.ps1        # registrira daemon ob prijavi
+pwsh -File scripts\register-autostart.ps1 -Query # preveri registracijo
+```
+
 ### 1. Kloniranje repozitorija in priprava okolja
 
 ```bash
@@ -116,10 +175,10 @@ cd "Rob system"
 cd "C:\Rob system"
 ```
 
-Zahtevana orodja na PATH (nameščena ročno, ni venv):
+Zahtevana orodja na PATH so v **Predpogoji (0)** zgoraj — tukaj le ključna:
 - **Python 3.11+** (glavni interpreter `python`)
 - **bun** (`npm i -g bun`) — za dashboard (`bun run src/server.ts`)
-- **litellm** (`python -m pip install litellm`) — za proxy
+- **litellm** (`python -m pip install litellm`) — za proxy :4010
 
 ### 2. Konfiguracija okoljskih spremenljivk
 
