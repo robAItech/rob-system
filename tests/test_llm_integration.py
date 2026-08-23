@@ -4,6 +4,7 @@ from pathlib import Path
 from core.config import settings
 from core.llm_client import DeepSeekLLMClient
 
+@pytest.mark.skipif(not Path(".env").exists(), reason="lokalni .env ni prisoten v CI")
 def test_dotenv_loading():
     assert Path(".env").exists()
     assert settings.deepseek_base_url == "https://api.deepseek.com"
@@ -54,7 +55,8 @@ async def test_deepseek_fallback_completion():
             return _FakeResp()
 
     fake = _FakeAsyncClient()
-    client = DeepSeekLLMClient()
+    # api_key="sk-test" → _has_key() True (v CI ni .env ključa) → gre po MOCK-anem httpx.
+    client = DeepSeekLLMClient(api_key="sk-test")
     with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
         res = await client.generate_completion(prompt="Izdelaj testno funkcijo", use_coder_model=True)
     assert "def hello():" in res

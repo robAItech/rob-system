@@ -403,11 +403,18 @@ def test_surgical_fix_e2e_host_pytest(tmp_path, monkeypatch):
     engine.surgical = True
     engine.target_test = "test_add"
     monkeypatch.setattr(engine, "_docker_available", lambda: False)
+    # Deterministično v CI: rollback (po neuspehu) ne sme povrniti stara calc.py.
+    monkeypatch.setattr(settings, "loopx_rollback_on_fail", False)
 
     def _fake_heal_once(reason, directive, kind):
         # Kirurški popravek: samo calc.py, struktura modula nespremenjena.
         (engine.target_dir / "calc.py").write_text(
             "def add(a, b):\n    return a + b\n", encoding="utf-8")
+        # Linux CI: stale .pyc bi lahko vrnil staro (a-b) kodo — počisti cache.
+        pc = engine.target_dir / "__pycache__"
+        if pc.exists():
+            for f in pc.glob("*.pyc"):
+                f.unlink()
         return True, "popravil calc.py"
 
     with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \

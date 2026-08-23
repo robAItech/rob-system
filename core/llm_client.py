@@ -25,6 +25,13 @@ class DeepSeekLLMClient:
         self.max_completion_tokens = getattr(settings, "llm_max_completion_tokens", None) or None
         self.last_usage: Dict[str, Any] = {}   # Korak 3: usage iz zadnjega API odgovora
 
+    def _has_key(self) -> bool:
+        """Ali ima TA klient veljaven API ključ (lastni self.api_key, ne globalni
+        settings — testi konstruirajo z api_key="sk-test", kar mora veljati tudi
+        v CI, kjer .env (in s tem settings ključ) ni prisoten)."""
+        key = (self.api_key or "").strip()
+        return bool(key and key != "sk-your-deepseek-api-key-here" and key.startswith("sk-"))
+
     def _get_headers(self) -> Dict[str, str]:
         return {
             "Authorization": f"Bearer {self.api_key}",
@@ -149,7 +156,7 @@ class DeepSeekLLMClient:
           poskusi `chat`. To je varno za LoopX, ki nima lastnega model-retry-ja.
         - Guard: `max_completion_tokens` iz settings (če nastavljen) omeji izhod.
         """
-        if not settings.is_real_key_available():
+        if not self._has_key():
             # Determinističen odziv za lokalno testiranje brez veljavnega API ključa
             return f"# Simulated DeepSeek Output for prompt: {prompt[:30]}...\n# Mode: Autopilot Green"
         return await self._retry_models(
@@ -167,7 +174,7 @@ class DeepSeekLLMClient:
         `{"content": ..., "tool_calls": [...]}` (lahko tudi `reasoning_content`).
         Enak retry/backoff/model-fallback kot generate_completion.
         """
-        if not settings.is_real_key_available():
+        if not self._has_key():
             return {"content": "# Simulated DeepSeek Output (tool-use)\n# Mode: Autopilot Green",
                     "tool_calls": None}
         return await self._retry_models(
