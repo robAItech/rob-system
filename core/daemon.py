@@ -471,6 +471,7 @@ def _handle_signal(signum, frame) -> None:
 
 def run_loop(settings, cfg, once: bool = False) -> int:
     """Glavna zanka daemona. once=True → ena enota dela in izhod (smoke test)."""
+    global _stop_requested  # pisana v sentinel veji → mora biti global, ne lokalna
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 

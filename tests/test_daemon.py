@@ -39,6 +39,12 @@ def _settings(**overrides):
         "daemon_idle_seconds": 5,
         "daemon_goal_pending_cap": 3,
         "daemon_goal_max_enqueue": 2,
+        "daemon_consolidate_hours": 24,
+        "daemon_reflect_hours": 168,
+        "daemon_improve_hours": 168,
+        "daemon_meta_check_hours": 168,
+        "daemon_full_eval_hours": 168,
+        "daemon_goal_hours": 6,
     }
     base.update(overrides)
     return types.SimpleNamespace(**base)
@@ -95,6 +101,23 @@ def test_cmd_stop_writes_sentinel(env, monkeypatch):
     assert daemon.STOP_FILE.exists()
     data = json.loads(daemon.STOP_FILE.read_text(encoding="utf-8"))
     assert data["pid"] == os.getpid()
+
+
+def test_run_loop_graceful_stop_via_sentinel(env, monkeypatch):
+    # Zanka prebere stop sentinel → graceful shutdown (shutdown heartbeat,
+    # release lock, return 0). Lovil bi UnboundLocalError (global _stop_requested).
+    class _FakeStop:
+        def unlink(self):
+            pass
+        def exists(self):
+            return True
+    monkeypatch.setattr(daemon, "STOP_FILE", _FakeStop())
+    monkeypatch.setattr(daemon.dev_cli, "cmd_serve", mock.Mock(return_value=0))
+    monkeypatch.setattr(daemon, "_proxy_ok", mock.Mock(return_value=True))
+    rc = daemon.run_loop(_settings(), None)
+    assert rc == 0
+    assert not daemon.LOCK_FILE.exists()          # lock sproščen
+    assert daemon._load_heartbeat()["state"] == "shutdown"
 
 
 # ------------------------------------------------------------------ #
