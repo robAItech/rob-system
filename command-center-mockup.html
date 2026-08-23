@@ -244,6 +244,9 @@
   /* Gumbi za odstranjevanje (Agenda / Raziskovanje / Pogovor) */
   .del-btn{background:var(--surface2);border:1px solid var(--line);border-radius:5px;color:var(--muted);cursor:pointer;padding:4px 8px;font-size:11.5px;line-height:1;white-space:nowrap;}
   .del-btn:hover{color:var(--crit);border-color:var(--crit);background:var(--crit-soft);}
+  .convo-del{margin-left:auto;background:transparent;border:0;color:var(--faint);cursor:pointer;font-size:10px;padding:2px 5px;opacity:.45;}
+  .convo-line:hover .convo-del{opacity:1;}
+  .convo-del:hover{color:var(--crit);opacity:1;}
   .convo-tools{display:flex;justify-content:flex-end;margin-top:8px;}
 
   @media (max-width:900px){
@@ -612,20 +615,32 @@
     return esc.replace(/(https?:\/\/[^\s<>)]+)/g, '<a href="$1" target="_blank" style="color:var(--accent);text-decoration:none">$1</a>');
   }
   let convo=[];
-  function renderLine(who,msg){
+  function renderLine(who,msg,idx){
     const el=document.createElement('div');
     el.className='convo-line '+who;
-    el.innerHTML=`<span class="who">${who==='you'?'TI':'ROB'}</span>`;
+    const w=document.createElement('span'); w.className='who'; w.textContent=who==='you'?'TI':'ROB';
+    el.appendChild(w);
     const m=document.createElement('span'); m.className='msg';
     if(who==='ai'){ m.innerHTML=linkify(msg); } else { m.textContent=msg; }
     el.appendChild(m);
+    const d=document.createElement('button'); d.className='del-btn convo-del'; d.textContent='✕';
+    d.title='Izbriši to sporočilo'; d.onclick=()=>deleteConvoLine(idx);
+    el.appendChild(d);
     const box=document.getElementById('convo');
     box.appendChild(el); box.scrollTop=box.scrollHeight;
   }
   function addLine(who,msg){
     convo.push({who,msg});
     if(convo.length>200) convo=convo.slice(-200);
-    renderLine(who,msg);
+    renderLine(who,msg,convo.length-1);
+    try{ localStorage.setItem('rob_convo', JSON.stringify(convo)); }catch(e){}
+  }
+  function deleteConvoLine(idx){
+    if(idx<0||idx>=convo.length) return;
+    if(!confirm('Izbrišem to sporočilo?')) return;
+    convo.splice(idx,1);
+    const box=document.getElementById('convo');
+    if(box){ box.innerHTML=''; for(let i=0;i<convo.length;i++) renderLine(convo[i].who,convo[i].msg,i); box.scrollTop=box.scrollHeight; }
     try{ localStorage.setItem('rob_convo', JSON.stringify(convo)); }catch(e){}
   }
   function restoreConvo(){
@@ -635,7 +650,7 @@
       convo=arr;
       const box=document.getElementById('convo'); if(!box) return;
       box.innerHTML='';
-      for(const l of arr) renderLine(l.who,l.msg);
+      for(let i=0;i<arr.length;i++) renderLine(arr[i].who,arr[i].msg,i);
       box.scrollTop=box.scrollHeight;
     }catch(e){}
   }
