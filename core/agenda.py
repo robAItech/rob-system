@@ -40,9 +40,14 @@ def _save(items: list) -> None:
 
 
 # ── Cross-process lock (paralelni daemon: N subprocesov kliče mark/add) ── #
-AGENDA_LOCK = AGENDA_FILE.with_suffix(".lock")
 _LOCK_TIMEOUT = 10.0
 _LOCK_STALE_AFTER = 30.0
+
+
+def _agenda_lock() -> Path:
+    """Pot do lock datoteke — IZPELJANA iz trenutnega AGENDA_FILE (testi ga
+    patch-ajo; konstanta ob importu bi ostala na stari poti → FileNotFoundError)."""
+    return AGENDA_FILE.with_suffix(".lock")
 
 
 def _lock_pid_alive(pid: int) -> bool:
@@ -70,9 +75,10 @@ def _lock_pid_alive(pid: int) -> bool:
 
 def _lock_stale() -> bool:
     try:
-        if time.time() - AGENDA_LOCK.stat().st_mtime > _LOCK_STALE_AFTER:
+        lock = _agenda_lock()
+        if time.time() - lock.stat().st_mtime > _LOCK_STALE_AFTER:
             return True
-        pid = int(AGENDA_LOCK.read_text(encoding="utf-8").strip())
+        pid = int(lock.read_text(encoding="utf-8").strip())
         return not _lock_pid_alive(pid)
     except Exception:
         return False
@@ -83,23 +89,24 @@ def _locked(fn):
     atomičen MED PROCESI. Nujno za paralelni daemon: N subprocesov kliče
     `mark`/`add`/`rearm_repeat` hkrati; brez locka bi se posodobitve izgubile."""
     AGENDA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    lock = _agenda_lock()
     deadline = time.monotonic() + _LOCK_TIMEOUT
     while True:
         try:
-            fd = os.open(AGENDA_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.write(fd, str(os.getpid()).encode("utf-8"))
             os.close(fd)
             try:
                 return fn()
             finally:
                 try:
-                    AGENDA_LOCK.unlink()
+                    lock.unlink()
                 except OSError:
                     pass
         except FileExistsError:
             if _lock_stale():
                 try:
-                    AGENDA_LOCK.unlink()
+                    lock.unlink()
                 except OSError:
                     pass
                 continue
