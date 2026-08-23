@@ -340,6 +340,7 @@ def test_config_daemon_defaults():
     assert s.daemon_goal_hours == 6
     assert s.daemon_goal_pending_cap == 3
     assert s.daemon_min_free_gb == 2.0
+    assert s.daemon_task_timeout_seconds == 1800   # C/R: obešena naloga ne sme blokirati
 
 
 # ------------------------------------------------------------------ #

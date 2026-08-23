@@ -5,6 +5,7 @@ Za izolacijo uporabljajo tmp cwd (monkeypatch.chdir), da se ne dotaknejo
 dejanske mape actions/ niti produkcijške memory.db.
 """
 import json
+import os
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -176,6 +177,90 @@ def test_execute_and_heal_brez_healinga_vrne_false(tmp_path, monkeypatch):
         state = json.load(f)
     assert state["status"] == "FAILED"
     assert state["current_attempt"] == engine.REPEAT_ABORT_AFTER
+
+
+# --------------------------------------------------------------------------- #
+#  C1 — ostri podpis napake + ohranjen realen traceback + stale lock
+# --------------------------------------------------------------------------- #
+
+def test_error_signature_razlikuje_test_in_tip():
+    s1 = LoopXEngineBridge._error_signature(
+        'File "test_a.py", line 5, in test_a\nValueError: bad')
+    s2 = LoopXEngineBridge._error_signature(
+        'File "test_b.py", line 5, in test_b\nValueError: bad')
+    s1b = LoopXEngineBridge._error_signature(
+        'File "test_a.py", line 9, in test_a\nValueError: bad')  # druga vrstica
+    assert s1 == "ValueError|test_a"
+    assert s1 != s2                       # različen test → različen podpis
+    assert s1 == s1b                      # ista test → enak podpis (vrstica ne šteje)
+    # Fallback: import napaka brez test okvira → file:line (namerno ostro).
+    assert LoopXEngineBridge._error_signature(
+        'File "main.py", line 3, in <module>\nImportError: no module named x') == "ImportError|main.py:3"
+
+
+def test_heal_loop_abort_ohrani_last_traceback(tmp_path, monkeypatch):
+    """C1 — ob zgodnjem abortu `last_traceback` nosi REALEN traceback (za fix
+    nalogo), `last_reason` pa ohrani 'ista napaka …' (za klasifikacijo)."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(
+        subprocess, "run", return_value=mock.Mock(returncode=1, stderr="X\nValueError: n", stdout="")
+    ), mock.patch.object(engine, "_heal_once", return_value=(False, "ni sprememb")):
+        result = engine.execute_and_heal("build demo")
+
+    assert result is False
+    assert engine.last_reason.startswith("ista napaka")     # za review klasifikacijo
+    assert "ValueError: n" in engine.last_traceback         # realen traceback
+
+
+def test_repeat_abort_se_stetje_po_signaturi(tmp_path, monkeypatch):
+    """C1 — različne napake istega tipa se NE seštejejo (napredek se ne prekine);
+    identična napaka (isti test) aborta pri 3. ponovitvi."""
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    err_a = 'File "test_a.py", line 5, in test_a\nValueError: bad'
+    err_b = 'File "test_b.py", line 5, in test_b\nValueError: bad'
+    run_results = iter([err_a, err_b, err_a, err_a, err_a])
+    with mock.patch.object(engine, "_verify_ruff", return_value=(True, "")), \
+         mock.patch.object(engine, "_docker_available", return_value=False), \
+         mock.patch.object(
+        subprocess, "run", side_effect=lambda *a, **k: mock.Mock(returncode=1, stderr=next(run_results), stdout="")
+    ), mock.patch.object(engine, "_heal_once", return_value=(False, "x")):
+        result = engine.execute_and_heal("build demo")
+
+    assert result is False
+    reg = Path(tmp_path / ".loopx" / "registry.json")
+    with reg.open(encoding="utf-8") as f:
+        state = json.load(f)
+    # a(1) b(1) a(2) a(3→abort) → abort šele na 4. poskusu (ne 3. kot pri error_type).
+    assert state["current_attempt"] == 4
+
+
+def test_acquire_target_lock_stale_pid_recovered(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    lock = engine._lock_path()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("999999999\n", encoding="utf-8")
+    monkeypatch.setattr("core.loopx_bridge._pid_alive", lambda pid: False)
+    assert engine._acquire_target_lock() is True
+    assert int(lock.read_text(encoding="utf-8").strip()) == os.getpid()
+    engine._release_target_lock()
+
+
+def test_acquire_target_lock_live_pid_blocks(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    lock = engine._lock_path()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text(f"{os.getpid()}\n", encoding="utf-8")
+    monkeypatch.setattr("core.loopx_bridge._pid_alive", lambda pid: True)
+    assert engine._acquire_target_lock(timeout=0.2) is False
+
+
+def test_lock_is_stale_prazna_datoteka(tmp_path, monkeypatch):
+    engine = _navidezni_engine(tmp_path, monkeypatch)
+    lock = engine._lock_path()
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text("", encoding="utf-8")
+    assert engine._lock_is_stale(lock) is True
 
 
 def test_execute_and_heal_uspeh_po_healingu(tmp_path, monkeypatch):

@@ -53,8 +53,9 @@ class SystemSettings(BaseSettings):
     daemon_idle_seconds: int = Field(default=5, alias="DAEMON_IDLE_SECONDS")
     daemon_heartbeat_seconds: int = Field(default=30, alias="DAEMON_HEARTBEAT_SECONDS")
     daemon_proxy_retry_seconds: int = Field(default=60, alias="DAEMON_PROXY_RETRY_SECONDS")
-    # 0 = brez trdega timeouta (notranji LoopX/Docker timeouts že omejijo poskus).
-    daemon_task_timeout_seconds: int = Field(default=0, alias="DAEMON_TASK_TIMEOUT_SECONDS")
+    # Trdi timeout na nalogo (subprocess kill): prepreči, da obešena naloga
+    # (npr. host-pytest brez timeouta) ustavi daemon za nedoločen čas. 0 = brez.
+    daemon_task_timeout_seconds: int = Field(default=1800, alias="DAEMON_TASK_TIMEOUT_SECONDS")
     # Periodični jobi (intervali v urah).
     daemon_consolidate_hours: int = Field(default=24, alias="DAEMON_CONSOLIDATE_HOURS")
     daemon_reflect_hours: int = Field(default=168, alias="DAEMON_REFLECT_HOURS")

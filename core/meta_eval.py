@@ -39,6 +39,11 @@ if str(PROJECT_ROOT) not in sys.path:
 REGRESSION_SUCCESS_DROP = 0.05   # uspešnost pade za >5 odstotnih točk
 REGRESSION_LLM_RISE = 0.20       # povprečni LLM klici narastejo za >20%
 
+# C3 — verzija metrike: 1 = stara (task_history, onesnažena s test_proj),
+# 2 = poštena (run_reviews). Snapshoti različnih verzij so NEprimerljivi →
+# compare() jih preskoči (brez lažne regresije/rollbacka).
+METRIC_VERSION = 2
+
 
 class MetaEvaluator:
     """Meri učinek samorazvoja in avtomatsko povrne regresivne spremembe."""
@@ -85,16 +90,21 @@ class MetaEvaluator:
     #  Metrike
     # ------------------------------------------------------------------ #
     def metrics(self) -> Dict[str, Any]:
-        """Izračuna trenutne metrike uspešnosti iz task_history + run_reviews."""
+        """Poštene metrike iz run_reviews (čista tabela — NIKOLI task_history).
+
+        task_history je onesnažen s `test_proj` vrsticami iz test harnessa (43/56),
+        zato se ne uporablja več za uspešnost. run_reviews vsebuje samo prave
+        orkestratorske builde (outcome 'green'|'failed').
+        """
         with self._get_connection() as conn:
             runs = green = 0
             try:
-                runs = conn.execute("SELECT COUNT(*) AS n FROM task_history").fetchone()["n"]
+                runs = conn.execute("SELECT COUNT(*) AS n FROM run_reviews").fetchone()["n"]
                 green = conn.execute(
-                    "SELECT COUNT(*) AS n FROM task_history WHERE status = 'VERIFIED GREEN'"
+                    "SELECT COUNT(*) AS n FROM run_reviews WHERE outcome = 'green'"
                 ).fetchone()["n"]
             except sqlite3.OperationalError:
-                runs = green = 0  # task_history še ne obstaja
+                runs = green = 0  # run_reviews še ne obstaja
 
             avg_llm = None
             by_cause: Dict[str, int] = {}
@@ -115,6 +125,7 @@ class MetaEvaluator:
             "success_rate": round(green / runs, 4) if runs else 1.0,
             "avg_llm_calls": avg_llm,
             "by_cause": by_cause,
+            "metric_version": METRIC_VERSION,
         }
 
     # ------------------------------------------------------------------ #
@@ -147,6 +158,16 @@ class MetaEvaluator:
             return {"regressed": False, "error": f"snapshot {before_id} ne obstaja"}
         after = self.metrics()
         b = before["metrics"]
+        # C3 — verzijski gate: stari (task_history, v1) in novi (run_reviews, v2)
+        # snapshoti niso primerljivi → NE sproži lažne regresije/rollbacka.
+        if int(b.get("metric_version") or 1) != int(after.get("metric_version") or 1):
+            return {
+                "regressed": False,
+                "incomparable": True,
+                "reason": "stari snapshoti (task_history) niso primerljivi z novimi (run_reviews)",
+                "before": b,
+                "after": after,
+            }
 
         success_delta = after["success_rate"] - b["success_rate"]
         llm_before = float(b.get("avg_llm_calls") or 0.0)

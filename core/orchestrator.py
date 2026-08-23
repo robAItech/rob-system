@@ -39,22 +39,32 @@ class RobAIOrchestrator:
         loopx = LoopXEngineBridge(project)
         ok = loopx.execute_and_heal(directive, spec_hint=spec_hint)
         # Zanka 2 — post-run samoevalvacija (P1: vedno, uspeh IN neuspeh; ne blokira).
+        run = {
+            "project": project,
+            "directive": directive,
+            "goal": goal or directive,
+            "plan": (spec_hint or "")[:1000],
+            "task_type": LoopXEngineBridge._detect_kind(goal or directive),
+            "outcome": "green" if ok else "failed",
+            "traceback": getattr(loopx, "last_reason", "") or "",
+            "last_traceback": getattr(loopx, "last_traceback", "") or "",
+            "llm_calls": loopx.llm_calls,
+            "attempts": loopx.max_attempts,
+            "spec_hint": spec_hint,
+        }
+        review_result = None
         try:
             from core.run_review import RunReviewer
-            RunReviewer(loopx.gbrain.db_path).review({
-                "project": project,
-                "directive": directive,
-                "goal": goal or directive,
-                "plan": (spec_hint or "")[:1000],
-                "task_type": LoopXEngineBridge._detect_kind(goal or directive),
-                "outcome": "green" if ok else "failed",
-                "traceback": getattr(loopx, "last_reason", "") or "",
-                "llm_calls": loopx.llm_calls,
-                "attempts": loopx.max_attempts,
-                "spec_hint": spec_hint,
-            })
+            review_result = RunReviewer(loopx.gbrain.db_path).review(run)
         except Exception as e:
             print(f"[ORCH] post-run review preskočen: {e}", flush=True)
+        # C2 — zapri zanko neuspeha: padel build → konkretna fix naloga v agendo
+        # (daemon jo pobere; `next_step` se konzumira v direktivi). Nikoli ne blokira.
+        if not ok and review_result is not None:
+            try:
+                RunReviewer(loopx.gbrain.db_path).maybe_enqueue_fix(run, review_result)
+            except Exception as e:
+                print(f"[ORCH] enqueue fix preskočen: {e}", flush=True)
         print(f"  ── Faza '{label}': {'ZELEN' if ok else 'FAIL'} ──")
         return ok
 

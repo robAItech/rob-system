@@ -61,6 +61,15 @@ NEXT_STEP = {
     "unknown":         {"action": "investigate",              "hint": "razišči osnovni vzrok"},
 }
 
+# C2 — zapri zanko neuspeha: vsak FAILED build → konkreten fix task v agendo
+# (daemon ga pobere). `next_step` (zgoraj) se pri tem KONZUMIRA — odločitev, ki
+# je bila prej dekorativna, postane del direktive za popravek.
+FIX_MAX_ATTEMPTS = 3     # max število fix_loop itemov NA target (skupaj, vklj. done)
+FIX_SOURCE = "fix_loop"
+# Vzroki, kjer popravek pomaga. NE test_gap (testi so test-locked → nepopravljivo)
+# in NE env_issue / unknown (ni kodna napaka).
+FIXABLE_CAUSES = {"recurring_error", "llm_error", "spec_mismatch"}
+
 
 class RunReviewer:
     """Po teku klasificira vzrok izida in zapiše lekcijo v spomin.
@@ -265,6 +274,76 @@ class RunReviewer:
                  int(run.get("llm_calls", 0) or 0), int(run.get("attempts", 0) or 0)),
             )
             conn.commit()
+
+    # ------------------------------------------------------------------ #
+    #  C2 — zapri zanko neuspeha: failed build → konkreten fix task v agendo
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _extract_failing_test(traceback: str) -> str:
+        """Zadnje `test_<ime>` iz tracebacka (padel test: funkcija ali datoteka)."""
+        m = re.findall(r"\b(test_[A-Za-z0-9_]+)\b", traceback or "")
+        return m[-1] if m else ""
+
+    @staticmethod
+    def _extract_error(traceback: str) -> str:
+        from core.loopx_bridge import LoopXEngineBridge
+        return LoopXEngineBridge._classify_error((traceback or "")[:2000])
+
+    def _build_fix_directive(self, run: Dict[str, Any], review: Dict[str, Any], test: str) -> str:
+        """Konzumira `next_step` (odločitev iz NEXT_STEP) v konkretno fix direktivo."""
+        rc = review.get("root_cause", "unknown")
+        ns = NEXT_STEP.get(rc, NEXT_STEP["unknown"])
+        action = review.get("next_step") or ns["action"]
+        hint = review.get("next_step_hint") or ns["hint"]
+        lesson = (review.get("lesson") or "").strip()
+        error = self._extract_error(run.get("last_traceback") or run.get("traceback") or "")
+        goal = (run.get("goal") or run.get("directive") or "").strip()
+        target = run.get("project", "")
+        return (
+            "PREJŠNJI POSKUS NI USPEL; ne ponavljaj istega popravka.\n"
+            f"previous attempt failed with <{error}>; "
+            f"failing test <{test or '(ni najden)'}>; "
+            f"next step <{action} ({hint})>; "
+            f"lesson <{lesson or '(brez)'}>;\n"
+            "CHANGE APPROACH, don't repeat the same fix.\n"
+            f"green criterion = project tests pass (pytest v actions/{target}).\n"
+            f"NALOGA: {goal[:500]}"
+        )
+
+    def maybe_enqueue_fix(self, run: Dict[str, Any], review: Dict[str, Any]) -> Optional[dict]:
+        """C2 — po FAILED teku enqueuje konkreten fix task v agendo (→ daemon).
+
+        Samo root_cause ∈ FIXABLE_CAUSES. Guarda: max FIX_MAX_ATTEMPTS fix_loop
+        itemov na target + že-obstoječ pending fix → skok (prepreči infinite loop).
+        NIKOLI ne dvigne izjeme (build ne sme pasti). Vrne enqueued item ali None.
+        """
+        try:
+            if review.get("outcome") != "failed":
+                return None
+            rc = review.get("root_cause")
+            if rc not in FIXABLE_CAUSES:
+                return None
+            target = (run.get("project") or "").strip()
+            if not target:
+                return None
+            # Fix je smiseln le za Python module (pytest kriterij + kind="python").
+            task_type = (run.get("task_type") or "").strip()
+            if task_type and task_type != "python":
+                return None
+            from core import agenda
+            fix_items = [i for i in agenda.all_()
+                         if i.get("source") == FIX_SOURCE and i.get("target") == target]
+            if len(fix_items) >= FIX_MAX_ATTEMPTS:              # Guard 1: skupni cap
+                return None
+            if any(i.get("status") == "pending" for i in fix_items):  # Guard 2: že čaka
+                return None
+            test = self._extract_failing_test(
+                run.get("last_traceback") or run.get("traceback") or "")
+            directive = self._build_fix_directive(run, review, test)
+            return agenda.add(directive, kind="python", target=target, source=FIX_SOURCE)
+        except Exception as e:
+            print(f"[RUN-REVIEW] enqueue fix preskočen ({e})", flush=True)
+            return None
 
     # ------------------------------------------------------------------ #
     #  Pregled

@@ -112,6 +112,31 @@ def is_test_filename(name: str) -> bool:
     return False
 
 
+def _pid_alive(pid: int) -> bool:
+    """Ali PID še obstaja (stale per-target lock cleanup). Unix: os.kill(pid,0).
+    Windows: OpenProcess probe (os.kill(pid,0) tam vrže WinError 87 za vsak PID)."""
+    import os
+    if os.name == "nt":
+        try:
+            import ctypes
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            h = ctypes.windll.kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+            if not h:
+                return False
+            ctypes.windll.kernel32.CloseHandle(h)
+            return True
+        except Exception:
+            return True  # ne moremo preveriti → ne briši stale locka (varno)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True  # nismo prepričani → smatramo živega (varno)
+
+
 class LoopXEngineBridge:
     """Avtonomna verifikacijska zanka z RSI (self-healing + mednáložni spomin).
 
@@ -138,7 +163,8 @@ class LoopXEngineBridge:
         self.max_attempts = 5
         self.repeat_abort_after = self.REPEAT_ABORT_AFTER  # Zanka 3: samorazvojni prag
         self.llm_calls = 0   # F5: števec LLM klicev za revizijo in cost-zavarovanje
-        self._heal_fail_count: Dict[str, int] = {}   # error_type → štev ponovitev v teku
+        self._heal_fail_count: Dict[str, int] = {}   # error_signature → štev ponovitev v teku
+        self.last_traceback = ""   # Z2/C2: zadnji REALEN traceback (za fix nalogo)
         self._prompt_registry = None  # Zanka 3: lazy prompt-register (verzioniran prompt)
         self._skill_bridge = None     # Korak 6: lazy GStack skill bralec
         self._rollback_had_target = False  # Korak 10: je modul obstajal pred buildom?
@@ -693,6 +719,26 @@ class LoopXEngineBridge:
             return "AssertionError"
         return "UNKNOWN"
 
+    @staticmethod
+    def _error_signature(reason: str) -> str:
+        """Ostrejši podpis napake za repeat-abort: error_type + sidro (padel test).
+
+        Samo resnično IDENTIČNE napake štejejo v `_heal_fail_count` — dve različni
+        napaki istega tipa (npr. ValueError na različnih testih) se NE seštejeta,
+        zato se ne prekine napredka. Sidro = zadnje `test_<ime>` iz tracebacka
+        (stabilno čez heale, ki premikajo vrstice); če ni test okvirja (import/syntax
+        napaka), padec na `file:line` zadnjega okvira (namerno ostro)."""
+        tb = reason or ""
+        error_type = LoopXEngineBridge._classify_error(tb[:2000])
+        tests = re.findall(r"\b(test_[A-Za-z0-9_]+)\b", tb)
+        anchor = tests[-1] if tests else ""
+        if not anchor:
+            frames = re.findall(r'File "([^"]+\.py)", line (\d+)', tb)
+            if frames:
+                fname = frames[-1][0].split("/")[-1].split("\\")[-1]
+                anchor = f"{fname}:{frames[-1][1]}"
+        return f"{error_type}|{anchor}"
+
     # F1 — prepozna vrsto izdelka iz direktive: python | markdown | html
     @staticmethod
     def _detect_kind(directive: str) -> str:
@@ -863,9 +909,27 @@ class LoopXEngineBridge:
                 os.close(fd)
                 return True
             except FileExistsError:
+                # P1/C2 — stale lock (lastnik mrtev, npr. daemon timeout kill):
+                # zbriši in poskusi znova takoj, da fix naloga lahko znova požene target.
+                if self._lock_is_stale(p):
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
+                    continue
                 if _t.monotonic() >= deadline:
                     return False
                 _t.sleep(0.15)
+
+    def _lock_is_stale(self, p: Path) -> bool:
+        """True, če lock datoteka vsebuje PID, ki ne obstaja več (ali je prazna)."""
+        try:
+            txt = p.read_text(encoding="utf-8").strip()
+            if not txt:
+                return True  # prazen/pokvarjen lock → stale
+            return not _pid_alive(int(txt))
+        except Exception:
+            return False  # ne moremo prebrati → ne briši (varno)
 
     def _release_target_lock(self) -> None:
         import os
@@ -965,12 +1029,15 @@ class LoopXEngineBridge:
         print(f"[LOOPX] vrsta izdelka: {kind}", flush=True)
         self._heal_fail_count = {}  # reset števca ponavljajočih napak za ta tek
         self.last_reason = ""       # Zanka 2: zadnji razlog (za post-run review)
+        self.last_traceback = ""    # C2: zadnji REALEN traceback (za fix nalogo)
         self._load_tuning()         # Zanka 3: samorazvojni parametri (max_attempts, prag)
         for attempt in range(1, self.max_attempts + 1):
             self.update_loopx_state("RUNNING", attempt)
 
             # F1: verifikacija glede na vrsto izdelka (python→pytest, md/html→struktura).
             ok, reason = self._verify(kind)
+            if not ok:
+                self.last_traceback = reason   # C2: zadnji realen traceback, vedno svež
             if ok:
                 # 3.5 — zelen cikel + zabeležen rekord = resnično shipped
                 self.update_loopx_state("VERIFIED_GREEN", attempt)
@@ -986,20 +1053,23 @@ class LoopXEngineBridge:
                 self._audit("ok")
                 return True
 
-            # Rdeč → učenje iz ponavljajočih se napak: če se ista vrsta napake
-            # ponovi ≥ REPEAT_ABORT_AFTER-krat, zgodaj prekini (ne kuri LLM naprej).
+            # Rdeč → učenje iz ponavljajočih se napak: če se ista NAPAKA (ostri
+            # podpis: tip + padel test) ponovi ≥ REPEAT_ABORT_AFTER-krat, zgodaj
+            # prekini (ne kuri LLM naprej). Dve različni napaki istega tipa se
+            # ne seštejeta → napredek se ne prekine.
             error_type = self._classify_error(reason[:2000])
-            self._heal_fail_count[error_type] = self._heal_fail_count.get(error_type, 0) + 1
-            if self._heal_fail_count[error_type] >= self.repeat_abort_after:
-                print(f"[LOOPX] ista napaka {error_type} po "
-                      f"{self._heal_fail_count[error_type]} poskusih — zgodnje prekinjeno.",
+            sig = self._error_signature(reason[:2000])
+            self._heal_fail_count[sig] = self._heal_fail_count.get(sig, 0) + 1
+            if self._heal_fail_count[sig] >= self.repeat_abort_after:
+                print(f"[LOOPX] ista napaka {sig} po "
+                      f"{self._heal_fail_count[sig]} poskusih — zgodnje prekinjeno.",
                       flush=True)
                 self.update_loopx_state("FAILED", attempt)
                 self.gbrain.record_task(
                     self.project, directive, "FAILED",
-                    traceback=f"ista napaka {error_type} po {self._heal_fail_count[error_type]} poskusih",
+                    traceback=reason,  # C2: REALEN traceback v arhiv (ne povzetek)
                 )
-                self.last_reason = f"ista napaka {error_type} po {self._heal_fail_count[error_type]} poskusih"
+                self.last_reason = f"ista napaka {sig} po {self._heal_fail_count[sig]} poskusih"
                 self._audit("failed")
                 return False
 
