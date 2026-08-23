@@ -90,8 +90,17 @@ def test_inject_bug_missing_old_raises(tmp_path):
 def _run_pytest(target_dir: Path, root: Path) -> int:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(root)
-    r = subprocess.run([sys.executable, "-m", "pytest", "-q", str(target_dir)],
-                       capture_output=True, env=env)
+    # Deterministično (Linux CI): po modifikaciji datotek lahko stale __pycache__
+    # / .pytest_cache vrne staro kodo → napačen izid. Počisti pred vsakim tekom.
+    from shutil import rmtree
+    for pc in target_dir.rglob("__pycache__"):
+        rmtree(pc, ignore_errors=True)
+    cache = target_dir / ".pytest_cache"
+    if cache.exists():
+        rmtree(cache, ignore_errors=True)
+    r = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(target_dir)],
+        capture_output=True, env=env)
     return r.returncode
 
 
