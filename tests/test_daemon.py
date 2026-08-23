@@ -20,12 +20,15 @@ from core import daemon
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    """Usmeri daemon/agenda/audit datoteke v tmp_path (izolacija od repo .rob_ai)."""
+    """Usmeri daemon/agenda/audit datoteke v tmp_path (izolacija od repo .rob_ai).
+    STOP_FILE je modulna konstanta (ROB_AI/"daemon.stop") — BREZ tega patch-a bi
+    test zapisal realni sentinel in ustavil živi daemon (se je zgodilo)."""
     monkeypatch.setattr(ag, "AGENDA_FILE", tmp_path / "agenda.json")
     monkeypatch.setattr(core_audit, "AUDIT_FILE", tmp_path / "audit.jsonl")
     monkeypatch.setattr(daemon, "ROB_AI", tmp_path)
     monkeypatch.setattr(daemon, "DAEMON_FILE", tmp_path / "daemon.json")
     monkeypatch.setattr(daemon, "LOCK_FILE", tmp_path / "daemon.lock")
+    monkeypatch.setattr(daemon, "STOP_FILE", tmp_path / "daemon.stop")
     monkeypatch.setattr(daemon, "DB_PATH", tmp_path / "memory.db")
     return tmp_path
 
