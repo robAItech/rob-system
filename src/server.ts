@@ -1301,7 +1301,7 @@ const server = Bun.serve({
       try {
         if (await f.exists()) {
           const text = await f.text();
-          const lines = text.trim().split('\n').slice(-25);
+          const lines = text.trim().split('\n').slice(-10);
           for (const line of lines) {
             try {
               const d = JSON.parse(line);

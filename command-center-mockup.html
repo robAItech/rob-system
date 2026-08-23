@@ -797,14 +797,16 @@
   let agendaCache=[];
   let taskFiles=[];
   let taskCurrent=null;
+  function slN(n,one,two,five){ return n===1?`1 ${one}`:(n===2||n===3||n===4?`${n} ${two}`:`${n} ${five}`); }
   function renderAgenda(items){
     const body=document.getElementById('agenda-body'); if(!body) return;
     const st={pending:['pend','čaka'],running:['run','v teku'],done:['done','končano'],failed:['crit','napaka']};
     agendaCache=items||[];
-    // Števec aktivnih (pending + running) — dinamičen, ne trdo-kodiran.
+    // Števec: aktivne (pending+running) · končane (done) — dinamičen.
     const active=agendaCache.filter(i=>i.status==='pending'||i.status==='running').length;
+    const done=agendaCache.filter(i=>i.status==='done').length;
     const tag=document.getElementById('agenda-active');
-    if(tag) tag.textContent = active===0?'0 aktivnih':(active===1?'1 aktivna':(active<5?active+' aktivni':active+' aktivnih'));
+    if(tag) tag.textContent = slN(active,'aktivna','aktivni','aktivnih')+' · '+slN(done,'končana','končane','končanih');
     // Zadnja naloga (po posodobitvi) je VEDNO na vrhu.
     const sorted=[...(items||[])].sort((a,b)=>(b.updated_at||b.created_at||0)-(a.updated_at||a.created_at||0));
     body.innerHTML=sorted.length?sorted.map(i=>{
