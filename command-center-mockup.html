@@ -400,7 +400,7 @@
     <section class="view" id="view-agenda">
       <div class="view-head"><h1>Agenda</h1><span class="meta">čakalna vrsta naročil · agenda.json</span></div>
       <div class="panel">
-        <div class="phead"><span class="ptitle">Naročila</span><span class="ptag">3 aktivna</span></div>
+        <div class="phead"><span class="ptitle">Naročila</span><span class="ptag" id="agenda-active">0 aktivna</span></div>
         <div class="pbody" style="overflow-x:auto;">
           <table>
             <thead><tr><th>Status</th><th>Naloga</th><th>Target</th><th>Tip</th><th>Vir</th><th>Čas</th></tr></thead>
@@ -801,6 +801,10 @@
     const body=document.getElementById('agenda-body'); if(!body) return;
     const st={pending:['pend','čaka'],running:['run','v teku'],done:['done','končano'],failed:['crit','napaka']};
     agendaCache=items||[];
+    // Števec aktivnih (pending + running) — dinamičen, ne trdo-kodiran.
+    const active=agendaCache.filter(i=>i.status==='pending'||i.status==='running').length;
+    const tag=document.getElementById('agenda-active');
+    if(tag) tag.textContent = active===0?'0 aktivnih':(active===1?'1 aktivna':(active<5?active+' aktivni':active+' aktivnih'));
     // Zadnja naloga (po posodobitvi) je VEDNO na vrhu.
     const sorted=[...(items||[])].sort((a,b)=>(b.updated_at||b.created_at||0)-(a.updated_at||a.created_at||0));
     body.innerHTML=sorted.length?sorted.map(i=>{
