@@ -362,49 +362,61 @@ def _ensure_services(cfg) -> bool:
 # ------------------------------------------------------------------ #
 #  Izvajanje dela
 # ------------------------------------------------------------------ #
-def run_task(item: dict, settings, cfg) -> dict:
-    """Izvede ENO nalogo iz agende v subprocesu (run_swarm.py --item)."""
+def _heartbeat_tasks(active: list) -> list:
+    """Seznam aktivnih nalog za heartbeat (current_tasks)."""
+    return [
+        {"id": e["item"]["id"],
+         "goal": str(e["item"].get("goal", ""))[:400],
+         "target": e["item"].get("target", ""),
+         "kind": e["item"].get("kind", "python"),
+         "started_at": e["started_at"]}
+        for e in active
+    ]
+
+
+def _spawn_task(item: dict, settings, cfg) -> dict:
+    """Zažene run_swarm.py --item v subprocesu (NE-blokirajoče). Vrne entry dict."""
     item_id = item["id"]
-    _write_heartbeat("running_task", current_task={
-        "id": item_id,
-        "goal": str(item.get("goal", ""))[:400],
-        "target": item.get("target", ""),
-        "kind": item.get("kind", "python"),
-        "started_at": _now(),
-    }, current_tick=None)
+    env = dict(os.environ)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env["PYTHONUTF8"] = "1"
+    popen = subprocess.Popen(
+        [sys.executable, "run_swarm.py", "--item", item_id],
+        env=env, cwd=PROJECT_ROOT,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
     audit.record(event="daemon-task", project=item.get("target", item_id),
                  status="started", detail=str(item.get("goal", ""))[:400])
-
-    started = time.time()
-    ok = True
+    started = _now()
     timeout = settings.daemon_task_timeout_seconds or None
-    try:
-        env = dict(os.environ)
-        env.setdefault("PYTHONIOENCODING", "utf-8")
-        env["PYTHONUTF8"] = "1"
-        r = subprocess.run(
-            [sys.executable, "run_swarm.py", "--item", item_id],
-            timeout=timeout, env=env, cwd=PROJECT_ROOT,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        ok = r.returncode == 0
-    except subprocess.TimeoutExpired:
+    return {
+        "item": item,
+        "popen": popen,
+        "started_at": started,
+        "deadline": (started + timeout) if timeout else None,
+        "killed": False,
+    }
+
+
+def _reap_task(entry: dict, settings, cfg, active: list) -> dict:
+    """Logika PO zaključku subprocesa (rearm_repeat, snapshot, audit, heartbeat)."""
+    item = entry["item"]
+    item_id = item["id"]
+    popen = entry["popen"]
+    rc = getattr(popen, "returncode", None)
+    ok = rc == 0
+
+    if entry.get("killed"):
         ok = False
         agenda.mark(item_id, "failed")
         audit.record(event="daemon-task", project=item.get("target", item_id),
                      status="failed", detail="timeout (trdi daemon timeout)")
-    except Exception as e:
-        ok = False
-        agenda.mark(item_id, "failed")
-        audit.record(event="daemon-task", project=item.get("target", item_id),
-                     status="failed", detail=str(e)[:400])
-    # Če je subprocess padel tako trdo, da itema ni označil (še running) → failed.
+    # Subprocess je padel tako trdo, da itema ni označil (še running) → failed.
     if not ok:
         after = agenda.get(item_id)
         if after and after.get("status") == "running":
             agenda.mark(item_id, "failed")
 
-    # Po vsakem izidu: ponovno aktiviraj ponavljajoče naloge + meta snapshot.
     try:
         agenda.rearm_repeat()
     except Exception as e:
@@ -416,23 +428,58 @@ def run_task(item: dict, settings, cfg) -> dict:
     except Exception as e:
         _append_error(f"meta snapshot: {e}")
 
-    duration = round(time.time() - started, 1)
+    duration = round(time.time() - entry["started_at"], 1)
     audit.record(event="daemon-task", project=item.get("target", item_id),
                  status="ok" if ok else "failed",
                  detail=f"duration_s={duration}"
                         + (f" snapshot={snapshot_id}" if snapshot_id else ""))
-    _write_heartbeat("idle", current_task=None, current_tick=None,
+    # Heartbeat: če tečejo še druge naloge → running_task, sicer idle.
+    still = [e for e in active if e is not entry]
+    _write_heartbeat("running_task" if still else "idle",
+                     current_tasks=_heartbeat_tasks(still) if still else None,
+                     current_tick=None,
                      last_run_summary={"kind": "task", "id": item_id, "ok": ok,
                                        "duration_s": duration},
                      last_snapshot_id=snapshot_id)
     return {"ok": ok, "duration_s": duration, "snapshot_id": snapshot_id}
 
 
+def _reap_finished(active: list, settings, cfg) -> int:
+    """Pollira vse aktivne subprocese; zaključene reapa (post-task logika).
+    Timeout presežen → kill (item gre v failed ob naslednjem pollu).
+    Vrne število reapanih."""
+    now = _now()
+    n = 0
+    remaining = []
+    for entry in active:
+        popen = entry["popen"]
+        deadline = entry.get("deadline")
+        if (not entry.get("killed") and deadline and now >= deadline
+                and popen.poll() is None):
+            print(f"[daemon] timeout ({entry['item']['id']}) — ubijam nalogo.")
+            try:
+                popen.kill()
+            except OSError:
+                pass
+            entry["killed"] = True
+            remaining.append(entry)   # reapa se ob naslednjem pollu
+            continue
+        rc = popen.poll()
+        if rc is not None:
+            entry["returncode"] = rc
+            _reap_task(entry, settings, cfg, active)   # active še vsebuje entry
+            n += 1
+        else:
+            remaining.append(entry)
+    active[:] = remaining
+    return n
+
+
 def run_tick(job: dict, settings, cfg, scheduler: Scheduler) -> dict:
     """Izvede en periodični job. Napaka ne hot-loopa — naslednji termin je
     čez en interval."""
     name = job["name"]
-    _write_heartbeat("running_tick", current_tick=name, current_task=None)
+    _write_heartbeat("running_tick", current_tick=name, current_tasks=None)
     started = time.time()
     ok = True
     error = None
@@ -448,7 +495,7 @@ def run_tick(job: dict, settings, cfg, scheduler: Scheduler) -> dict:
     audit.record(event="daemon-tick", project=name, status="ok" if ok else "failed",
                  detail=error or "ok")
     duration = round(time.time() - started, 1)
-    _write_heartbeat("idle", current_tick=None, current_task=None,
+    _write_heartbeat("idle", current_tick=None, current_tasks=None,
                      last_run_summary={"kind": "tick", "name": name, "ok": ok,
                                        "duration_s": duration})
     return {"ok": ok, "duration_s": duration, "result": result}
@@ -476,6 +523,7 @@ def _handle_signal(signum, frame) -> None:
 def run_loop(settings, cfg, once: bool = False) -> int:
     """Glavna zanka daemona. once=True → ena enota dela in izhod (smoke test)."""
     global _stop_requested  # pisana v sentinel veji → mora biti global, ne lokalna
+    _stop_requested = False  # reset ob vsakem bootu (ne podeduj prejšnjega stop-a)
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
@@ -483,8 +531,11 @@ def run_loop(settings, cfg, once: bool = False) -> int:
     scheduler.load_persisted(_load_heartbeat().get("jobs"))
     scheduler.warm_up(_now())
 
+    workers = 1 if once else max(1, int(getattr(settings, "daemon_workers", 1) or 1))
+    active: list = []   # [{item, popen, started_at, deadline, killed}]
+
     # BOOT
-    _write_heartbeat("boot", current_task=None, current_tick=None)
+    _write_heartbeat("boot", current_tasks=None, current_tick=None)
     # Odstrani morebiten star stop sentinel (iz prejšnje seje).
     try:
         STOP_FILE.unlink()
@@ -494,63 +545,105 @@ def run_loop(settings, cfg, once: bool = False) -> int:
     if recovered:
         print(f"[daemon] obnovljenih nalog (running→pending): {recovered}")
 
-    _write_heartbeat("ensure_services")
+    _write_heartbeat("ensure_services", current_tasks=None)
     if not _ensure_services(cfg):
         print("[daemon] proxy ni dosegljiv po zagonu — stanje degraded, retry v zanki.")
-        _write_heartbeat("degraded")
-    print(f"[daemon] zagnan (PID {os.getpid()}, once={once})")
+        _write_heartbeat("degraded", current_tasks=None)
+    print(f"[daemon] zagnan (PID {os.getpid()}, once={once}, workers={workers})")
 
     last_hb = _now()
     try:
-        while not _stop_requested:
-            # Stop sentinel (`rob daemon --stop`) → graceful shutdown.
-            if STOP_FILE.exists():
-                print("[daemon] prejeta stop zahteva — graceful shutdown.")
+        while not _stop_requested or active:
+            # Stop sentinel (`rob daemon --stop`) → graceful DRAIN (dokončaj aktivne).
+            if STOP_FILE.exists() and not _stop_requested:
+                print("[daemon] prejeta stop zahteva — dokončam aktivne naloge.")
                 _stop_requested = True
-                break
             now = _now()
 
-            # HEALTH GATE — brez proxyja ni nalog/tickov.
+            # DRAIN MODE (stop, še aktivne) — reapa, ne spawi novih.
+            if _stop_requested:
+                _reap_finished(active, settings, cfg)
+                if active:
+                    _write_heartbeat("shutdown", current_tasks=_heartbeat_tasks(active),
+                                     current_tick=None)
+                    time.sleep(settings.daemon_idle_seconds)
+                    continue
+                break
+
+            # HEALTH GATE — brez proxyja ni novih nalog/tickov.
             if not _proxy_ok(cfg):
                 if now - last_hb >= settings.daemon_proxy_retry_seconds:
                     print("[daemon] proxy dol — ponovni poskus dviga storitev.")
                     _ensure_services(cfg)
                     last_hb = now
-                _write_heartbeat("degraded", agenda_pending=len(agenda.pending()))
-                if once:
+                _write_heartbeat("degraded", current_tasks=_heartbeat_tasks(active),
+                                 agenda_pending=len(agenda.pending()))
+                if once and not active:
                     return 0
                 time.sleep(settings.daemon_idle_seconds)
                 continue
 
-            kind, payload = decide(agenda.pending(), scheduler)
-            if kind == "task":
-                run_task(payload, settings, cfg)
-            elif kind == "tick":
-                run_tick(payload, settings, cfg, scheduler)
-            else:
-                if now - last_hb >= settings.daemon_heartbeat_seconds:
-                    _write_heartbeat("idle", current_task=None, current_tick=None,
+            # 1) REAP zaključene subprocese.
+            reaped = _reap_finished(active, settings, cfg)
+            if once and reaped >= 1 and not active:
+                return 0   # ena enota dela končana
+
+            # 2) SPAWN do workers (distinct targets).
+            spawned = 0
+            if len(active) < workers:
+                exclude = {a["item"].get("target") or a["item"]["id"] for a in active}
+                limit = workers - len(active)
+                if once:
+                    limit = min(limit, 1) if not active else 0
+                if limit > 0:
+                    for item in agenda.claim_pending(exclude_targets=exclude, limit=limit):
+                        active.append(_spawn_task(item, settings, cfg))
+                        spawned += 1
+
+            # 3) TICK SAMO ko je idle (single-flight za vzdrževanje).
+            if not active:
+                job = scheduler.due(_now())
+                if job is not None:
+                    run_tick(job, settings, cfg, scheduler)
+                    if once:
+                        return 0
+                    _write_heartbeat("idle", current_tasks=None, current_tick=None,
                                      jobs=scheduler.to_dict(),
                                      agenda_pending=len(agenda.pending()))
                     last_hb = now
+                    time.sleep(settings.daemon_idle_seconds)
+                    continue
                 if once:
                     return 0
+                if now - last_hb >= settings.daemon_heartbeat_seconds:
+                    _write_heartbeat("idle", current_tasks=None, current_tick=None,
+                                     jobs=scheduler.to_dict(),
+                                     agenda_pending=len(agenda.pending()))
+                    last_hb = now
                 time.sleep(settings.daemon_idle_seconds)
                 continue
 
-            # Po enoti dela (task/tick) perzistiraj job termine, da preživijo restart.
-            _write_heartbeat("idle", current_task=None, current_tick=None,
-                             jobs=scheduler.to_dict(),
-                             agenda_pending=len(agenda.pending()))
-            last_hb = now
-
-            if once:
-                return 0
+            # 4) Aktivne naloge tečejo — periodični heartbeat.
+            if spawned or now - last_hb >= settings.daemon_heartbeat_seconds:
+                _write_heartbeat("running_task", current_tasks=_heartbeat_tasks(active),
+                                 current_tick=None, jobs=scheduler.to_dict(),
+                                 agenda_pending=len(agenda.pending()))
+                last_hb = now
             time.sleep(settings.daemon_idle_seconds)
     except KeyboardInterrupt:
         print("\n[daemon] Ctrl+C — graceful shutdown.")
+        _stop_requested = True
+        while active:   # drain: dokončaj aktivne
+            _reap_finished(active, settings, cfg)
+            if active:
+                time.sleep(settings.daemon_idle_seconds)
     finally:
-        _write_heartbeat("shutdown", current_task=None, current_tick=None,
+        for e in active:   # defenzivno: ubij morebitne sirote
+            try:
+                e["popen"].kill()
+            except OSError:
+                pass
+        _write_heartbeat("shutdown", current_tasks=None, current_tick=None,
                          jobs=scheduler.to_dict())
         _release_lock()
     return 0
@@ -568,7 +661,11 @@ def _cmd_status() -> int:
         print(f"PID         : {hb.get('pid')}")
         print(f"started_at  : {hb.get('started_at')}")
         print(f"heartbeat   : {hb.get('heartbeat_ts')}")
-        if hb.get("current_task"):
+        if hb.get("current_tasks"):
+            print(f"Aktivne naloge ({len(hb['current_tasks'])}):")
+            for t in hb["current_tasks"]:
+                print(f"  - {t['id']} · {t.get('goal','')[:60]} · {t.get('target','')}")
+        elif hb.get("current_task"):   # legacy (stara heartbeat)
             print(f"Trenutna naloga: {hb.get('current_task')}")
         if hb.get("current_tick"):
             print(f"Trenutni tick  : {hb.get('current_tick')}")

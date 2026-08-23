@@ -1,6 +1,7 @@
 import subprocess
 import sys
 import json
+import os
 import re
 import asyncio
 import shutil
@@ -228,8 +229,12 @@ class LoopXEngineBridge:
             "current_attempt": attempt,
             "max_attempts": self.max_attempts,
         }
-        with open(self.registry_file, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=2)
+        # Atomično (tmp + os.replace): paralelni daemon — N buildov piše globalni
+        # registry.json; atomic write prepreči korupcijo (last-writer-wins je OK,
+        # ker je observability-only).
+        tmp = self.registry_file.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, self.registry_file)
 
     # ------------------------------------------------------------------ #
     #  Pomožne funkcije

@@ -210,53 +210,161 @@ def test_decide_idle():
 
 
 # ------------------------------------------------------------------ #
-#  run_task
+#  Paralelni daemon — spawn / reap
 # ------------------------------------------------------------------ #
-def test_run_task_success(env, monkeypatch):
+class _FakePopen:
+    def __init__(self, rc=0, done_after=1):
+        self._rc = rc
+        self._calls = 0
+        self._done_after = done_after
+        self.returncode = None
+        self.killed = False
+    def poll(self):
+        if self.killed:
+            return self.returncode   # ubit → reapan ob naslednjem pollu
+        self._calls += 1
+        if self._calls > self._done_after:
+            self.returncode = self._rc
+            return self._rc
+        return None
+    def kill(self):
+        self.killed = True
+        self.returncode = self._rc
+        return None
+
+
+def _entry(item, popen=None, settings=None):
+    return {"item": item, "popen": popen or _FakePopen(),
+            "started_at": int(__import__("time").time()), "deadline": None, "killed": False}
+
+
+def test_spawn_task_uses_popen(env, monkeypatch):
     item = ag.add("Test naloga", kind="markdown", source="cli")
-    def _fake_run(cmd, **k):
-        # Simulira run_swarm.py --item: child označi nalogo in izstopi rc=0.
-        ag.mark(item["id"], "done")
-        return types.SimpleNamespace(returncode=0)
-    fake_run = mock.Mock(side_effect=_fake_run)
-    monkeypatch.setattr(daemon.subprocess, "run", fake_run)
+    fake_popen = _FakePopen()
+    monkeypatch.setattr(daemon.subprocess, "Popen",
+                        mock.Mock(return_value=fake_popen))
+    entry = daemon._spawn_task(item, _settings(), None)
+    call = daemon.subprocess.Popen.call_args
+    assert "--item" in call.args[0] and item["id"] in call.args[0]
+    assert entry["deadline"] is None   # timeout 0 → brez deadline
+    entry2 = daemon._spawn_task(item, _settings(daemon_task_timeout_seconds=10), None)
+    assert entry2["deadline"] is not None
+
+
+def test_reap_task_success(env, monkeypatch):
+    item = ag.add("Test naloga", kind="markdown", source="cli")
+    ag.mark(item["id"], "done")   # child je označil done (simulacija)
     from core import meta_eval
     fake_me = mock.Mock()
     fake_me.snapshot.return_value = 42
     monkeypatch.setattr(meta_eval, "MetaEvaluator", lambda *a, **k: fake_me)
-
-    res = daemon.run_task(item, _settings(), None)
-
+    popen = _FakePopen(rc=0, done_after=0)
+    popen.poll()
+    entry = _entry(item, popen=popen)
+    res = daemon._reap_task(entry, _settings(), None, [entry])
     assert res["ok"] is True
     assert ag.get(item["id"])["status"] == "done"
     hb = daemon._load_heartbeat()
-    assert hb["last_run_summary"]["kind"] == "task"
     assert hb["last_run_summary"]["ok"] is True
     assert hb["last_snapshot_id"] == 42
-    # Naloga v zapisu: run_swarm.py --item <id>
-    call = fake_run.call_args
-    assert "--item" in call.args[0]
 
 
-def test_run_task_timeout_marks_failed(env, monkeypatch):
+def test_reap_task_timeout_killed_marks_failed(env, monkeypatch):
     item = ag.add("Test naloga", kind="markdown", source="cli")
-    def _timeout(*a, **k):
-        raise __import__("subprocess").TimeoutExpired(cmd="run_swarm.py", timeout=1)
-    monkeypatch.setattr(daemon.subprocess, "run", _timeout)
+    ag.mark(item["id"], "running")   # child ni označil (ubit)
     from core import meta_eval
-    fake_me = mock.Mock()
-    fake_me.snapshot.return_value = 1
-    monkeypatch.setattr(meta_eval, "MetaEvaluator", lambda *a, **k: fake_me)
-
-    res = daemon.run_task(item, _settings(), None)
-
+    monkeypatch.setattr(meta_eval, "MetaEvaluator",
+                        lambda *a, **k: mock.Mock(snapshot=mock.Mock(return_value=1)))
+    popen = _FakePopen(rc=1, done_after=0)
+    popen.poll()
+    entry = _entry(item, popen=popen)
+    entry["killed"] = True
+    res = daemon._reap_task(entry, _settings(), None, [entry])
     assert res["ok"] is False
     assert ag.get(item["id"])["status"] == "failed"
-    hb = daemon._load_heartbeat()
-    assert hb["last_run_summary"]["ok"] is False
-    # Audit vsebuje timeout vnos.
     log = (env / "audit.jsonl").read_text(encoding="utf-8")
     assert "timeout" in log
+
+
+def test_reap_finished_reaps_completed_and_keeps_running(env, monkeypatch):
+    done_item = ag.add("Done", kind="markdown", source="cli")
+    run_item = ag.add("Running", kind="markdown", source="cli")
+    from core import meta_eval
+    monkeypatch.setattr(meta_eval, "MetaEvaluator",
+                        lambda *a, **k: mock.Mock(snapshot=mock.Mock(return_value=1)))
+    p_done = _FakePopen(rc=0, done_after=0)   # poll → 0 takoj
+    p_run = _FakePopen(rc=0, done_after=999)  # poll → None (še teče)
+    active = [_entry(done_item, popen=p_done), _entry(run_item, popen=p_run)]
+    n = daemon._reap_finished(active, _settings(), None)
+    assert n == 1
+    assert len(active) == 1
+    assert active[0]["item"]["id"] == run_item["id"]
+
+
+def test_reap_finished_kills_timeout_then_reaps_failed(env, monkeypatch):
+    item = ag.add("Timeout", kind="markdown", source="cli")
+    ag.mark(item["id"], "running")
+    from core import meta_eval
+    monkeypatch.setattr(meta_eval, "MetaEvaluator",
+                        lambda *a, **k: mock.Mock(snapshot=mock.Mock(return_value=1)))
+    popen = _FakePopen(rc=1, done_after=999)
+    entry = _entry(item, popen=popen)
+    entry["deadline"] = int(__import__("time").time()) - 10   # pretečen
+    active = [entry]
+    # 1. poll: deadline pretečen → kill, ostane aktiven
+    n = daemon._reap_finished(active, _settings(), None)
+    assert n == 0 and len(active) == 1 and active[0]["killed"] is True
+    # 2. poll: ubit → reapan → failed
+    popen.returncode = 1
+    n = daemon._reap_finished(active, _settings(), None)
+    assert n == 1 and len(active) == 0
+    assert ag.get(item["id"])["status"] == "failed"
+
+
+def _mock_loop_deps(env, monkeypatch, popen):
+    monkeypatch.setattr(daemon.dev_cli, "cmd_serve", mock.Mock(return_value=0))
+    monkeypatch.setattr(daemon, "_proxy_ok", mock.Mock(return_value=True))
+    from core import meta_eval
+    monkeypatch.setattr(meta_eval, "MetaEvaluator",
+                        lambda *a, **k: mock.Mock(snapshot=mock.Mock(return_value=1)))
+    monkeypatch.setattr(daemon.subprocess, "Popen", mock.Mock(return_value=popen))
+
+
+def test_run_loop_once_processes_one_task(env, monkeypatch):
+    """--once: ena naloga spawn → reap → izhod (rc 0)."""
+    item = ag.add("Test naloga", kind="markdown", source="cli")
+    popen = _FakePopen(rc=0, done_after=0)
+    _mock_loop_deps(env, monkeypatch, popen)
+    rc = daemon.run_loop(_settings(daemon_workers=3), None, once=True)
+    assert rc == 0
+    assert daemon.subprocess.Popen.called
+    call = daemon.subprocess.Popen.call_args
+    assert "--item" in call.args[0] and item["id"] in call.args[0]
+    # Naloga je bila obdelana (reap → last_run_summary). State je "shutdown" po izhodu.
+    assert daemon._load_heartbeat()["last_run_summary"]["kind"] == "task"
+
+
+def test_run_loop_stop_drains_active(env, monkeypatch):
+    """Stop med aktivno nalogo → drain (reap) pred izhodom."""
+    item = ag.add("Test naloga", kind="markdown", source="cli")
+    # Fake Popen: ne konča takoj (poll → None nekaj časa), nato rc=0.
+    popen = _FakePopen(rc=0, done_after=2)
+    _mock_loop_deps(env, monkeypatch, popen)
+    # Fake STOP: exists() postane True po 2 klicih → stop sredi naloge.
+    class _FakeStop:
+        def __init__(self):
+            self.n = 0
+        def unlink(self):
+            pass
+        def exists(self):
+            self.n += 1
+            return self.n > 1
+    monkeypatch.setattr(daemon, "STOP_FILE", _FakeStop())
+    rc = daemon.run_loop(_settings(), None)
+    assert rc == 0
+    # Aktivna naloga je bila reapan pred izhodom (last_run_summary prisotna).
+    assert daemon._load_heartbeat()["last_run_summary"]["kind"] == "task"
+    assert not daemon.LOCK_FILE.exists()   # lock sproščen
 
 
 # ------------------------------------------------------------------ #
@@ -307,11 +415,11 @@ def test_heartbeat_written(env):
 
 
 def test_heartbeat_none_pocisti_staro_polje(env):
-    # Npr. crash sredi naloge → ob bootu se stale current_task počisti.
-    daemon._write_heartbeat("running_task", current_task={"id": "x"})
-    daemon._write_heartbeat("boot", current_task=None)
+    # Npr. crash sredi naloge → ob bootu se stale current_tasks počisti.
+    daemon._write_heartbeat("running_task", current_tasks=[{"id": "x"}])
+    daemon._write_heartbeat("boot", current_tasks=None)
     hb = daemon._load_heartbeat()
-    assert "current_task" not in hb
+    assert "current_tasks" not in hb
 
 
 def test_ensure_services_calls_cmd_serve(env, monkeypatch):
@@ -341,6 +449,7 @@ def test_config_daemon_defaults():
     assert s.daemon_goal_pending_cap == 3
     assert s.daemon_min_free_gb == 2.0
     assert s.daemon_task_timeout_seconds == 1800   # C/R: obešena naloga ne sme blokirati
+    assert s.daemon_workers == 2                   # P-paralel: N sočasnih nalog
 
 
 # ------------------------------------------------------------------ #

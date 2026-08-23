@@ -29,18 +29,83 @@ def _load() -> list:
 
 
 def _save(items: list) -> None:
-    """Atomičen zapis: piši v temp + `os.replace`, da dva procesa (server.ts
-    Gmail poll, daemon subprocess) nikoli ne pustita agenda.json pokvarjenega.
-
-    Opomba: to prepreči korupcijo datoteke, ne izgubljene posodobitve (klasičen
-    read-modify-write race med dvema procesoma ostaja — za P1 sprejemljivo, ker
-    klici prihajajo redko in `mark`/`add` imata en kratek vmesni čas).
-    """
+    """Atomičen zapis: piši v temp + `os.replace`, da dva procesa nikoli ne
+    pustita agenda.json pokvarjenega. Mutatorji so dodatno pod `_locked`
+    (cross-process lock), da se ne izgubi posodobitev (read-modify-write)."""
     AGENDA_FILE.parent.mkdir(parents=True, exist_ok=True)
     payload = json.dumps(items, ensure_ascii=False, indent=2)
     tmp = AGENDA_FILE.with_suffix(".json.tmp")
     tmp.write_text(payload, encoding="utf-8")
     os.replace(tmp, AGENDA_FILE)
+
+
+# ── Cross-process lock (paralelni daemon: N subprocesov kliče mark/add) ── #
+AGENDA_LOCK = AGENDA_FILE.with_suffix(".lock")
+_LOCK_TIMEOUT = 10.0
+_LOCK_STALE_AFTER = 30.0
+
+
+def _lock_pid_alive(pid: int) -> bool:
+    """Ali PID še obstaja (stale lock cleanup). Windows: OpenProcess probe."""
+    if os.name == "nt":
+        try:
+            import ctypes
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            h = ctypes.windll.kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+            if not h:
+                return False
+            ctypes.windll.kernel32.CloseHandle(h)
+            return True
+        except Exception:
+            return True
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+
+
+def _lock_stale() -> bool:
+    try:
+        if time.time() - AGENDA_LOCK.stat().st_mtime > _LOCK_STALE_AFTER:
+            return True
+        pid = int(AGENDA_LOCK.read_text(encoding="utf-8").strip())
+        return not _lock_pid_alive(pid)
+    except Exception:
+        return False
+
+
+def _locked(fn):
+    """Izvede `fn` pod cross-process lockom — agenda.json read-modify-write je
+    atomičen MED PROCESI. Nujno za paralelni daemon: N subprocesov kliče
+    `mark`/`add`/`rearm_repeat` hkrati; brez locka bi se posodobitve izgubile."""
+    AGENDA_FILE.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + _LOCK_TIMEOUT
+    while True:
+        try:
+            fd = os.open(AGENDA_LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode("utf-8"))
+            os.close(fd)
+            try:
+                return fn()
+            finally:
+                try:
+                    AGENDA_LOCK.unlink()
+                except OSError:
+                    pass
+        except FileExistsError:
+            if _lock_stale():
+                try:
+                    AGENDA_LOCK.unlink()
+                except OSError:
+                    pass
+                continue
+            if time.monotonic() >= deadline:
+                return fn()   # zadnja možnost: best-effort, brez deadlocka
+            time.sleep(0.02)
 
 
 def add(goal: str, kind: str = "python", target: str | None = None,
@@ -55,23 +120,25 @@ def add(goal: str, kind: str = "python", target: str | None = None,
     (source="fix_loop") nosi `test=<ime padlega testa>` strukturno, da
     `run_surgical` ve, kateri test ciljno verifikirati.
     """
-    items = _load()
-    item = {
-        "id": uuid.uuid4().hex[:12],
-        "goal": goal,
-        "kind": kind,          # python | markdown | html | autonomous
-        "target": target or _slug(goal),
-        "status": "pending",
-        "repeat": repeat,      # None ali cron-expression string (npr. "0 8 * * *")
-        "created_at": int(time.time()),
-        "updated_at": int(time.time()),
-    }
-    if source:
-        item["source"] = source
-    item.update(extra)         # extra zmaga ob teoretičnem kolapsu ključev
-    items.append(item)
-    _save(items)
-    return item
+    def _do() -> dict:
+        items = _load()
+        item = {
+            "id": uuid.uuid4().hex[:12],
+            "goal": goal,
+            "kind": kind,      # python | markdown | html | autonomous
+            "target": target or _slug(goal),
+            "status": "pending",
+            "repeat": repeat,  # None ali cron-expression string
+            "created_at": int(time.time()),
+            "updated_at": int(time.time()),
+        }
+        if source:
+            item["source"] = source
+        item.update(extra)     # extra zmaga ob teoretičnem kolapsu ključev
+        items.append(item)
+        _save(items)
+        return item
+    return _locked(_do)
 
 
 def pending() -> list:
@@ -88,16 +155,38 @@ def get(item_id: str) -> dict | None:
 
 
 def mark(item_id: str, status: str) -> None:
-    items = _load()
-    for it in items:
-        if it.get("id") == item_id:
-            it["status"] = status
-            it["updated_at"] = int(time.time())
-    _save(items)
+    def _do() -> None:
+        items = _load()
+        for it in items:
+            if it.get("id") == item_id:
+                it["status"] = status
+                it["updated_at"] = int(time.time())
+        _save(items)
+    _locked(_do)
 
 
 def all_() -> list:
     return _load()
+
+
+def claim_pending(exclude_targets: set | None = None, limit: int = 1) -> list:
+    """Vrne do `limit` pending itemov z DISTINCT targeti, FIFO po vrstnem redu.
+
+    `exclude_targets`: targeti, ki so že aktivni — daemon ne zažene dveh build-ov
+    istega targeta hkrati. Ne spreminja statusa (running mark-ajo subprocesi).
+    """
+    exclude = set(exclude_targets or ())
+    seen = set(exclude)
+    claimed = []
+    for it in pending():
+        target = it.get("target") or it["id"]   # itemi brez targeta → unikatni po id
+        if target in seen:
+            continue
+        seen.add(target)
+        claimed.append(it)
+        if len(claimed) >= limit:
+            break
+    return claimed
 
 
 def rearm_repeat() -> int:
@@ -105,16 +194,18 @@ def rearm_repeat() -> int:
     pending, da ob naslednjem --process-agenda zopet izvedejo (enostaven
     schedule: ponavljaj se ob vsakem procesiranju). Vrne število ponovno
     aktiviranih."""
-    items = _load()
-    n = 0
-    for it in items:
-        if it.get("repeat") and it.get("status") in ("done", "failed"):
-            it["status"] = "pending"
-            it["updated_at"] = int(time.time())
-            n += 1
-    if n:
-        _save(items)
-    return n
+    def _do() -> int:
+        items = _load()
+        n = 0
+        for it in items:
+            if it.get("repeat") and it.get("status") in ("done", "failed"):
+                it["status"] = "pending"
+                it["updated_at"] = int(time.time())
+                n += 1
+        if n:
+            _save(items)
+        return n
+    return _locked(_do)
 
 
 def _slug(goal: str) -> str:

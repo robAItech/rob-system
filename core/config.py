@@ -56,6 +56,10 @@ class SystemSettings(BaseSettings):
     # Trdi timeout na nalogo (subprocess kill): prepreči, da obešena naloga
     # (npr. host-pytest brez timeouta) ustavi daemon za nedoločen čas. 0 = brez.
     daemon_task_timeout_seconds: int = Field(default=1800, alias="DAEMON_TASK_TIMEOUT_SECONDS")
+    # Paralelni daemon: število sočasnih nalog (subprocesov run_swarm.py --item).
+    # 1 = stara single-flight semantika; N>1 = N sočasnih buildov (distinct targets).
+    # Velikost glede na HW — vsak build = LLM + Docker sandbox (~512 MB).
+    daemon_workers: int = Field(default=2, alias="DAEMON_WORKERS")
     # Periodični jobi (intervali v urah).
     daemon_consolidate_hours: int = Field(default=24, alias="DAEMON_CONSOLIDATE_HOURS")
     daemon_reflect_hours: int = Field(default=168, alias="DAEMON_REFLECT_HOURS")

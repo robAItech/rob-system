@@ -47,6 +47,58 @@ def test_pending_iz_gmail_ni_avtomatsko_obdelan(iso):
     assert p[0]["status"] == "pending"
 
 
+def test_claim_pending_fifo_and_limit(iso):
+    a = agenda.add("a", target="t1", source="cli")
+    b = agenda.add("b", target="t2", source="cli")
+    c = agenda.add("c", target="t3", source="cli")
+    claimed = agenda.claim_pending(limit=2)
+    assert [x["id"] for x in claimed] == [a["id"], b["id"]]
+    assert len(agenda.claim_pending(limit=10)) == 3
+
+
+def test_claim_pending_distinct_targets(iso):
+    agenda.add("a", target="t1", source="cli")
+    agenda.add("b", target="t2", source="cli")
+    agenda.add("c", target="t1", source="cli")   # isti target kot a
+    agenda.add("d", target="t3", source="cli")
+    claimed = agenda.claim_pending(limit=10)
+    targets = [x["target"] for x in claimed]
+    assert targets == ["t1", "t2", "t3"]   # samo prvi pojav vsakega targeta
+
+
+def test_claim_pending_excludes_active_targets(iso):
+    agenda.add("a", target="t1", source="cli")
+    agenda.add("b", target="t2", source="cli")
+    claimed = agenda.claim_pending(exclude_targets={"t1"}, limit=10)
+    assert [x["target"] for x in claimed] == ["t2"]
+
+
+def test_mark_concurrent_no_lost_update(iso):
+    """Regression guard za cross-process lock: N sočasnih mark ne sme izgubiti
+    posodobitve (paralelni daemon — N subprocesov kliče mark hkrati)."""
+    import threading
+    items = [agenda.add(f"n{i}", target=f"t{i}", source="cli") for i in range(5)]
+    threads = [threading.Thread(target=agenda.mark, args=(it["id"], "done"))
+               for it in items]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    statuses = [agenda.get(it["id"])["status"] for it in items]
+    assert statuses == ["done"] * 5
+
+
+def test_add_concurrent_no_lost_update(iso):
+    import threading
+    threads = [threading.Thread(target=agenda.add, args=(f"naloga{i}",), kwargs={"source": "cli"})
+               for i in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(agenda.all_()) == 5
+
+
 def test_add_extra_polja_se_zdruzijo(iso):
     """SURGICAL — fix naloga nosi test= strukturno (ne samo v direktivi)."""
     item = agenda.add("fix billing", kind="python", target="billing",
