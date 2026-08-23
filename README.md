@@ -387,11 +387,13 @@ Vsak padel build se zdaj **samodejno popravi** — ne le zapiše lekcije:
 - **Poštena metrika**: `meta_eval` bere `run_reviews` (čista tabela), **ne**
   `task_history` (onesnažen s `test_proj`) — realna uspešnost, ne več lažnih
   številk; snapshot verzijski gate prepreči lažno regresijo.
-- **MODIFY false-green guard** (`kind="modify"`): modifikacijska naloga
-  ("izboljšaj X", refaktor) mora DEJANSKO spremeniti modul. Če je build zelen,
-  a nobena datoteka ni spremenjena (RSI samo potrdi obstoječe stanje), se šteje
-  kot **neuspeh** z jasno lekcijo — ne tiho zelen. `LoopX._module_fingerprint`
-  primerja prstni odtis modula pred/po teku.
+- **MODIFY — modifikacije dejansko delujejo** (`kind="modify"`): naloga
+  "izboljšaj X"/refaktor mora DEJANSKO spremeniti modul. Dva mehanizma:
+  (1) `LoopX._module_fingerprint` primerja modul pred/po — zelen brez spremembe
+  → neuspeh; (2) če direktiva imenuje nov test file (npr. `test_truncate_start.py`),
+  `_verify` vrne **rdeč**, dokler ga heal ne ustvari in ne implementira funkcije
+  → zelen šele ko je sprememba res izvedena (živo: `truncate_start` dodan +
+  31/31 testov zelenih).
 
 **Dogfood (realno delo, avtonomno)** — več krogov:
 - **Dogfood 1** (5 util modulov): uspešnost modulov **40 % → 80 %** (fix-zanka
