@@ -555,7 +555,8 @@ class AutonomyEval:
         try:
             r = subprocess.run(
                 [sys.executable, str(Path(__file__).resolve()), "--verify-only", name],
-                input=case_json, capture_output=True, text=True, timeout=timeout, env=env,
+                input=case_json, capture_output=True, encoding="utf-8",
+                timeout=timeout, env=env,
             )
         except subprocess.TimeoutExpired:
             return {"checks_ok": 0, "checks_total": self._expected_checks(case),
@@ -904,6 +905,14 @@ def main(argv=None) -> int:
     # Interno za podprocesno izolacijo pydantic/http verifierja: preveri en case
     # iz stdin in izpiše rezultat v eni vrstici s prefiksom EVALVERIFY:.
     if args.verify_only:
+        # stdin OBDVEZNO UTF-8: case_json vsebuje šumnike (č/ž/š) — sys.stdin.read()
+        # bi na Windows dekodiral s cp1252 → UnicodeDecodeError → rc=1 (lažni FAIL
+        # order_schema/inventory_api v vsakem eval teku). Tudi stdout/err UTF-8.
+        for stream in (sys.stdin, sys.stdout, sys.stderr):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
         case = json.loads(sys.stdin.read())
         res = AutonomyEval([])._verify_inline_dispatch(args.verify_only, case)
         sys.stdout.write("EVALVERIFY:" + json.dumps(res, ensure_ascii=False) + "\n")
