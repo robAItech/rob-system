@@ -374,6 +374,16 @@
           <div class="tfoot">
             <span class="prompt">›</span>
             <input id="convo-input" type="text" placeholder="Vnesi ukaz ali govori ..." onkeydown="if(event.key==='Enter')sendMessage()">
+            <select id="convo-kind" title="Vrsta obdelave — Auto pusti, da sistem izbere iz besedila" style="background:var(--surface2);border:1px solid var(--line);border-radius:5px;color:var(--ink);font-family:var(--font-mono);font-size:11px;padding:6px 6px;margin-left:6px;outline:0">
+              <option value="">Auto</option>
+              <option value="python">Python modul</option>
+              <option value="plan">Plan · razdeli na podnaloge</option>
+              <option value="team">Team · adversarial pregled</option>
+              <option value="fork">Fork · N pristopov</option>
+              <option value="modify">Modify · spremeni obstoječe</option>
+              <option value="markdown">Markdown dokument</option>
+              <option value="html">HTML stran</option>
+            </select>
             <button class="tbtn mic" onclick="sendVoice()" title="Glas">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3"/></svg>
             </button>
@@ -707,8 +717,10 @@
       document.getElementById('agent-tag').textContent='RAZISKUJE';
     }
     let reply;
+    const kindSel=document.getElementById('convo-kind');
+    const kind=(kindSel&&kindSel.value)||'';
     try{
-      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})});
+      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,kind})});
       const d=await r.json();
       reply=d.ok?d.reply:('napaka: '+(d.error||''));
     }catch(e){

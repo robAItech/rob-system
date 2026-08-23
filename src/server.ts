@@ -629,8 +629,9 @@ function classifyMessage(message: string): 'task' | 'research' | 'chat' {
 }
 
 /** Zabeleži nalogo v agendo. Izvedbo prevzame P1 daemon (core/daemon.py). */
-async function handleTask(message: string): Promise<string> {
-  const kind = detectGmailKind(message);
+async function handleTask(message: string, kindOverride?: string): Promise<string> {
+  const KINDS = ['python', 'markdown', 'html', 'autonomous', 'modify', 'team', 'fork', 'plan', 'fix_loop'];
+  const kind = (kindOverride && KINDS.includes(kindOverride)) ? kindOverride : detectKind(message);
   try {
     const proc = Bun.spawn({
       cmd: ['python', '-c', `from core.agenda import add; import json; print(json.dumps(add(${JSON.stringify(message)}, kind=${JSON.stringify(kind)}, source='voice')))`],
@@ -738,10 +739,10 @@ async function handleResearch(message: string): Promise<string> {
 }
 
 /** Neposredni pogovor z LLM (ROB) — z živim datumom/uro in (po potrebi) vremenom. */
-async function chat(message: string): Promise<string> {
+async function chat(message: string, kindOverride?: string): Promise<string> {
   // Naloga → zabeleži + izvedi; raziskava → globinsko poročilo; pogovor → odgovori.
   const kind = classifyMessage(message);
-  if (kind === 'task') return handleTask(message);
+  if (kind === 'task') return handleTask(message, kindOverride);
   if (kind === 'research') return handleResearch(message);
   const p = resolveProvider(process.env);
   const ledger = new Ledger(DB_PATH);
@@ -1056,11 +1057,15 @@ function contentTypeFor(name: string): string {
 // =====================================================================
 const GMAIL_CURSOR_FILE = `${OUT_ROOT}/.rob_ai/gmail_cursor.json`;
 
-/** Razpozna vrsto izdelka iz goal/subject (Python | Markdown | HTML). */
-function detectGmailKind(goal: string): string {
-  const g = goal.toLowerCase();
+/** Razpozna vrsto obdelave iz cilja (Auto). Uporabniku NI treba izbirati. */
+function detectKind(goal: string): string {
+  const g = (goal || '').toLowerCase();
+  if (/(razdeli|dekompozicij|podnalog|celoten sistem|razdeljeno|povezanih modulov|več modulov|\d+ modulov)/.test(g)) return 'plan';
+  if (/(adversarial|kritika|critique|multi-agent|pregled kode|sodnik|oponent)/.test(g)) return 'team';
+  if (/(pristop|variant|\d+ pristop|alternativ|načinov)/.test(g)) return 'fork';
+  if (/(spremeni|dodaj funkcijo|izboljšaj|nadgradi|refaktor)/.test(g) && /(modul|actions\/)/.test(g)) return 'modify';
   if (/(spetna|dashboard|html|\.html|<html)/.test(g)) return 'html';
-  if (/(predlog|poro.ilo|poslovni|markdown|dokument|.md|specifikacij)/.test(g)) return 'markdown';
+  if (/(markdown|predlog|poročilo|dokument|\.md|specifikacij|poslovni predlog)/.test(g)) return 'markdown';
   return 'python';
 }
 
@@ -1156,7 +1161,7 @@ async function gmailToAgenda(): Promise<{ added: number }> {
       console.log(`[gmail-poll] preskočeno (obvestilo): ${id} «${subject.slice(0, 60)}»`);
       continue;
     }
-    const kind = detectGmailKind(goal + ' ' + snippet);
+    const kind = detectKind(goal + ' ' + snippet);
     const didAdd = await agendaAddGmail(`${goal} (od: ${from})`, kind);
     cursor.add(id);     // oznaci obdeleno → ne ponovi
     if (didAdd) added++;   // štej samo res dodane (dedup že obstajajoče skippa)
@@ -1337,12 +1342,12 @@ const server = Bun.serve({
     // Pogovor z ROB (neposredni LLM).
     if (req.method === 'POST' && url.pathname === '/api/chat') {
       const raw = await req.text().catch(() => '');
-      let body: { message?: unknown } = {};
+      let body: { message?: unknown; kind?: unknown } = {};
       try { body = JSON.parse(raw); } catch { /* ignore */ }
       const message = String(body.message || '').trim();
       if (!message) return json({ ok: false, error: 'sporočilo je prazno' }, 400);
       try {
-        const reply = await chat(message);
+        const reply = await chat(message, String(body.kind || ''));
         return json({ ok: true, reply });
       } catch (e) {
         return json({ ok: false, error: String(e instanceof Error ? e.message : e) }, 500);
