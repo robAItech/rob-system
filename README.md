@@ -307,6 +307,7 @@ Dosežene faze:
 | **P3** | Surgical fix + diagnose-first: minimalen diff brez re-scaffolda, targeted verifikacija, dejanski vzrok iz pytest izhoda (ne glava) |
 | **P4** | MODIFY false-green guard (`kind="modify"`): modifikacije morajo dejansko spremeniti modul — sicer neuspeh, ne tiho zelen |
 | **P5** | **Routing agentov v daemonu**: naloga iz agende se obdela z agentom po `kind` — `team` (adversarial), `fork` (raziskovanje), `plan` (dekompozicija), `modify`, `autonomous`, `fix_loop`, `python` |
+| **P6** | **P1 konsolidacija prek daemona**: String Core (`slugify`+`truncate_text`+`text_proc` → `string_ops`) + Config Core (`env_config`+`ini_config`+`config_manager` → `config_loader`) — 6 → 2 modulov, daemon zgradil z Test-Locked testi |
 
 Command-Center dashboard ponuja poglede: **Command Center** (pregled + obsidian
 graf), **Pogovor** (glasovni vnos + TTS odgovor, izbira glasu Charon/Orus/...),
