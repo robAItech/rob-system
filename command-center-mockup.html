@@ -556,7 +556,7 @@
         <div class="phead"><span class="ptitle">Naročila</span><span class="ptag" id="agenda-active">0 aktivna</span></div>
         <div class="pbody" style="overflow-x:auto;">
           <table>
-            <thead><tr><th>Status</th><th>Naloga</th><th>Target</th><th>Tip</th><th>Vir</th><th>Čas</th><th></th></tr></thead>
+            <thead><tr><th>Status</th><th>Naloga</th><th>Target</th><th>Tip</th><th>DATUM</th><th></th></tr></thead>
             <tbody id="agenda-body"><tr><td colspan="7" style="color:var(--faint)">nalaganje …</td></tr></tbody>
           </table>
         </div>
@@ -1068,6 +1068,8 @@
   // ── Živi podatki iz API (server.ts) ─────────────────────────────
   let live = false;
   function fmtTs(ts){ if(!ts) return ''; const d=new Date(ts*1000); const p=n=>String(n).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes()); }
+  // Agenda DATUM: dan.mesec. ura:min (datum + čas = "vse").
+  function fmtDt(ts){ if(!ts) return '—'; const d=new Date(ts*1000); const p=n=>String(n).padStart(2,'0'); return p(d.getDate())+'.'+p(d.getMonth()+1)+'. '+p(d.getHours())+':'+p(d.getMinutes()); }
   let agendaCache=[];
   let taskFiles=[];
   let taskCurrent=null;
@@ -1089,8 +1091,8 @@
       const clickable=i.status==='done'
         ? ` onclick="openTask('${id}')" style="cursor:pointer" title="Klikni za rešitev"`
         : '';
-      return `<tr${clickable}><td><span class="pill ${s[0]}">${s[1]}</span></td><td>${(i.goal||'').replace(/</g,'&lt;')}</td><td class="mono">${i.target||''}</td><td class="mono">${i.kind||''}</td><td class="mono">${i.source||''}</td><td class="mono">${fmtTs(i.updated_at)}</td><td><button class="del-btn" onclick="event.stopPropagation();deleteAgendaItem('${id}')" title="Odstrani iz agende">🗑</button></td></tr>`;
-    }).join(''):'<tr><td colspan="7" style="color:var(--faint)">agenda prazna</td></tr>';
+      return `<tr${clickable}><td><span class="pill ${s[0]}">${s[1]}</span></td><td>${(i.goal||'').replace(/</g,'&lt;')}</td><td class="mono">${i.target||''}</td><td class="mono">${i.kind||''}</td><td class="mono">${fmtDt(i.updated_at||i.created_at)}</td><td><button class="del-btn" onclick="event.stopPropagation();deleteAgendaItem('${id}')" title="Odstrani iz agende">🗑</button></td></tr>`;
+    }).join(''):'<tr><td colspan="6" style="color:var(--faint)">agenda prazna</td></tr>';
   }
   function closeTask(){ document.getElementById('task-modal').classList.remove('open'); }
   async function deleteAgendaItem(id){
