@@ -262,6 +262,64 @@
     .grid2,.agents,.arts,.convo-wrap{grid-template-columns:1fr;}
   }
   @media (prefers-reduced-motion:reduce){*{animation:none!important}}
+
+  /* ══════════════════════════════════════════════════════════════════════
+     FAZA 1 · Dizajn sistem — Glassmorphism / Neon / Animiran tehnični grid
+     ══════════════════════════════════════════════════════════════════════ */
+  :root{
+    --glass:rgba(10,17,28,.55);
+    --glass-strong:rgba(10,17,28,.74);
+    --glass-edge:rgba(53,214,224,.10);
+    --neon-green:#3ff2a8;   /* 100% Green / Shipped */
+    --neon-cyan:#35d6e0;    /* LLM Live / Razmišljanje */
+    --neon-amber:#ffb84d;   /* RSI Healing v teku */
+    --neon-magenta:#ff4d6d; /* Sandbox Fail */
+    --glow-green:0 0 14px rgba(63,242,168,.40);
+    --glow-cyan:0 0 14px rgba(53,214,224,.40);
+    --glow-amber:0 0 14px rgba(255,184,77,.40);
+    --glow-magenta:0 0 14px rgba(255,77,109,.45);
+  }
+  body{position:relative;}
+  /* Ambijentalni sijaj (opacity = GPU) + drseči scan (transform = GPU) */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(640px 420px at 12% 8%, rgba(53,214,224,.07), transparent 62%),
+      radial-gradient(520px 380px at 88% 92%, rgba(63,242,168,.05), transparent 62%);
+    animation:glowPulse 10s ease-in-out infinite;
+  }
+  body::after{
+    content:"";position:fixed;left:0;right:0;top:0;height:180px;z-index:0;pointer-events:none;
+    background:linear-gradient(180deg, rgba(53,214,224,.05), transparent);
+    animation:scan 9s linear infinite;
+  }
+  @keyframes glowPulse{0%,100%{opacity:.45}50%{opacity:1}}
+  @keyframes scan{0%{transform:translateY(-220px)}100%{transform:translateY(105vh)}}
+  .app{position:relative;z-index:1;}
+
+  /* Glass površine — prosojne temne kartice z backdrop-blur */
+  .panel,.kpi,.terminal,.modal,.research-item,.skill-group,.sysbox{
+    background:var(--glass);
+    -webkit-backdrop-filter:blur(14px);
+    backdrop-filter:blur(14px);
+    border-color:var(--glass-edge);
+    box-shadow:0 6px 26px rgba(0,0,0,.35), inset 0 0 0 1px rgba(53,214,224,.04);
+  }
+  .modal,.terminal{background:var(--glass-strong);}
+
+  /* Neonsko barvno kodiranje stanj */
+  .kpi .v{text-shadow:0 0 16px rgba(53,214,224,.50);}
+  .kpi.good .v{color:var(--neon-green);text-shadow:var(--glow-green);}
+  .kpi.warn .v{color:var(--neon-amber);text-shadow:var(--glow-amber);}
+  .pill.run{color:var(--neon-cyan);border-color:var(--neon-cyan);background:rgba(53,214,224,.12);box-shadow:var(--glow-cyan);}
+  .pill.done{color:var(--neon-green);border-color:var(--neon-green);background:rgba(63,242,168,.12);box-shadow:var(--glow-green);}
+  .pill.pend{color:var(--neon-amber);border-color:var(--neon-amber);background:rgba(255,184,77,.12);box-shadow:var(--glow-amber);}
+  .pill.crit{color:var(--neon-magenta);border-color:var(--neon-magenta);background:rgba(255,77,109,.13);box-shadow:var(--glow-magenta);}
+  .brand .mark{box-shadow:0 0 22px rgba(53,214,224,.40), inset 0 0 10px rgba(53,214,224,.18);}
+  .nav button.active{box-shadow:inset 2px 0 0 var(--accent), 0 0 14px rgba(53,214,224,.18);}
+
+  /* Monospace za vse podatkovne/metrične elemente */
+  .kpi .v,.sysbox .row b,.hud .stat b,#feed .line{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
 </style>
 
 <div class="app">
