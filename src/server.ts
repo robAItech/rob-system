@@ -1008,11 +1008,12 @@ async function runTask(task: string, kind: 'full' | 'dashboard'): Promise<Record
  * podprocesu (ista pot kot `./rob build`). LoopX samozdravitvena zanka
  * (pytest → LLM popravi → 100% zelen) je notranje v RSI jedru.
  */
-async function runRsiBuild(target: string, directive: string, maxRetries = 5): Promise<Record<string, unknown>> {
+async function runRsiBuild(target: string, directive: string, maxRetries = 5, timeoutMs = 600000): Promise<Record<string, unknown>> {
   const pythonCmd = process.env.PYTHON_BIN ?? 'python';
   let sout = '';
   let serr = '';
   let exitCode = -1;
+  let timedOut = false;
   const started = Date.now();
   try {
     const proc = Bun.spawn({
@@ -1024,19 +1025,27 @@ async function runRsiBuild(target: string, directive: string, maxRetries = 5): P
       // UTF-8 reši (enako kot pri LiteLLM).
       env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
     });
-    sout = await new Response(proc.stdout).text();
-    serr = await new Response(proc.stderr).text();
-    exitCode = await proc.exited;
+    // Timeout: obešen build (LLM zanka/omrežje) se prekine, request ne visi v nedogled.
+    const timer = setTimeout(() => { timedOut = true; try { proc.kill(); } catch { /* */ } }, timeoutMs);
+    try {
+      sout = await new Response(proc.stdout).text();
+      serr = await new Response(proc.stderr).text();
+      exitCode = await proc.exited;
+    } finally {
+      clearTimeout(timer);
+    }
   } catch (err) {
     serr += '\n' + String(err instanceof Error ? err.message : err);
   }
   const seconds = Math.round((Date.now() - started) / 100) / 10;
   const moduleDir = `actions/${target}`;
+  if (timedOut) serr += `\n[timeout] build prekinjen po ${Math.round(timeoutMs / 1000)} s.`;
   return {
-    ok: exitCode === 0,
+    ok: exitCode === 0 && !timedOut,
     target,
     exitCode,
     seconds,
+    timedOut,
     moduleDir,
     stdout: sout.slice(0, 4000),
     stderr: serr.slice(0, 2000),
@@ -1553,15 +1562,17 @@ const server = Bun.serve({
     // Dashboard in `./rob build` zdaj delita isto zanko (LoopX self-heal).
     if (req.method === 'POST' && url.pathname === '/api/build') {
       const raw = await req.text().catch(() => '');
-      let body: { target?: unknown; directive?: unknown; max_retries?: unknown } = {};
+      let body: { target?: unknown; directive?: unknown; max_retries?: unknown; timeout_seconds?: unknown } = {};
       try { body = JSON.parse(raw); } catch { /* ignore */ }
       const target = String(body.target || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
       const directive = String(body.directive || '').trim();
       if (!target) return json({ ok: false, error: 'target je prazen' }, 400);
       if (!directive) return json({ ok: false, error: 'directive je prazen' }, 400);
       const maxRetries = Math.min(Number(body.max_retries) || 5, 10);
+      // Privzeti timeout 10 min; klient ga lahko skrajša (npr. 60 s za hitre preizkuse).
+      const timeoutMs = Math.min(Math.max(Number(body.timeout_seconds) || 600, 15), 3600) * 1000;
       try {
-        const res = await runRsiBuild(target, directive, maxRetries);
+        const res = await runRsiBuild(target, directive, maxRetries, timeoutMs);
         return json({ ok: true, ...res });
       } catch (err) {
         return json({ ok: false, error: String(err instanceof Error ? err.message : err) }, 500);

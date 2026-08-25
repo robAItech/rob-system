@@ -37,6 +37,10 @@ __pycache__/
 *$py.class
 .pytest_cache/
 
+# RSI runtime buildi (dashboard naloge) — ne v verzioniranje.
+# Zlati moduli (že tracked) ostanejo v gitu; nov namerni modul dodaj z `git add -f`.
+actions/*/
+
 # Runtime stanje podjetja (generirano, izven gita)
 .rob_ai/agenda.json
 .rob_ai/daemon.json
