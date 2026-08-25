@@ -45,6 +45,32 @@ const PORT = Number(process.env.PORT ?? 8787);
 const OUT_ROOT = process.env.OUT_ROOT ?? '.';
 
 // =====================================================================
+//  Zaščita API-ja — ROB_API_TOKEN (env). Če je nastavljen, vsi /api/*
+//  (razen /api/auth in /api/health) zahtevajo veljavno session piškotko.
+//  Brez tokena → dashboard dela brez zaščite (lokalni dev, nazaj-kompatibilno).
+// =====================================================================
+const API_TOKEN = process.env.ROB_API_TOKEN || '';
+const SESSIONS = new Set<string>();
+
+function authCookie(req: Request): string {
+  try {
+    const c = req.headers.get('cookie') || '';
+    for (const part of c.split(';')) {
+      const [k, ...v] = part.trim().split('=');
+      if (k === 'rob_session') return v.join('=');
+    }
+  } catch { /* */ }
+  return '';
+}
+function isAuthed(req: Request): boolean {
+  if (!API_TOKEN) return true;                      // zaščita ni konfigurirana
+  return SESSIONS.has(authCookie(req));
+}
+function unauthorized(): Response {
+  return json({ ok: false, error: 'unauthorized' }, 401);
+}
+
+// =====================================================================
 //  Google OAuth + API (Drive / Gmail / Calendar)
 // =====================================================================
 const GOOGLE_SECRET_FILE = `${OUT_ROOT}/client_secret.json`;
@@ -1249,6 +1275,28 @@ const server = Bun.serve({
     // CORS preflight
     if (req.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } });
+    }
+
+    // Zaščita API-ja: /api/* (razen /api/auth in /api/health) zahteva veljavno
+    // rob_session piškotko, ko je ROB_API_TOKEN nastavljen.
+    if (url.pathname.startsWith('/api/') && url.pathname !== '/api/auth' && url.pathname !== '/api/health') {
+      if (!isAuthed(req)) return unauthorized();
+    }
+
+    // Prijava: potrdi ROB_API_TOKEN → nastavi HttpOnly session piškotko.
+    if (req.method === 'POST' && url.pathname === '/api/auth') {
+      const raw = await req.text().catch(() => '');
+      let body: { token?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      if (!API_TOKEN) return json({ ok: true });                       // zaščita off
+      if (String(body.token || '') !== API_TOKEN) return json({ ok: false, error: 'napačen token' }, 401);
+      const sid = crypto.randomUUID();
+      SESSIONS.add(sid);
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json',
+                   'Set-Cookie': `rob_session=${sid}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400` },
+      });
     }
 
     // Serviraj dashboard.

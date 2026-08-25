@@ -510,6 +510,19 @@
   </div>
 </div>
 
+<!-- Prijava — zaščita API-ja (ROB_API_TOKEN) -->
+<div class="modal-overlay" id="login-modal" style="display:none">
+  <div class="modal" style="width:min(380px,90vw);text-align:center">
+    <div class="modal-head">🔒 Zaščiten dashboard</div>
+    <p style="color:var(--muted);font-size:13px;margin:14px 0">Za dostop vnesi API token (ROB_API_TOKEN).</p>
+    <input id="login-token" type="password" placeholder="vnesi token …" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--surface2);color:var(--ink);font-family:var(--font-mono);outline:0" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="modal-actions" style="justify-content:center;margin-top:14px">
+      <button class="dbtn" style="padding:9px 18px" onclick="doLogin()">Prijava</button>
+    </div>
+    <div id="login-err" style="color:var(--crit);font-size:12px;margin-top:8px;min-height:16px"></div>
+  </div>
+</div>
+
 <!-- Kartica rešitve dokončane naloge -->
 <div class="modal-overlay" id="task-modal">
   <div class="modal task-modal">
@@ -535,6 +548,27 @@
 <script>
   // ── Navigacija ────────────────────────────────────────────────────
   const crumbs = {command:'/ pregled', pogovor:'/ pogovor', research:'/ raziskovanje', agenda:'/ agenda', gbrain:'/ gbrain', agents:'/ agenti'};
+
+  // ── Zaščita API-ja: 401 → login overlay; globalni fetch wrapper ──
+  function showLogin(){ const m=document.getElementById('login-modal'); if(m) m.style.display='flex'; }
+  function hideLogin(){ const m=document.getElementById('login-modal'); if(m) m.style.display='none'; }
+  async function doLogin(){
+    const inp=document.getElementById('login-token'); const err=document.getElementById('login-err');
+    const t=(inp&&inp.value||'').trim();
+    if(err) err.textContent='';
+    if(!t){ if(err) err.textContent='Vnesi token.'; return; }
+    try{
+      const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:t})});
+      if(r.ok){ hideLogin(); if(inp) inp.value=''; loadLive(); loadResearch(); loadGraph(); }
+      else if(err) err.textContent='Napačen token.';
+    }catch(e){ if(err) err.textContent='Napaka: '+String(e.message||e); }
+  }
+  const _robFetch=window.fetch.bind(window);
+  window.fetch=async function(url,opts){
+    const r=await _robFetch(url,opts);
+    if(r.status===401 && String(url).startsWith('/api/') && !String(url).endsWith('/api/auth')) showLogin();
+    return r;
+  };
   function show(view){
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
     document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===view));
