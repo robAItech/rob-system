@@ -294,13 +294,16 @@ def cmd_proxy_only(cfg: Config) -> int:
     return _run_foreground([str(litellm), "--config", str(cfg.config_path), "--port", str(PORT)], cfg)
 
 
-def cmd_dashboard_only(cfg: Config) -> int:
+def cmd_dashboard_only(cfg: Config, watch: bool = False) -> int:
     bun = which("bun")
     if not bun:
         print("[NAP] 'bun' ni na PATH.")
         return 1
-    print(f"[DASH] Command-Center v OSPREDJU na https://127.0.0.1:{DASH_PORT} (Ctrl+C za izhod)...")
-    return _run_foreground([str(bun), "run", "src/server.ts"], cfg, cwd=cfg.root)
+    mode = "WATCH (hot-reload)" if watch else "v OSPREDJU"
+    print(f"[DASH] Command-Center {mode} na https://127.0.0.1:{DASH_PORT} (Ctrl+C za izhod)...")
+    cmd = [str(bun), "--watch" if watch else "run", "src/server.ts"] if watch \
+        else [str(bun), "run", "src/server.ts"]
+    return _run_foreground(cmd, cfg, cwd=cfg.root)
 
 
 def _claude_commandline(args: Sequence[str]) -> List[str]:
@@ -485,6 +488,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--init", action="store_true", help="dry-run preverba (ne zažene nič).")
     g.add_argument("--proxy-only", action="store_true", help="samo LiteLLM na 4010 v ospredju.")
     g.add_argument("--dashboard-only", action="store_true", help="samo Command-Center (bun src/server.ts) na 8787.")
+    g.add_argument("--watch", action="store_true",
+                   help="(z --dashboard-only) hot-reload: bun --watch → ob vsaki spremembi server.ts se server sam znova zažene.")
     g.add_argument("--claude-only", action="store_true", help="samo claude ob že obstoječem proxyju na 4010.")
     g.add_argument("--serve", action="store_true",
                    help="AVTONOMEN zagon: proxy+dashboard v ozadju, brez claude (UI je vnos). "
@@ -505,7 +510,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if ns.proxy_only:
         return cmd_proxy_only(cfg)
     if ns.dashboard_only:
-        return cmd_dashboard_only(cfg)
+        return cmd_dashboard_only(cfg, watch=bool(getattr(ns, "watch", False)))
     if ns.claude_only:
         return cmd_claude_only(cfg, rest)
     if ns.serve:

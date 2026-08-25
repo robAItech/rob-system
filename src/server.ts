@@ -86,7 +86,9 @@ function rateLimited(ip: string): boolean {
 // =====================================================================
 const GOOGLE_SECRET_FILE = `${OUT_ROOT}/client_secret.json`;
 const GOOGLE_TOKEN_FILE = `${OUT_ROOT}/.gtoken.json`;
-const G_REDIRECT = `http://localhost:${PORT}/api/google/oauth2callback`;
+// Redirect URI mora biti registriran v Google Console. Server je lokalno HTTPS
+// (certi v certs/) → privzeto https. Za drugačno konfiguracijo nastavi GOOGLE_REDIRECT.
+const G_REDIRECT = process.env.GOOGLE_REDIRECT || `https://localhost:${PORT}/api/google/oauth2callback`;
 
 /** Prebere OAuth kredentials iz client_secret.json. */
 async function googleCreds(): Promise<{ client_id: string; client_secret: string } | null> {
@@ -1346,7 +1348,14 @@ async function handleGoogleApi(req: Request, url: URL): Promise<Response> {
   }
   if (req.method === 'GET' && url.pathname === '/api/google/status') {
     const tok = await googleToken();
-    return json({ ok: true, connected: !!tok });
+    if (!tok) return json({ ok: true, connected: false });
+    return json({
+      ok: true,
+      connected: true,
+      expired: !!tok.expires_at && Date.now() > (tok.expires_at as number),
+      expires_at: tok.expires_at ?? null,
+      has_refresh: !!tok.refresh_token,
+    });
   }
   if (req.method === 'POST' && url.pathname === '/api/google/poll') {
     const r = await gmailToAgenda();
@@ -1361,6 +1370,10 @@ const server = Bun.serve({
   ...tls,
   async fetch(req) {
     const url = new URL(req.url);
+    const t0 = Date.now();
+    // Request log — za lažjo diagnostiko (npr. "empty reply": vidimo, da zahtevek
+    // pride, pa ni odziva). Izpišemo ob začetku in ob zaključku (status).
+    console.log(`[req] ${new Date().toLocaleTimeString('sl-SI')} ${req.method} ${url.pathname}`);
 
     // CORS preflight
     if (req.method === 'OPTIONS') {
