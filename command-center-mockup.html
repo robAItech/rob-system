@@ -354,6 +354,30 @@
   .ticker-track .tk.s-warn{color:var(--neon-amber);}
   @keyframes tickerScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
   @media (prefers-reduced-motion:reduce){.ticker-track{animation:none!important}}
+
+  /* ══════════════════════════════════════════════════════════════════════
+     FAZA 4 · Command Palette (Ctrl+K)
+     ══════════════════════════════════════════════════════════════════════ */
+  .palette{
+    width:min(580px,92vw);margin:13vh auto 0;
+    background:var(--glass-strong);
+    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+    border:1px solid var(--glass-edge);border-radius:12px;
+    box-shadow:0 14px 54px rgba(0,0,0,.55), 0 0 0 1px rgba(53,214,224,.06);
+    overflow:hidden;
+  }
+  .palette input{
+    width:100%;padding:17px 19px;background:transparent;border:0;border-bottom:1px solid var(--line);
+    color:var(--ink);font-family:var(--font-mono);font-size:15px;outline:0;
+  }
+  .palette input::placeholder{color:var(--faint);}
+  .palette-list{max-height:330px;overflow-y:auto;padding:6px;}
+  .palette-item{display:flex;align-items:baseline;gap:12px;padding:10px 13px;border-radius:7px;cursor:pointer;}
+  .palette-item.sel{background:var(--accent-soft);}
+  .palette-item .pk{font-family:var(--font-mono);font-size:11px;color:var(--accent);flex:0 0 auto;}
+  .palette-item .pl{font-family:var(--font-display);font-size:13.5px;color:var(--ink);}
+  .palette-item .ph{margin-left:auto;font-size:10.5px;color:var(--faint);white-space:nowrap;}
+  .palette-empty{padding:20px;text-align:center;color:var(--faint);font-size:12px;}
 </style>
 
 <div class="app">
@@ -605,6 +629,14 @@
       <a class="dbtn" id="dl-html" href="#" target="_blank">HTML</a>
       <button class="dbtn" onclick="closeArtifact()">Zapri</button>
     </div>
+  </div>
+</div>
+
+<!-- Faza 4 — Command Palette (Ctrl+K) -->
+<div class="modal-overlay" id="palette-modal" style="display:none">
+  <div class="palette">
+    <input id="palette-input" type="text" placeholder="Ukaz ali akcija … (rob build, rob test, agenda …)" autocomplete="off" spellcheck="false">
+    <div class="palette-list" id="palette-list"></div>
   </div>
 </div>
 
@@ -1334,6 +1366,83 @@
     const tr=e.target.closest('#view-agenda tbody tr');
     if(tr){ itemToast(tr.cells[1].textContent, 'target: '+tr.cells[2].textContent); return; }
   });
+
+  // ── Faza 4 — Command Palette (Ctrl+K) ───────────────────────────
+  const PALETTE_CMDS=[
+    {k:'b',label:'rob build <modul> "direktiva"',hint:'RSI gradnja (async)',run:()=>paletteBuild()},
+    {k:'t',label:'rob test',hint:'poln pytest (~1 min)',run:()=>runCliCmd('rob test')},
+    {k:'e',label:'rob eval --dry-run',hint:'strukturna preverba',run:()=>runCliCmd('rob eval --dry-run')},
+    {k:'s',label:'Stanje daemona',hint:'/api/daemon',run:()=>paletteStatus()},
+    {k:'a',label:'Dodaj nalogo v agendo',hint:'nova naloga → daemon',run:()=>paletteAgenda()},
+    {k:'r',label:'Osveži dashboard',hint:'živi podatki',run:()=>{loadLive();loadGraph();loadResearch();toast('Osveženo');}},
+    {k:'c',label:'Počisti pogovor',hint:'localStorage',run:()=>{clearConvo();toast('Pogovor počisčen');}},
+    {k:'v',label:'Pojdi → Command Center',hint:'pregled',run:()=>show('command')},
+    {k:'a2',label:'Pojdi → Agenda',hint:'naloge',run:()=>show('agenda')},
+    {k:'p',label:'Pojdi → Pogovor',hint:'terminal',run:()=>show('pogovor')},
+  ];
+  let _palIdx=0, _palItems=[];
+  function openPalette(){ const m=document.getElementById('palette-modal'); if(!m) return; m.style.display='flex'; _palIdx=0; const inp=document.getElementById('palette-input'); if(inp){inp.value=''; setTimeout(()=>inp.focus(),10);} renderPalette(); }
+  function closePalette(){ const m=document.getElementById('palette-modal'); if(m) m.style.display='none'; }
+  function renderPalette(){
+    const inp=document.getElementById('palette-input'), list=document.getElementById('palette-list'); if(!inp||!list) return;
+    const q=(inp.value||'').toLowerCase().trim();
+    _palItems=PALETTE_CMDS.filter(c=>!q||c.label.toLowerCase().includes(q)||c.hint.toLowerCase().includes(q));
+    list.innerHTML=_palItems.length? _palItems.map((c,i)=>`<div class="palette-item${i===_palIdx?' sel':''}" data-i="${i}"><span class="pk">${c.k}</span><span class="pl">${c.label}</span><span class="ph">${c.hint}</span></div>`).join('') : '<div class="palette-empty">ni ujemanj</div>';
+  }
+  function palExec(){
+    const c=_palItems[_palIdx]; if(!c) return; closePalette(); c.run();
+  }
+  async function paletteBuild(){
+    const target=prompt('rob build · ime modula (target):'); if(!target) return;
+    const directive=prompt('rob build · direktiva (opis modula):'); if(!directive) return;
+    try{
+      const r=await fetch('/api/build',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({target,directive,timeout_seconds:600})});
+      const d=await r.json();
+      toast(d.ok?('Build sprožen: '+d.buildId):('napaka: '+(d.error||'')));
+    }catch(e){ toast('napaka: '+String(e.message||e)); }
+  }
+  async function paletteAgenda(){
+    const goal=prompt('Nova naloga za agendo:'); if(!goal) return;
+    try{
+      const r=await fetch('/api/agenda',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal})});
+      const d=await r.json();
+      toast(d.ok?('➕ Naloga dodana ('+(d.item?.target||'?')+')'):('napaka: '+(d.error||'')));
+      loadLive();
+    }catch(e){ toast('napaka: '+String(e.message||e)); }
+  }
+  async function paletteStatus(){
+    try{
+      const r=await fetch('/api/daemon'); const d=await r.json();
+      const task=(d.current_tasks||[])[0];
+      toast('Daemon: '+d.state+(task?(' · '+task.target):''));
+    }catch(e){ toast('napaka: '+String(e.message||e)); }
+  }
+  async function runCliCmd(cmd){
+    const m=document.getElementById('palette-modal'); if(!m) return;
+    m.style.display='flex';
+    const list=document.getElementById('palette-list'); if(!list) return;
+    list.innerHTML='<div class="palette-empty">⏳ '+cmd+' — teče …</div>';
+    try{
+      const r=await fetch('/api/cli',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({command:cmd})});
+      const d=await r.json();
+      const out=String(d.output||d.error||'brez izhoda').replace(/</g,'&lt;');
+      list.innerHTML=`<div class="palette-empty" style="text-align:left;white-space:pre-wrap;font-family:var(--font-mono);font-size:11px;max-height:320px;overflow:auto">${out}</div>`;
+    }catch(e){ list.innerHTML='<div class="palette-empty">napaka: '+String(e.message||e)+'</div>'; }
+  }
+  document.addEventListener('keydown', e=>{
+    if((e.ctrlKey||e.metaKey)&&(e.key==='k'||e.key==='K')){ e.preventDefault(); const m=document.getElementById('palette-modal'); (m&&m.style.display==='flex')?closePalette():openPalette(); return; }
+    const m=document.getElementById('palette-modal');
+    if(m&&m.style.display==='flex'){
+      if(e.key==='Escape'){ e.preventDefault(); closePalette(); return; }
+      if(e.key==='ArrowDown'){ e.preventDefault(); _palIdx=Math.min(_palItems.length-1,_palIdx+1); renderPalette(); return; }
+      if(e.key==='ArrowUp'){ e.preventDefault(); _palIdx=Math.max(0,_palIdx-1); renderPalette(); return; }
+      if(e.key==='Enter'){ e.preventDefault(); palExec(); return; }
+      renderPalette();
+    }
+  });
+  const _palInput=document.getElementById('palette-input');
+  if(_palInput) _palInput.addEventListener('input',()=>{_palIdx=0;renderPalette();});
+  document.addEventListener('click',e=>{ const it=e.target.closest('.palette-item'); if(it){ _palIdx=+it.dataset.i; palExec(); } });
 
   // ── Zagon ───────────────────────────────────────────────────────
   function tick(){const d=new Date();const p=n=>String(n).padStart(2,'0');document.getElementById('clock').textContent=p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}

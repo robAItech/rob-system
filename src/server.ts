@@ -1690,6 +1690,30 @@ const server = Bun.serve({
         return json({ ok: false, error: String(err instanceof Error ? err.message : err) }, 500);
       }
     }
+    // Command Palette — varni whitelisted CLI ukazi (nobenih poljubnih ukazov).
+    const CLI_WHITELIST: Record<string, string[]> = {
+      'rob test': ['python', '-m', 'pytest', 'tests/', '-q'],
+      'rob eval --dry-run': ['python', 'evaluate_autonomy.py', '--dry-run'],
+    };
+    if (req.method === 'POST' && url.pathname === '/api/cli') {
+      const raw = await req.text().catch(() => '');
+      let body: { command?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const cmd = String(body.command || '').trim();
+      const argv = CLI_WHITELIST[cmd];
+      if (!argv) return json({ ok: false, error: 'neznan ukaz: ' + cmd }, 400);
+      const started = Date.now();
+      try {
+        const proc = Bun.spawn({ cmd: argv, cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } });
+        const out = await Promise.race([
+          (async () => { const o = await new Response(proc.stdout).text(); const e = await new Response(proc.stderr).text(); await proc.exited; return o + '\n' + e; })(),
+          new Promise<string>((res) => setTimeout(() => { try { proc.kill(); } catch { /* */ } res('⏱ TIMEOUT (120 s)'); }, 120000)),
+        ]);
+        return json({ ok: true, command: cmd, output: String(out).slice(-2500), seconds: Math.round((Date.now() - started) / 100) / 10 });
+      } catch (err) { return json({ ok: false, error: String(err instanceof Error ? err.message : err) }, 500); }
+    }
+
     // Status asinhronega builda (polling).
     if (req.method === 'GET' && url.pathname === '/api/build/status') {
       const buildId = String(url.searchParams.get('buildId') || '').trim();
