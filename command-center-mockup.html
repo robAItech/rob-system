@@ -320,6 +320,40 @@
 
   /* Monospace za vse podatkovne/metrične elemente */
   .kpi .v,.sysbox .row b,.hud .stat b,#feed .line{font-family:var(--font-mono);font-variant-numeric:tabular-nums;letter-spacing:-.01em;}
+
+  /* ══════════════════════════════════════════════════════════════════════
+     FAZA 2 · Live Telemetry Feed (fiksni spodnji ticker)
+     ══════════════════════════════════════════════════════════════════════ */
+  .ticker{
+    position:fixed;left:0;right:0;bottom:38px;z-index:40;height:30px;
+    display:flex;align-items:center;overflow:hidden;
+    background:var(--glass-strong);
+    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+    border-top:1px solid var(--glass-edge);
+    box-shadow:0 -4px 20px rgba(0,0,0,.3);
+  }
+  .ticker-label{
+    flex:0 0 auto;display:flex;align-items:center;gap:7px;
+    font-family:var(--font-display);font-size:10px;letter-spacing:.22em;
+    color:var(--neon-green);text-shadow:var(--glow-green);
+    padding:0 13px;border-right:1px solid var(--line);
+    height:100%;
+  }
+  .tk-dot{width:6px;height:6px;border-radius:50%;background:var(--neon-green);box-shadow:var(--glow-green);animation:pulse 1.6s infinite;}
+  .ticker-viewport{flex:1;overflow:hidden;height:100%;}
+  .ticker-track{
+    display:inline-flex;align-items:center;gap:34px;white-space:nowrap;
+    height:100%;padding-left:12px;
+    animation:tickerScroll 45s linear infinite;
+  }
+  .ticker:hover .ticker-track{animation-play-state:paused;}
+  .ticker-track .tk{font-family:var(--font-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .ticker-track .tk b{color:var(--faint);font-weight:500;margin-right:6px;}
+  .ticker-track .tk.s-ok{color:var(--neon-green);}
+  .ticker-track .tk.s-crit{color:var(--neon-magenta);}
+  .ticker-track .tk.s-warn{color:var(--neon-amber);}
+  @keyframes tickerScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  @media (prefers-reduced-motion:reduce){.ticker-track{animation:none!important}}
 </style>
 
 <div class="app">
@@ -538,6 +572,14 @@
     </div>
   </footer>
 
+</div>
+
+<!-- Faza 2 — Live Telemetry Feed (fiksni spodnji ticker, pavza ob hover) -->
+<div class="ticker" id="ticker">
+  <div class="ticker-label"><span class="tk-dot"></span>LIVE</div>
+  <div class="ticker-viewport">
+    <div class="ticker-track" id="ticker-track"></div>
+  </div>
 </div>
 
 <div class="graph-tip" id="graph-tip"></div>
@@ -903,11 +945,40 @@
       `<div class="line"><span class="t">${e.t}</span><span class="s ${e.c}">${e.s}</span><span class="m">${e.m}</span></div>`
     ).join('');
   }
+  // Faza 2 — Live ticker: drseča telemetrija (dvojni track za -50% zanko).
+  let _tickerKey='';
+  function renderTicker(){
+    const track=document.getElementById('ticker-track'); if(!track) return;
+    const evs=state.events||[];
+    const key=evs.length?evs[0].t+'|'+evs[0].m:'';
+    if(key===_tickerKey) return;              // ni novih → ne restartiramo animacije
+    _tickerKey=key;
+    const span=(e)=>`<span class="tk ${e.c||''}"><b>${e.t||''}</b>${e.s||''} · ${String(e.m||'').slice(0,70)}</span>`;
+    const html=evs.map(span).join('')+evs.map(span).join('');
+    track.innerHTML=html||'<span class="tk">čakam na telemetrijo …</span>';
+    track.style.animation='none'; void track.offsetWidth; track.style.animation=''; // restart zanke
+  }
+  // Faza 2 — HUD števci: telemetrični count-up (easeOutCubic).
+  function animateCount(el,target){
+    if(!el) return;
+    target=parseInt(target,10)||0;
+    const cur=parseInt(el.dataset.v||el.textContent||'0',10)||0;
+    if(cur===target){ el.dataset.v=target; el.textContent=target; return; }
+    el.dataset.v=target;
+    const diff=target-cur, dur=650, t0=performance.now();
+    function step(t){
+      const p=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-p,3);
+      el.textContent=Math.round(cur+diff*e);
+      if(p<1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
   function render(){
-    document.getElementById('kpi-tasks').textContent=state.tasks;
-    document.getElementById('kpi-errors').textContent=state.errors;
-    document.getElementById('kpi-nodes').textContent=state.nodes;
+    animateCount(document.getElementById('kpi-tasks'), state.tasks);
+    animateCount(document.getElementById('kpi-errors'), state.errors);
+    animateCount(document.getElementById('kpi-nodes'), state.nodes);
     renderEvents();
+    renderTicker();
     document.getElementById('last-sync').textContent=now();
   }
   function refresh(){
@@ -1053,7 +1124,7 @@
     }catch(e){}
     try{
       const r=await fetch('/api/agents');
-      if(r.ok){ const a=await r.json(); if(a.agents){ renderAgents(a.agents); const ka=document.getElementById('kpi-agents'); if(ka) ka.textContent=a.agents.length; } }
+      if(r.ok){ const a=await r.json(); if(a.agents){ renderAgents(a.agents); animateCount(document.getElementById('kpi-agents'), a.agents.length); } }
     }catch(e){}
     render();
   }
