@@ -28,6 +28,14 @@ jobs:
         run: python -m pytest tests/ -q
       - name: P5 eval dry-run (structural, no LLM)
         run: python evaluate_autonomy.py --dry-run
+      - name: Setup bun (dashboard server)
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install bun dependencies
+        run: bun install --frozen-lockfile
+      - name: Smoke test dashboard server
+        run: bash scripts/smoke_server.sh
 
   eval-nightly:
     name: P5 eval nightly (full scale, real LLM + Docker)
