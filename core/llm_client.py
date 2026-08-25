@@ -23,6 +23,9 @@ class DeepSeekLLMClient:
         self.max_retries = getattr(settings, "llm_max_retries", 3) or 3
         self.backoff = getattr(settings, "llm_backoff_seconds", 0.5) or 0.5
         self.max_completion_tokens = getattr(settings, "llm_max_completion_tokens", None) or None
+        # Rezerva (OpenRouter), če DeepSeek pade po vseh retry-jih.
+        self.openrouter_api_key = getattr(settings, "openrouter_api_key", "") or ""
+        self.openrouter_base_url = (getattr(settings, "openrouter_base_url", "") or "").rstrip("/")
         self.last_usage: Dict[str, Any] = {}   # Korak 3: usage iz zadnjega API odgovora
 
     def _has_key(self) -> bool:
@@ -32,9 +35,14 @@ class DeepSeekLLMClient:
         key = (self.api_key or "").strip()
         return bool(key and key != "sk-your-deepseek-api-key-here" and key.startswith("sk-"))
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _has_openrouter(self) -> bool:
+        """Ali je nastavljena OpenRouter rezerva (ključ sk-or-...)."""
+        key = (self.openrouter_api_key or "").strip()
+        return bool(key and key.startswith("sk-or-"))
+
+    def _get_headers(self, api_key: Optional[str] = None) -> Dict[str, str]:
         return {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key or self.api_key}",
             "Content-Type": "application/json"
         }
 
@@ -69,9 +77,11 @@ class DeepSeekLLMClient:
         prompt: str,
         system_prompt: str,
         model: str,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
     ) -> str:
-        """Pošlje zahtevek na določen model, dviga napako ob neuspehu."""
-        endpoint = f"{self.base_url}/chat/completions"
+        """Pošlje zahtevek na določen model (default DeepSeek, lahko OpenRouter)."""
+        endpoint = f"{(base_url or self.base_url).rstrip('/')}/chat/completions"
         payload = {
             "model": model,
             "messages": [
@@ -83,7 +93,7 @@ class DeepSeekLLMClient:
         }
         if self.max_completion_tokens:
             payload["max_tokens"] = self.max_completion_tokens
-        return await self._post_once(endpoint, self._get_headers(), payload)
+        return await self._post_once(endpoint, self._get_headers(api_key), payload)
 
     async def _complete_with_tools_once(
         self,
@@ -91,9 +101,11 @@ class DeepSeekLLMClient:
         tools: List[Dict[str, Any]],
         tool_choice: str,
         model: str,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Pošlje zahtevek z orodji (function-calling), vrne message dict."""
-        endpoint = f"{self.base_url}/chat/completions"
+        endpoint = f"{(base_url or self.base_url).rstrip('/')}/chat/completions"
         payload = {
             "model": model,
             "messages": messages,
@@ -104,42 +116,59 @@ class DeepSeekLLMClient:
         }
         if self.max_completion_tokens:
             payload["max_tokens"] = self.max_completion_tokens
-        return await self._post_message(endpoint, self._get_headers(), payload)
+        return await self._post_message(endpoint, self._get_headers(api_key), payload)
+
+    async def _retry_one(self, model: str, base_url: str, api_key: str, call_fn) -> tuple:
+        """Retry+backoff za EN (model, provider). Vrne (ok, rezultat|napaka)."""
+        last_error: Optional[Exception] = None
+        for attempt in range(self.max_retries):
+            try:
+                return True, await call_fn(model, base_url, api_key)
+            except httpx.HTTPStatusError as e:
+                status = e.response.status_code
+                if status in (400, 404, 422):   # modelov error → zamenjaj model
+                    last_error = e
+                    break
+                if status in (429,) or status >= 500:   # prehodna → retry
+                    import asyncio
+                    await asyncio.sleep(self.backoff * (2 ** attempt))
+                    last_error = e
+                    continue
+                last_error = e
+                break
+            except Exception as e:              # network/timeout → retry
+                import asyncio
+                await asyncio.sleep(self.backoff * (2 ** attempt))
+                last_error = e
+                continue
+        return False, last_error
 
     async def _retry_models(self, use_coder_model: bool, call_fn):
-        """Retry + backoff + model-fallback (coder → chat) za en LLM klic.
+        """Retry + backoff + model-fallback + PROVIDER-fallback (OpenRouter).
 
-        P1 — zanesljivost: isti cikel kot prejšnji generate_completion, a na
-        klicni funkciji `call_fn(model)` — delita ga tekstovni in agentic klic.
+        P1 — zanesljivost: coder → chat (isti provider), nato — če DeepSeek
+        pade po vseh poskusih — OpenRouter rezerva (isti modeli). Klicna
+        funkcija prejme (model, base_url, api_key), da deli tekstovno in
+        agentic pot.
         """
         attempt_models = [settings.deepseek_model_coder] if use_coder_model else [settings.deepseek_model_chat]
         if use_coder_model and settings.deepseek_model_chat:
             attempt_models.append(settings.deepseek_model_chat)  # fallback na chat
 
         last_error: Optional[Exception] = None
+        # 1) DeepSeek (glavni provider)
         for model in attempt_models:
-            for attempt in range(self.max_retries):
-                try:
-                    return await call_fn(model)
-                except httpx.HTTPStatusError as e:
-                    status = e.response.status_code
-                    # Modelov error (400/404/422) → zamenjaj model, ne ponavljaj istega.
-                    if status in (400, 404, 422):
-                        last_error = e
-                        break  # naslednji model
-                    # Prehodna (429/5xx) → retry z backoff.
-                    if status in (429,) or status >= 500:
-                        import asyncio
-                        await asyncio.sleep(self.backoff * (2 ** attempt))
-                        last_error = e
-                        continue
-                    last_error = e
-                    break
-                except Exception as e:  # network/timeout → retry
-                    import asyncio
-                    await asyncio.sleep(self.backoff * (2 ** attempt))
-                    last_error = e
-                    continue
+            ok, res = await self._retry_one(model, self.base_url, self.api_key, call_fn)
+            if ok:
+                return res
+            last_error = res
+        # 2) OpenRouter (rezerva, ko DeepSeek pade)
+        if self._has_openrouter():
+            for model in attempt_models:
+                ok, res = await self._retry_one(model, self.openrouter_base_url, self.openrouter_api_key, call_fn)
+                if ok:
+                    return res
+                last_error = res
         raise RuntimeError(f"LLM klic ni uspel po vseh poskusih: {last_error}")
 
     async def generate_completion(
@@ -156,11 +185,11 @@ class DeepSeekLLMClient:
           poskusi `chat`. To je varno za LoopX, ki nima lastnega model-retry-ja.
         - Guard: `max_completion_tokens` iz settings (če nastavljen) omeji izhod.
         """
-        if not self._has_key():
+        if not self._has_key() and not self._has_openrouter():
             # Determinističen odziv za lokalno testiranje brez veljavnega API ključa
             return f"# Simulated DeepSeek Output for prompt: {prompt[:30]}...\n# Mode: Autopilot Green"
         return await self._retry_models(
-            use_coder_model, lambda m: self._complete_with(prompt, system_prompt, m)
+            use_coder_model, lambda m, b, k: self._complete_with(prompt, system_prompt, m, b, k)
         )
 
     async def complete_with_tools(
@@ -174,9 +203,9 @@ class DeepSeekLLMClient:
         `{"content": ..., "tool_calls": [...]}` (lahko tudi `reasoning_content`).
         Enak retry/backoff/model-fallback kot generate_completion.
         """
-        if not self._has_key():
+        if not self._has_key() and not self._has_openrouter():
             return {"content": "# Simulated DeepSeek Output (tool-use)\n# Mode: Autopilot Green",
                     "tool_calls": None}
         return await self._retry_models(
-            use_coder_model, lambda m: self._complete_with_tools_once(messages, tools, tool_choice, m)
+            use_coder_model, lambda m, b, k: self._complete_with_tools_once(messages, tools, tool_choice, m, b, k)
         )

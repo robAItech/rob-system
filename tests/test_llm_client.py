@@ -20,6 +20,7 @@ def _client(**over):
     c = DeepSeekLLMClient(api_key="sk-test", base_url="https://x")
     c.max_retries = 3
     c.backoff = 0.0  # brez čakanja v testu
+    c.openrouter_api_key = ""   # fallback izklopljen, razen če test izrecno nastavi
     for k, v in over.items():
         setattr(c, k, v)
     return c
@@ -96,6 +97,31 @@ async def test_odziv_ko_noben_retry_ne_uspe():
     with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
         with pytest.raises(RuntimeError):
             await c.generate_completion("hi")
+
+
+@pytest.mark.asyncio
+async def test_openrouter_fallback_ko_deepseek_pade():
+    """DeepSeek pade (6×500) → OpenRouter rezerva (7. klic 200) → OK."""
+    c = _client(openrouter_api_key="sk-or-test", openrouter_base_url="https://openrouter.example")
+    fake = _FakeAsyncClient([_FakeResp(500)] * 6 + [_FakeResp(200)])
+    with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
+        out = await c.generate_completion("hi", use_coder_model=True)
+    assert out == "OK"
+    assert len(fake.posts) == 7
+    # Zadnji (OpenRouter) klic mora iti na OpenRouter base_url.
+    last_url = str(fake.posts[-1][0][0])
+    assert "openrouter.example" in last_url
+
+
+@pytest.mark.asyncio
+async def test_brez_openrouter_kljuca_se_fallback_ne_zgodijo():
+    """Brez OpenRouter ključa: DeepSeek 6×500 → RuntimeError (brez dodatnih klicev)."""
+    c = _client(openrouter_api_key="")
+    fake = _FakeAsyncClient([_FakeResp(500)] * 6)
+    with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
+        with pytest.raises(RuntimeError):
+            await c.generate_completion("hi", use_coder_model=True)
+    assert len(fake.posts) == 6   # samo DeepSeek poskusi
 
 
 @pytest.mark.asyncio

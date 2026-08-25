@@ -13,6 +13,10 @@ class SystemSettings(BaseSettings):
 
     deepseek_api_key: str = Field(default="sk-your-deepseek-api-key-here", alias="DEEPSEEK_API_KEY")
     deepseek_base_url: str = Field(default="https://api.deepseek.com", alias="DEEPSEEK_BASE_URL")
+    # P1 — zanesljivost: rezerva, če DeepSeek pade (po vseh retry-jih).
+    # OpenRouter je OpenAI-kompatibilen → isti payload, drug base_url/ključ.
+    openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
+    openrouter_base_url: str = Field(default="https://openrouter.ai/api/v1", alias="OPENROUTER_BASE_URL")
     deepseek_model_chat: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL_CHAT")
     deepseek_model_coder: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL_CODER")
     llm_temperature: float = Field(default=0.1, alias="LLM_TEMPERATURE")
