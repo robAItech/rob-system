@@ -86,9 +86,13 @@ function rateLimited(ip: string): boolean {
 // =====================================================================
 const GOOGLE_SECRET_FILE = `${OUT_ROOT}/client_secret.json`;
 const GOOGLE_TOKEN_FILE = `${OUT_ROOT}/.gtoken.json`;
-// Redirect URI mora biti registriran v Google Console. Server je lokalno HTTPS
-// (certi v certs/) → privzeto https. Za drugačno konfiguracijo nastavi GOOGLE_REDIRECT.
-const G_REDIRECT = process.env.GOOGLE_REDIRECT || `https://localhost:${PORT}/api/google/oauth2callback`;
+// Redirect URI mora biti registriran v Google Console. Server je HTTP po defaultu
+// (Google ima http registriran) → privzeto http. Za HTTPS/DASH_HTTPS=1 nastavi
+// GOOGLE_REDIRECT=https://localhost:<PORT>/api/google/oauth2callback.
+const G_REDIRECT = process.env.GOOGLE_REDIRECT || `http://localhost:${PORT}/api/google/oauth2callback`;
+const G_SCOPES = ['https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/calendar.readonly'];
 
 /** Prebere OAuth kredentials iz client_secret.json. */
 async function googleCreds(): Promise<{ client_id: string; client_secret: string } | null> {
@@ -1244,6 +1248,10 @@ async function gmailToAgenda(): Promise<{ added: number }> {
 const TLS_KEY = `${OUT_ROOT}/certs/key.pem`;
 const TLS_CERT = `${OUT_ROOT}/certs/cert.pem`;
 async function tlsOptions(): Promise<Record<string, unknown>> {
+  // HTTP po defaultu (Google OAuth ima registriran http redirect → tok mora
+  // pristati na http://localhost:8787). Za HTTPS nastavi DASH_HTTPS=1 (certi
+  // v certs/), npr. za glasovni vnos prek LAN-a.
+  if (process.env.DASH_HTTPS !== '1') return {};
   const k = Bun.file(TLS_KEY), c = Bun.file(TLS_CERT);
   if (await k.exists() && await c.exists()) {
     return { tls: { key: await k.text(), cert: await c.text() } };
@@ -1779,11 +1787,7 @@ const server = Bun.serve({
     }
 
     // ================================================================
-    // Google integracije: Drive / Gmail / Calendar (OAuth)
-    // ================================================================
-    const G_SCOPES = ['https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/gmail.readonly',
-      'https://www.googleapis.com/auth/calendar.readonly'];
+    // (G_SCOPES je premaknjen na nivo modula — glej zgoraj ob GOOGLE konfiguraciji.)
 
     // Google OAuth + API (Drive/Gmail/Calendar) — izpostavljeno v handleGoogleApi.
     if (url.pathname.startsWith('/api/google/')) return await handleGoogleApi(req, url);

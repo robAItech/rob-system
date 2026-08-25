@@ -203,15 +203,15 @@ zahtevke na **cenejši DeepSeek API** z vašim `DEEPSEEK_API_KEY`. Poleg proxyja
 dvigne še **Command-Center dashboard**:
 
 - **Proxy LiteLLM na :4010** (lasten, izoliran)
-- **Command-Center dashboard** na **:8787 (HTTPS)** via `bun run src/server.ts`
+- **Command-Center dashboard** na **:8787 (HTTP)** via `bun run src/server.ts` (HTTPS: `DASH_HTTPS=1`)
   — futuristični temni UI z glasovnim pogovorom (voice + TTS), živim spletnim
   iskanjem, agendo, agenti in sistemskim grafom
 
 **Dostop do dashboarda** (Command Center je na `/command`, klasični na `/`):
 
 ```text
-https://localhost:8787/command      ← lokalno na tem računalniku
-https://192.168.0.8:8787/command    ← iz druge naprave v isti mreži (LAN)
+http://localhost:8787/command      ← lokalno na tem računalniku
+http://192.168.0.8:8787/command    ← iz druge naprave v isti mreži (LAN)
 ```
 
 > ⚠️ Self-signed certifikat — brskalnik bo opozoril; izberi "Naprej/Nadaljuj".
@@ -235,7 +235,7 @@ Vsi načini delegirajo na isti Python modul `core/dev_cli.py`.
 
 Dashboard :8787 je spletni UI za **vnos nalog** in **ogled izida**
 (GREEN/FAILED + stdout/stderr) — glavni način uporabe, ni terminala.
-Odpri **https://localhost:8787/command** (ali `https://<LAN-IP>:8787/command`
+Odpri **http://localhost:8787/command** (ali `http://<LAN-IP>:8787/command`
 iz druge naprave v mreži).
 **P1 avtonomni daemon** (`core/daemon.py`) je edini 24/7 master proces: ob
 prijavi idempotentno dvigne proxy+dashboard, **sam prazni agendo** skozi RSI,
@@ -350,7 +350,7 @@ regresija vnešena v zlati modul → RSI jo poišče in popravi, test-lock).
 Trend: 18. 8. `2/3` → 23. 8. `11/14 (79 %)` → **`14/14 (100 %)`**. Podrobnosti
 v `.rob_ai/eval_report.md`, zgodovina v `.rob_ai/eval_history.json`.
 
-Command-Center dashboard (**https://localhost:8787/command**) ponuja poglede:
+Command-Center dashboard (**http://localhost:8787/command**) ponuja poglede:
 **Command Center** (pregled + živi dogodki + obsidian graf), **Pogovor**
 (glasovni vnos + TTS odgovor, izbira glasu Charon/Orus/...), **Raziskovanje**,
 **Agenda** (naloge → klik na končano odpre rešitev s prenosom), **GBRAIN**

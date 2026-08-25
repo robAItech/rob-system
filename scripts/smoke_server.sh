@@ -6,7 +6,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 SCHEME="http"
-[ -f certs/cert.pem ] && [ -f certs/key.pem ] && SCHEME="https"
+# HTTP je default; HTTPS samo z DASH_HTTPS=1 (certi v certs/).
+if [ "${DASH_HTTPS:-}" = "1" ] && [ -f certs/cert.pem ] && [ -f certs/key.pem ]; then SCHEME="https"; fi
 BASE="${SCHEME}://127.0.0.1:8787"
 CURL="curl -sk"   # -k: self-signed; HTTP ga ignorira
 
