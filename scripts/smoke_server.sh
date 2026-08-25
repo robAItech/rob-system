@@ -38,6 +38,9 @@ c1=$($CURL -o /dev/null -w "%{http_code}" "$BASE/command")
 echo "  /command (UI):     $c1"      && [ "$c1" = "200" ]
 a1=$($CURL -o /dev/null -w "%{http_code}" "$BASE/api/agenda")
 echo "  /api/agenda:       $a1"      && [ "$a1" = "200" ]
+r1=$($CURL -o /dev/null -w "%{http_code} %{redirect_url}" "$BASE/")
+echo "  / → redirect:      $r1"
+[ "${r1%% *}" = "302" ] && [[ "$r1" == *"/command"* ]]
 kill $PID 2>/dev/null || true
 sleep 1
 

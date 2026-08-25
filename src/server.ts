@@ -1007,49 +1007,72 @@ async function runTask(task: string, kind: 'full' | 'dashboard'): Promise<Record
  * Spožene `python run_swarm.py --target <modul> --directive <navodilo>` v
  * podprocesu (ista pot kot `./rob build`). LoopX samozdravitvena zanka
  * (pytest → LLM popravi → 100% zelen) je notranje v RSI jedru.
+ *
+ * ASINHRONO: `startBuild` vrne build_id TAKOJ (ne blokira requesta); build
+ * teče v ozadju, status se polni v `BUILDS` in bere prek /api/build/status.
  */
-async function runRsiBuild(target: string, directive: string, maxRetries = 5, timeoutMs = 600000): Promise<Record<string, unknown>> {
+const BUILDS = new Map<string, Record<string, unknown>>();
+
+function buildStatus(buildId: string): Record<string, unknown> | null {
+  const b = BUILDS.get(buildId);
+  return b ? { ...b, stdout: String(b.stdout || '').slice(0, 4000), stderr: String(b.stderr || '').slice(0, 2000) } : null;
+}
+
+function startBuild(target: string, directive: string, maxRetries = 5, timeoutMs = 600000): Record<string, unknown> {
   const pythonCmd = process.env.PYTHON_BIN ?? 'python';
-  let sout = '';
-  let serr = '';
-  let exitCode = -1;
-  let timedOut = false;
-  const started = Date.now();
-  try {
-    const proc = Bun.spawn({
-      cmd: [pythonCmd, 'run_swarm.py', '--target', target, '--directive', directive,
-        '--agent', 'GSTACK-Architect', '--max-retries', String(maxRetries)],
-      cwd: OUT_ROOT,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      // cp1250 pipe → emoji (🤖) v run_swarm.py print_banner bi podrl izvajanje;
-      // UTF-8 reši (enako kot pri LiteLLM).
-      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
-    });
-    // Timeout: obešen build (LLM zanka/omrežje) se prekine, request ne visi v nedogled.
-    const timer = setTimeout(() => { timedOut = true; try { proc.kill(); } catch { /* */ } }, timeoutMs);
-    try {
-      sout = await new Response(proc.stdout).text();
-      serr = await new Response(proc.stderr).text();
-      exitCode = await proc.exited;
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch (err) {
-    serr += '\n' + String(err instanceof Error ? err.message : err);
-  }
-  const seconds = Math.round((Date.now() - started) / 100) / 10;
-  const moduleDir = `actions/${target}`;
-  if (timedOut) serr += `\n[timeout] build prekinjen po ${Math.round(timeoutMs / 1000)} s.`;
-  return {
-    ok: exitCode === 0 && !timedOut,
-    target,
-    exitCode,
-    seconds,
-    timedOut,
-    moduleDir,
-    stdout: sout.slice(0, 4000),
-    stderr: serr.slice(0, 2000),
+  const buildId = crypto.randomUUID();
+  const build: Record<string, unknown> = {
+    buildId, target, status: 'running', started: Date.now(), seconds: 0,
+    exitCode: null, timedOut: false, moduleDir: `actions/${target}`, stdout: '', stderr: '',
   };
+  BUILDS.set(buildId, build);
+  // Počisti stare build-e (drži mapo omejeno).
+  if (BUILDS.size > 20) { for (const [k, v] of BUILDS) { if (String(v.status) !== 'running') BUILDS.delete(k); if (BUILDS.size <= 20) break; } }
+  (async () => {
+    let exitCode = -1;
+    let timedOut = false;
+    let sout = '';
+    let serr = '';
+    try {
+      const proc = Bun.spawn({
+        cmd: [pythonCmd, 'run_swarm.py', '--target', target, '--directive', directive,
+          '--agent', 'GSTACK-Architect', '--max-retries', String(maxRetries)],
+        cwd: OUT_ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        // cp1250 pipe → emoji (🤖) v run_swarm.py print_banner bi podrl izvajanje;
+        // UTF-8 reši (enako kot pri LiteLLM).
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+      });
+      const timer = setTimeout(() => { timedOut = true; try { proc.kill(); } catch { /* */ } }, timeoutMs);
+      try {
+        sout = await new Response(proc.stdout).text();
+        serr = await new Response(proc.stderr).text();
+        exitCode = await proc.exited;
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch (err) {
+      serr += '\n' + String(err instanceof Error ? err.message : err);
+    }
+    if (timedOut) serr += `\n[timeout] build prekinjen po ${Math.round(timeoutMs / 1000)} s.`;
+    build.stdout = sout;
+    build.stderr = serr;
+    build.exitCode = exitCode;
+    build.timedOut = timedOut;
+    build.seconds = Math.round((Date.now() - (build.started as number)) / 100) / 10;
+    build.status = (exitCode === 0 && !timedOut) ? 'done' : 'failed';
+  })();
+  return {
+    ok: true,
+    buildId,
+    target,
+    status: 'running',
+    moduleDir: `actions/${target}`,
+  };
+}
+
+function runRsiBuild(target: string, directive: string, maxRetries = 5, timeoutMs = 600000): Record<string, unknown> {
+  return startBuild(target, directive, maxRetries, timeoutMs);
 }
 
 // =====================================================================
@@ -1061,9 +1084,8 @@ function json(data: unknown, status = 200): Response {
     status,
     headers: {
       'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      // Brez CORS * — dashboard je same-origin (varno; brez avtentikacijskega
+      // pretočnega kanala za cross-origin).
     },
   });
 }
@@ -1283,7 +1305,7 @@ const server = Bun.serve({
 
     // CORS preflight
     if (req.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } });
+      return new Response(null, { status: 204 });
     }
 
     // Zaščita API-ja: /api/* (razen /api/auth in /api/health) zahteva veljavno
@@ -1308,11 +1330,10 @@ const server = Bun.serve({
       });
     }
 
-    // Serviraj dashboard.
+    // Edini dashboard je Command Center (/command); / → preusmeritev
+    // (odpravljen duplikat z out/Dashboard.html).
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-      const html = await Bun.file(`${OUT_ROOT}/out/Dashboard.html`).text().catch(() => null)
-        ?? await Bun.file('out/Dashboard.html').text();
-      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      return new Response(null, { status: 302, headers: { 'Location': '/command' } });
     }
 
     // Novi Command Center (futuristični) — servira command-center-mockup.html.
@@ -1484,8 +1505,7 @@ const server = Bun.serve({
       if (!v) return json({ ok: false, error: 'modul ne obstaja: ' + rel }, 404);
       return new Response(v.html, {
         headers: {
-          'Content-Type': v.isHtml ? 'text/html; charset=utf-8' : 'text/html; charset=utf-8',
-          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'text/html; charset=utf-8',
         },
       });
     }
@@ -1505,7 +1525,7 @@ const server = Bun.serve({
         else if (format === 'pdf') { buf = await toPdfBuffer(md); mime = 'application/pdf'; ext = 'pdf'; }
         else { buf = await toXlsxBuffer(md); mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'; ext = 'xlsx'; }
         return new Response(buf, {
-          headers: { 'Content-Type': mime, 'Content-Disposition': `attachment; filename="${encodeURIComponent(base)}.${ext}"`, 'Access-Control-Allow-Origin': '*' },
+          headers: { 'Content-Type': mime, 'Content-Disposition': `attachment; filename="${encodeURIComponent(base)}.${ext}"` },
         });
       }
       // else: surov download izvirnika (MD/HTML/PY/JSON...)
@@ -1513,7 +1533,7 @@ const server = Bun.serve({
       const nm = rel.split('/').pop() || 'modul';
       const buf = await raw.arrayBuffer();
       return new Response(buf, {
-        headers: { 'Content-Type': contentTypeFor(nm), 'Content-Disposition': `attachment; filename="${encodeURIComponent(nm)}"`, 'Access-Control-Allow-Origin': '*' },
+        headers: { 'Content-Type': contentTypeFor(nm), 'Content-Disposition': `attachment; filename="${encodeURIComponent(nm)}"` },
       });
     }
 
@@ -1531,7 +1551,7 @@ const server = Bun.serve({
       if (!exists) return json({ ok: false, error: 'artefakt ne obstaja: ' + rel }, 404);
       const name = rel.split('/').pop() || 'artefakt';
       const buf = await file.arrayBuffer();
-      const headers: Record<string, string> = { 'Access-Control-Allow-Origin': '*' };
+      const headers: Record<string, string> = {};
       if (view) {
         headers['Content-Type'] = contentTypeFor(name);
         // Onako, da ni attachment → brskalnik pokaže stran renderirano.
@@ -1571,12 +1591,21 @@ const server = Bun.serve({
       const maxRetries = Math.min(Number(body.max_retries) || 5, 10);
       // Privzeti timeout 10 min; klient ga lahko skrajša (npr. 60 s za hitre preizkuse).
       const timeoutMs = Math.min(Math.max(Number(body.timeout_seconds) || 600, 15), 3600) * 1000;
+      // Asinhrono: vrne buildId TAKOJ; klient polni prek /api/build/status?buildId=...
       try {
-        const res = await runRsiBuild(target, directive, maxRetries, timeoutMs);
+        const res = runRsiBuild(target, directive, maxRetries, timeoutMs);
         return json({ ok: true, ...res });
       } catch (err) {
         return json({ ok: false, error: String(err instanceof Error ? err.message : err) }, 500);
       }
+    }
+    // Status asinhronega builda (polling).
+    if (req.method === 'GET' && url.pathname === '/api/build/status') {
+      const buildId = String(url.searchParams.get('buildId') || '').trim();
+      if (!buildId) return json({ ok: false, error: 'buildId manjka' }, 400);
+      const b = buildStatus(buildId);
+      if (!b) return json({ ok: false, error: 'build ne obstaja' }, 404);
+      return json({ ok: true, ...b });
     }
 
     // Faza 3: agenda (čakalna vrsta naročil) — branje in dodajanje.
