@@ -13,7 +13,7 @@ CURL="curl -sk"   # -k: self-signed; HTTP ga ignorira
 
 # Port mora biti prost, sicer bi health padel na NAPAK server (stari proces).
 if curl -sk -o /dev/null "$BASE/api/health" 2>/dev/null; then
-  echo "✗ port $PORT ni prost (že teče server?) — ubij ga in ponovi." >&2
+  echo "✗ port 8787 ni prost (že teče server?) — ubij ga in ponovi." >&2
   exit 1
 fi
 

@@ -325,7 +325,7 @@
      FAZA 2 · Live Telemetry Feed (fiksni spodnji ticker)
      ══════════════════════════════════════════════════════════════════════ */
   .ticker{
-    position:fixed;left:0;right:0;bottom:38px;z-index:40;height:30px;
+    position:fixed;left:216px;right:0;bottom:38px;z-index:40;height:30px;
     display:flex;align-items:center;overflow:hidden;
     background:var(--glass-strong);
     -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
@@ -353,6 +353,7 @@
   .ticker-track .tk.s-crit{color:var(--neon-magenta);}
   .ticker-track .tk.s-warn{color:var(--neon-amber);}
   @keyframes tickerScroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  @media (max-width:900px){.ticker{left:0;}}   /* mobilni: sidebar ni ob strani */
   @media (prefers-reduced-motion:reduce){.ticker-track{animation:none!important}}
 
   /* ══════════════════════════════════════════════════════════════════════
@@ -378,6 +379,20 @@
   .palette-item .pl{font-family:var(--font-display);font-size:13.5px;color:var(--ink);}
   .palette-item .ph{margin-left:auto;font-size:10.5px;color:var(--faint);white-space:nowrap;}
   .palette-empty{padding:20px;text-align:center;color:var(--faint);font-size:12px;}
+
+  /* MONITOR panel — desno od grafa (povzetek naloge + status gradnje) */
+  .monitor{margin-top:auto;border:1px solid var(--glass-edge);border-radius:8px;background:var(--glass);padding:11px 12px;}
+  .monitor-lbl{font-family:var(--font-display);font-size:9.5px;letter-spacing:.22em;color:var(--neon-cyan);text-transform:uppercase;text-shadow:var(--glow-cyan);margin-bottom:7px;}
+  .monitor-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:11px;color:var(--muted);padding:3px 0;}
+  .monitor-row b{font-family:var(--font-mono);font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
+  .monitor-row b.mon-run{color:var(--neon-amber);text-shadow:var(--glow-amber);}
+  .monitor-row b.mon-idle{color:var(--neon-green);text-shadow:var(--glow-green);}
+
+  /* Podrobnosti dogodka (klik na živi dogodek) */
+  .event-detail{padding:16px;font-family:var(--font-mono);font-size:12px;color:var(--ink);white-space:pre-wrap;background:var(--glass);border:1px solid var(--glass-edge);border-radius:8px;margin-bottom:14px;line-height:1.7;}
+  .event-detail b{color:var(--ink);font-weight:500;}
+  .feed .line{cursor:pointer;}
+  .feed .line:hover{background:var(--accent-soft);}
 </style>
 
 <div class="app">
@@ -454,18 +469,23 @@
       </div>
 
       <div class="panel bracket">
-        <div class="phead"><span class="ptitle">AI Agent · sistemski graf</span><span class="ptag" id="agent-tag">POSLUŠA</span></div>
+        <div class="phead"><span class="ptitle">AI Agent · sistemski graf</span><span class="ptag" id="agent-tag">MONITOR</span></div>
         <div class="graph-stage">
           <div class="graph-wrap">
             <canvas id="graph-canvas"></canvas>
           </div>
           <div class="agent-statusbar">
-            <span class="agent-state">stanje: <b id="agent-state-text">poslušam</b></span>
+            <span class="agent-state">stanje: <b id="agent-state-text">monitor</b></span>
             <div class="wave" id="wave"></div>
             <div class="agent-readout">
               <span>vozlišč <b>29</b></span>
               <span>povezav <b>27</b></span>
               <span>kanal <b>voice / terminal</b></span>
+            </div>
+            <div class="monitor">
+              <div class="monitor-lbl">MONITOR</div>
+              <div class="monitor-row"><span>Naloga</span><b id="mon-task">—</b></div>
+              <div class="monitor-row"><span>Status gradnje</span><b id="mon-status" class="mon-idle">idle</b></div>
             </div>
           </div>
         </div>
@@ -653,6 +673,15 @@
   </div>
 </div>
 
+<!-- Podrobnosti živega dogodka (klik na vnos v "Živi dogodki") -->
+<div class="modal-overlay" id="event-modal">
+  <div class="modal" style="width:min(520px,92vw)">
+    <div class="modal-head">Dogodek · <b id="event-type">—</b></div>
+    <div class="event-detail" id="event-detail"></div>
+    <div class="modal-actions"><button class="dbtn" onclick="closeEvent()">Zapri</button></div>
+  </div>
+</div>
+
 <!-- Kartica rešitve dokončane naloge -->
 <div class="modal-overlay" id="task-modal">
   <div class="modal task-modal">
@@ -710,8 +739,8 @@
   let speaking=false;
   function setSpeaking(on){
     speaking=on;
-    document.getElementById('agent-tag').textContent = on?'GOVORI':'POSLUŠA';
-    document.getElementById('agent-state-text').textContent = on?'govorim':'poslušam';
+    document.getElementById('agent-tag').textContent = on?'GOVORI':'MONITOR';
+    document.getElementById('agent-state-text').textContent = on?'govorim':'monitor';
     document.getElementById('agent-tag').style.color = on?'var(--good)':'var(--accent)';
   }
   const BARS=22;
@@ -973,10 +1002,23 @@
   ];
   function now(){const d=new Date();const p=n=>String(n).padStart(2,'0');return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());}
   function renderEvents(){
-    document.getElementById('feed').innerHTML=state.events.map(e=>
-      `<div class="line"><span class="t">${e.t}</span><span class="s ${e.c}">${e.s}</span><span class="m">${e.m}</span></div>`
+    document.getElementById('feed').innerHTML=state.events.map((e,i)=>
+      `<div class="line" onclick="openEvent(${i})" title="Klikni za podrobnosti"><span class="t">${e.t}</span><span class="s ${e.c}">${e.s}</span><span class="m">${e.m}</span></div>`
     ).join('');
   }
+  // Živi dogodki — klik odpre kartico s podrobnostmi dogodka.
+  function openEvent(i){
+    const e=(state.events||[])[i]; if(!e) return;
+    const col=e.c==='s-ok'?'var(--neon-green)':e.c==='s-crit'?'var(--neon-magenta)':e.c==='s-warn'?'var(--neon-amber)':'var(--neon-cyan)';
+    document.getElementById('event-type').textContent=e.s||'dogodek';
+    document.getElementById('event-detail').innerHTML=
+      `<div>⏱ čas: <b>${e.t||'—'}</b></div>`+
+      `<div>🔖 tip: <b>${e.s||'—'}</b></div>`+
+      `<div>🎨 status: <b style="color:${col}">${e.c||'—'}</b></div>`+
+      `<div style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px;color:var(--muted)">${String(e.m||'—').replace(/</g,'&lt;')}</div>`;
+    document.getElementById('event-modal').classList.add('open');
+  }
+  function closeEvent(){ const m=document.getElementById('event-modal'); if(m) m.classList.remove('open'); }
   // Faza 2 — Live ticker: drseča telemetrija (dvojni track za -50% zanko).
   let _tickerKey='';
   function renderTicker(){
@@ -1259,8 +1301,13 @@
       const r=await fetch('/api/daemon');
       if(r.ok){
         const d=await r.json();
-        const running=(d.current_tasks||[]).length>0 || d.state==='running_task';
+        const tasks=d.current_tasks||[];
+        const running=tasks.length>0 || d.state==='running_task';
         activeNodes=running?new Set(['gbrain','graphify','gstack','hermes','loopx','builder','qa','planner']):new Set();
+        // MONITOR panel — povzetek naloge + status gradnje (iz /api/daemon)
+        const mt=document.getElementById('mon-task'), ms=document.getElementById('mon-status');
+        if(mt) mt.textContent=tasks.length?tasks.map(t=>t.target).join(', '):'—';
+        if(ms){ ms.textContent=running?('gradi · '+tasks.map(t=>t.target).join(', ')):'idle'; ms.className=running?'mon-run':'mon-idle'; }
       }
     }catch(e){}
   }
