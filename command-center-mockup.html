@@ -331,7 +331,7 @@
       <div class="view-head"><h1>Pregled sistema</h1><span class="meta">most · živo</span></div>
 
       <div class="kpis">
-        <div class="kpi" onclick="show('agents')" title="Odpri Agenti"><div class="k">Aktivni agenti</div><div class="v">6</div><div class="d">4 v toku · 2 registrirana</div></div>
+        <div class="kpi" onclick="show('agents')" title="Odpri Agenti"><div class="k">Aktivni agenti</div><div class="v" id="kpi-agents">—</div><div class="d">iz /api/agents</div></div>
         <div class="kpi" onclick="show('agenda')" title="Odpri Agenda"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">17</div><div class="d">GBRAIN task_history</div></div>
         <div class="kpi warn" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">259</div><div class="d">blacklist vzorcev</div></div>
         <div class="kpi" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">AST vozlišča</div><div class="v" id="kpi-nodes">158</div><div class="d">GRAPHIFY graf</div></div>
@@ -371,8 +371,6 @@
             <span style="margin-left:auto;display:inline-flex"><button class="del-btn" onclick="clearConvo()" title="Počisti pogovor (odstrani iz spomina)">🗑 Počisti pogovor</button></span></div>
           <div class="tbody" id="convo">
             <div class="convo-line ai"><span class="who">ROB</span><span class="msg">Pozdravljen. Jaz sem ROB — govori mi prek terminala ali glasu. Kaj naj izvedem?</span></div>
-            <div class="convo-line you"><span class="who">TI</span><span class="msg">stanje sistema?</span></div>
-            <div class="convo-line ai"><span class="who">ROB</span><span class="msg">Vse zeleno — 18 modulov, 6 agentov aktivnih, agenda ima 3 naročila.</span></div>
           </div>
           <div class="tfoot">
             <span class="prompt">›</span>
@@ -636,13 +634,12 @@
   }
 
   // ── Pogovor (živo: /api/chat + glasovni vnos) ───────────────────
+  // Offline fallback (brez povezave) — splošno, brez trdo-kodiranih številk.
   const REPLIES=[
-    'Razumem. Pregledujem 18 modulov — vse zeleno.',
-    'Zaganjam gradnjo modula prek RSI zanke (gbrain → loopx).',
-    'Agenda: 3 naročila, 1 v teku, 2 čakata.',
-    'Samozdravljenje končano — 0 odprtih napak.',
-    'GBRAIN spomin sinhroniziran. 259 vzorcev naučenih.',
-    'Ukaz izveden. Arhiviram v ledger.',
+    'Razumem. (Offline — sistem ni dosegljiv.)',
+    'Povezava ni na voljo — poskusi znova.',
+    'Strežnik trenutno ni dosegljiv.',
+    'Ne morem doseči storitve. Preveri povezavo.',
   ];
   function linkify(text){
     const esc=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -998,7 +995,7 @@
     }catch(e){}
     try{
       const r=await fetch('/api/agents');
-      if(r.ok){ const a=await r.json(); if(a.agents) renderAgents(a.agents); }
+      if(r.ok){ const a=await r.json(); if(a.agents){ renderAgents(a.agents); const ka=document.getElementById('kpi-agents'); if(ka) ka.textContent=a.agents.length; } }
     }catch(e){}
     render();
   }

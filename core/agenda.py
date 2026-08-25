@@ -11,6 +11,7 @@ RSI zanka obdela po vrsti. Naročila so shranjena v `.rob_ai/agenda.json`
 
 import json
 import os
+import re
 import threading
 import time
 import uuid
@@ -274,5 +275,22 @@ def rearm_repeat() -> int:
 
 
 def _slug(goal: str) -> str:
+    """Iz cilja izpelje target (ime modula), ne zgolj prve besede.
+
+    Prioritetno: (1) 'modul <ime>' / 'module <ime>' v besedilu, (2) 'actions/<ime>'
+    pot, (3) sicer prva beseda. Tako 'Naredi Python modul finance_calc …' →
+    target `finance_calc` (ne `naredi`).
+    """
     from re import sub as _sub
-    return _sub(r"[^a-zA-Z0-9_-]", "_", goal.strip().split()[0].lower()) if goal.strip() else "naloga"
+    g = (goal or "").strip()
+    if not g:
+        return "naloga"
+    # actions/<ime> najprej (npr. "modul actions/string_ops")
+    m = re.search(r"actions/([A-Za-z0-9_-]+)", g)
+    if m:
+        return _sub(r"[^a-zA-Z0-9_-]", "_", m.group(1).lower())
+    # nato 'modul <ime>' (npr. "Python modul finance_calc")
+    m = re.search(r"\bmodul(?:a|e)?\s+['\"]?([A-Za-z0-9_-]+)", g)
+    if m:
+        return _sub(r"[^a-zA-Z0-9_-]", "_", m.group(1).lower())
+    return _sub(r"[^a-zA-Z0-9_-]", "_", g.split()[0].lower())

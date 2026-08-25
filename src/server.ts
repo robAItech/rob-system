@@ -70,6 +70,17 @@ function unauthorized(): Response {
   return json({ ok: false, error: 'unauthorized' }, 401);
 }
 
+// ── Rate limit (zaščita stroškov LLM): 10 LLM klicev/min na IP ──
+const RATE_MAX = 10;
+const RATE_WINDOW_MS = 60_000;
+const RATE: Record<string, number[]> = {};
+function rateLimited(ip: string): boolean {
+  const now = Date.now();
+  const arr = (RATE[ip] || []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (arr.length >= RATE_MAX) { RATE[ip] = arr; return true; }
+  arr.push(now); RATE[ip] = arr; return false;
+}
+
 // =====================================================================
 //  Google OAuth + API (Drive / Gmail / Calendar)
 // =====================================================================
@@ -1296,6 +1307,54 @@ const SKILL_KEYWORDS: Record<string, string[]> = {
   'gstack': ['router', 'kateri skill', 'gstack'],
 };
 
+// ── Google OAuth + API (Drive / Gmail / Calendar) — izpostavljeno iz fetch handlerja ──
+async function handleGoogleApi(req: Request, url: URL): Promise<Response> {
+  if (req.method === 'GET' && url.pathname === '/api/google/auth') {
+    const u = await googleAuthUrl(G_SCOPES);
+    if (!u) return json({ ok: false, error: 'client_secret.json manjka ali ni veljaven' }, 500);
+    return Response.redirect(u, 302);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/google/oauth2callback') {
+    const code = url.searchParams.get('code') || '';
+    const okCall = await googleExchangeCode(code);
+    const html = okCall
+      ? '<html><body style="font:15px system-ui;background:#061020;color:#eef;"><div style="max-width:420px;margin:10vh auto;padding:30px;border:1px solid #333;border-radius:14px;background:#0a1628"><h2 style="color:#ffd166">✅ Povezano z Googlom</h2><p>Token je shranjen. Vrni se na dashboard in klikni Drive / Email / Calendar.</p><p><a href="/" style="color:#4fc3ff">Nazaj na dashboard</a></p></div></body></html>'
+      : '<html><body style="font:15px system-ui;background:#061020;color:#eef"><div style="max-width:420px;margin:10vh auto;padding:30px;border:1px solid #333;border-radius:14px;background:#301010"><h2 style="color:#ff5c7a">Napaka</h2><p>Google avtorizacija ni uspela. Poskusi znova.</p></div></body></html>';
+    return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/google/drive') {
+    const q = url.searchParams.get('q') || '';
+    const d = await googleGet(`/drive/v3/files?pageSize=12&fields=files(id,name,mimeType,modifiedTime)&orderBy=modifiedTime desc&q=${encodeURIComponent("'" + q + "' in parents or trashed=false")}`);
+    return d ? json({ ok: true, files: (d as { files?: unknown[] }).files || [] }) : json({ ok: false, error: 'ni avtorizacije / napaka', authorized: false }, 401);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/google/email') {
+    const d = await googleGet('/gmail/v1/users/me/messages?maxResults=10');
+    if (!d) return json({ ok: false, error: 'ni avtorizacije / napaka', authorized: false }, 401);
+    const list = (d as { messages?: { id?: string }[] }).messages || [];
+    const out: { id: string; snippet: string }[] = [];
+    for (const m of list.slice(0, 10)) {
+      const md = await googleGet(`/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`);
+      const x = md as { snippet?: string } | null;
+      out.push({ id: m.id || '?', snippet: x?.snippet || '' });
+    }
+    return json({ ok: true, messages: out });
+  }
+  if (req.method === 'GET' && url.pathname === '/api/google/calendar') {
+    const mY = new Date().toISOString();
+    const d = await googleGet(`/calendar/v3/calendars/primary/events?maxResults=8&singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(mY)}&fields=items(summary,start)`);
+    return d ? json({ ok: true, events: (d as { items?: unknown[] }).items || [] }) : json({ ok: false, error: 'ni avtorizacije / napaka', authorized: false }, 401);
+  }
+  if (req.method === 'GET' && url.pathname === '/api/google/status') {
+    const tok = await googleToken();
+    return json({ ok: true, connected: !!tok });
+  }
+  if (req.method === 'POST' && url.pathname === '/api/google/poll') {
+    const r = await gmailToAgenda();
+    return json({ ok: true, added: r.added });
+  }
+  return json({ ok: false, error: '404 · neznana google pot: ' + url.pathname }, 404);
+}
+
 const tls = await tlsOptions();
 const server = Bun.serve({
   port: PORT,
@@ -1419,6 +1478,7 @@ const server = Bun.serve({
     }
     // Pogovor z ROB (neposredni LLM).
     if (req.method === 'POST' && url.pathname === '/api/chat') {
+      if (rateLimited(server.requestIP(req)?.address || 'local')) return json({ ok: false, error: 'rate limit: preveč zahtevkov (10/min)' }, 429);
       const raw = await req.text().catch(() => '');
       let body: { message?: unknown; kind?: unknown } = {};
       try { body = JSON.parse(raw); } catch { /* ignore */ }
@@ -1564,6 +1624,7 @@ const server = Bun.serve({
 
     // API: poženi novo nalogo
     if (req.method === 'POST' && url.pathname === '/api/run') {
+      if (rateLimited(server.requestIP(req)?.address || 'local')) return json({ ok: false, error: 'rate limit: preveč zahtevkov (10/min)' }, 429);
       const raw = await req.text().catch(() => '');
       let body: { task?: unknown; kind?: unknown } = {};
       try { body = JSON.parse(raw); } catch { /* ignore */ }
@@ -1581,6 +1642,7 @@ const server = Bun.serve({
     // Faza 0: Avtonomni build prek RSI/GStack jedra (Python orkestrator).
     // Dashboard in `./rob build` zdaj delita isto zanko (LoopX self-heal).
     if (req.method === 'POST' && url.pathname === '/api/build') {
+      if (rateLimited(server.requestIP(req)?.address || 'local')) return json({ ok: false, error: 'rate limit: preveč zahtevkov (10/min)' }, 429);
       const raw = await req.text().catch(() => '');
       let body: { target?: unknown; directive?: unknown; max_retries?: unknown; timeout_seconds?: unknown } = {};
       try { body = JSON.parse(raw); } catch { /* ignore */ }
@@ -1710,56 +1772,8 @@ const server = Bun.serve({
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/calendar.readonly'];
 
-    // Začetek avtorizacije → preusmeri na Google.
-    if (req.method === 'GET' && url.pathname === '/api/google/auth') {
-      const u = await googleAuthUrl(G_SCOPES);
-      if (!u) return json({ ok: false, error: 'client_secret.json manjka ali ni veljaven' }, 500);
-      return Response.redirect(u, 302);
-    }
-    // OAuth callback → izmenjaj code za token, vrni na dashboard.
-    if (req.method === 'GET' && url.pathname === '/api/google/oauth2callback') {
-      const code = url.searchParams.get('code') || '';
-      const okCall = await googleExchangeCode(code);
-      const html = okCall
-        ? '<html><body style="font:15px system-ui;background:#061020;color:#eef;"><div style="max-width:420px;margin:10vh auto;padding:30px;border:1px solid #333;border-radius:14px;background:#0a1628"><h2 style="color:#ffd166">✅ Povezano z Googlom</h2><p>Token je shranjen. Vrni se na dashboard in klikni Drive / Email / Calendar.</p><p><a href="/" style="color:#4fc3ff">Nazaj na dashboard</a></p></div></body></html>'
-        : '<html><body style="font:15px system-ui;background:#061020;color:#eef"><div style="max-width:420px;margin:10vh auto;padding:30px;border:1px solid #333;border-radius:14px;background:#301010"><h2 style="color:#ff5c7a">Napaka</h2><p>Google avtorizacija ni uspela. Poskusi znova.</p></div></body></html>';
-      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-    }
-    // Drive: seznam datotek.
-    if (req.method === 'GET' && url.pathname === '/api/google/drive') {
-      const q = url.searchParams.get('q') || '';
-      const d = await googleGet(`/drive/v3/files?pageSize=12&fields=files(id,name,mimeType,modifiedTime)&orderBy=modifiedTime desc&q=${encodeURIComponent("'" + q + "' in parents or trashed=false")}`);
-      return d ? json({ ok: true, files: (d as { files?: unknown[] }).files || [] }) : json({ ok: false, error: 'ni avtorizacije / napaka', authorized: false }, 401);
-    }
-    // Email: zadnje sporočila.
-    if (req.method === 'GET' && url.pathname === '/api/google/email') {
-      const d = await googleGet('/gmail/v1/users/me/messages?maxResults=10');
-      if (!d) return json({ ok: false, error: 'ni avtorizacije / napaka', authorized: false }, 401);
-      const list = (d as { messages?: { id?: string }[] }).messages || [];
-      const out: { id: string; snippet: string }[] = [];
-      for (const m of list.slice(0, 10)) {
-        const md = await googleGet(`/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`);
-        const x = md as { snippet?: string } | null;
-        out.push({ id: m.id || '?', snippet: x?.snippet || '' });
-      }
-      return json({ ok: true, messages: out });
-    }
-    // Calendar: prihodnji dogodki.
-    if (req.method === 'GET' && url.pathname === '/api/google/calendar') {
-      const mY = new Date().toISOString();
-      const d = await googleGet(`/calendar/v3/calendars/primary/events?maxResults=8&singleEvents=true&orderBy=startTime&timeMin=${encodeURIComponent(mY)}&fields=items(summary,start)`);
-      return d ? json({ ok: true, events: (d as { items?: unknown[] }).items || [] }) : json({ ok: false, error: 'ni avtorizacije / napaka', authorized: false }, 401);
-    }
-    // Status povezave.
-    if (req.method === 'GET' && url.pathname === '/api/google/status') {
-      const tok = await googleToken();
-      return json({ ok: true, connected: !!tok });
-    }
-    // Faza 2 — ročna takojšnja preverka Gmail-a → novi vnosi v agendo.
-    if (req.method === 'POST' && url.pathname === '/api/google/poll') {
-      const r = await gmailToAgenda();
-      return json({ ok: true, added: r.added });
-    }
+    // Google OAuth + API (Drive/Gmail/Calendar) — izpostavljeno v handleGoogleApi.
+    if (url.pathname.startsWith('/api/google/')) return await handleGoogleApi(req, url);
 
     return json({ ok: false, error: '404 · neznana pot: ' + url.pathname }, 404);
   },

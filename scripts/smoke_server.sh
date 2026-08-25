@@ -41,6 +41,10 @@ echo "  /api/agenda:       $a1"      && [ "$a1" = "200" ]
 r1=$($CURL -o /dev/null -w "%{http_code} %{redirect_url}" "$BASE/")
 echo "  / → redirect:      $r1"
 [ "${r1%% *}" = "302" ] && [[ "$r1" == *"/command"* ]]
+for ep in "events" "metrics" "agents" "module?name=core"; do
+  c=$($CURL -o /dev/null -w "%{http_code}" "$BASE/api/$ep")
+  echo "  /api/$ep:     $c" && [ "$c" = "200" ]
+done
 kill $PID 2>/dev/null || true
 sleep 1
 
