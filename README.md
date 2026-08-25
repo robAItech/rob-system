@@ -103,7 +103,7 @@ Rob AI Studio/
 ├── scripts/                          # autostart.bat + register-autostart.ps1 (HKCU Run)
 ├── evaluate_autonomy.py              # P0 — SWE-bench stila samo-eval (rob eval)
 ├── .github/workflows/ci.yml          # CI: PR gate (pytest + eval dry-run) + nočni eval
-└── tests/                            # Pytest suite (302 testov, CI zelen)
+└── tests/                            # Pytest suite (339 testov, CI zelen)
 ```
 
 ## 🛠️ Hitra namestitev in zagon
@@ -146,7 +146,7 @@ docker build -f Dockerfile.sandbox -t rob-sandbox .
 
 **Preverba namestitve (ključni ukazi):**
 ```bash
-./rob test                  # celotna testna matrika (307 testov) — mora biti zelena
+./rob test                  # celotna testna matrika (339 testov) — mora biti zelena
 ./rob eval --dry-run        # strukturna preverba eval lestvice (brez LLM)
 ./dev                       # dvigne proxy :4010 + dashboard :8787 (ročni/rescue)
 ./rob daemon --serve        # P1 daemon: proxy+dashboard v ozadju, 24/7
@@ -207,14 +207,16 @@ dvigne še **Command-Center dashboard**:
   — futuristični temni UI z glasovnim pogovorom (voice + TTS), živim spletnim
   iskanjem, agendo, agenti in sistemskim grafom
 
-**Dostop do dashboarda** (Command Center je na `/command`, klasični na `/`):
+**Dostop do dashboarda** (Command Center je na `/command`; `/` preusmeri tja):
 
 ```text
 http://localhost:8787/command      ← lokalno na tem računalniku
 http://192.168.0.8:8787/command    ← iz druge naprave v isti mreži (LAN)
 ```
 
-> ⚠️ Self-signed certifikat — brskalnik bo opozoril; izberi "Naprej/Nadaljuj".
+> 🔒 **Prijava**: ob prvem obisku dashboard zahteva `ROB_API_TOKEN` (vrednost v `.env`).
+> Server je HTTP po defaultu (Google OAuth uporablja http redirect); za HTTPS
+> nastavi `DASH_HTTPS=1` (certi v `certs/`, self-signed → brskalnik opozori).
 > LAN IP se lahko spremeni (DHCP) — preveri z `ipconfig` (IPv4). Varen remote
 > dostop izven mreže: Tailscale.
 
@@ -226,6 +228,7 @@ Vse v enem ukazu — `./dev` (dela na Windows, Linux in WSL):
 ./dev --init                # dry-run: preveri config, ključ, porta 4010/8787 in PATH.
 ./dev --proxy-only          # samo LiteLLM na 4010 v ospredju.
 ./dev --dashboard-only      # samo Command-Center (bun run src/server.ts) na 8787.
+./dev --dashboard-only --watch   # hot-reload (bun --watch) — ob spremembi server.ts sam restart
 ./dev --claude-only         # samo claude ob že obstoječem proxyju na 4010.
 ```
 
@@ -357,8 +360,10 @@ Command-Center dashboard (**http://localhost:8787/command**) ponuja poglede:
 (54 gstack skillov) in **Agenti**. ROB razume razliko med pogovorom in nalogo:
 nalogo zabeleži v agendo in izvede, pogovor odgovori z živim kontekstom
 (datum/ura + vreme + splet). Google integracije (Drive/Email/Calendar) zahtevajo
-autorizacijo (`client_secret.json`, redirect
-`https://localhost:8787/api/google/oauth2callback`).
+autorizacijo (`client_secret.json`, redirect URI
+`http://localhost:8787/api/google/oauth2callback` — registriran v Google Console).
+Obnova tokena: odpri `http://localhost:8787/api/google/auth`, odobri v Googlu;
+server izmenja kodo in shrani nov token (stanje: `GET /api/google/status`).
 
 ## 💻 Navodila za uporabo CLI (`./rob`)
 
