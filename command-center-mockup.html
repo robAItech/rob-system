@@ -1174,15 +1174,63 @@
   function hideTip(){const t=document.getElementById('graph-tip'); if(t) t.style.display='none';}
 
   let graphReady=false;
+  // Faza 3 — force-directed: konstante simulacije (brez D3, čisti JS).
+  const FR_DIST=85, FR_K=0.60, SPRING_K=0.013, CENTER_K=0.010, DAMP=0.88, MAXV=2.4;
   function positionNodes(){
     const c=document.getElementById('graph-canvas'); if(!c) return;
-    const W=c.width, H=c.height, cx=W/2, cy=H/2, N=GRAPH_NODES.length;
+    const W=c.width, H=c.height, N=GRAPH_NODES.length;
     GRAPH_NODES.forEach((n,i)=>{
-      const a=(i/N)*Math.PI*2-Math.PI/2;
-      const r=Math.min(W,H)*0.44*(0.82+(i%4)*0.06);
-      n.hx=cx+Math.cos(a)*r; n.hy=cy+Math.sin(a)*r;
-      n.x=n.hx; n.y=n.hy; n.p=Math.random()*6.28;
+      // naključni razpršeni začetek → simulacija najde ravnovesje po robovih
+      n.x=40+Math.random()*(W-80); n.y=30+Math.random()*(H-60);
+      n.vx=0; n.vy=0; n.p=Math.random()*6.28;
     });
+  }
+  function stepForces(){
+    const N=GRAPH_NODES.length, W=800, H=370, cx=W/2, cy=H/2;
+    for(const n of GRAPH_NODES){ n.fx=0; n.fy=0; }
+    // odboj med vsemi vozlišči (O(N²), N≈29 — ok)
+    for(let i=0;i<N;i++){
+      const a=GRAPH_NODES[i];
+      for(let j=i+1;j<N;j++){
+        const b=GRAPH_NODES[j];
+        const dx=a.x-b.x, dy=a.y-b.y, d2=dx*dx+dy*dy||1, d=Math.sqrt(d2);
+        if(d>FR_DIST) continue;
+        const f=FR_K*(1-d/FR_DIST);
+        a.fx+=(dx/d)*f; a.fy+=(dy/d)*f;
+        b.fx-=(dx/d)*f; b.fy-=(dy/d)*f;
+      }
+    }
+    // centriranje
+    for(const n of GRAPH_NODES){ n.fx+=(cx-n.x)*CENTER_K; n.fy+=(cy-n.y)*CENTER_K; }
+    // privlačnost po robovih
+    for(const [i0,i1] of GRAPH_EDGES){
+      const a=GRAPH_NODES.find(n=>n.id===i0), b=GRAPH_NODES.find(n=>n.id===i1);
+      if(!a||!b) continue;
+      const dx=b.x-a.x, dy=b.y-a.y, d=Math.sqrt(dx*dx+dy*dy)||1;
+      const f=SPRING_K*(d-65);
+      a.fx+=(dx/d)*f; a.fy+=(dy/d)*f;
+      b.fx-=(dx/d)*f; b.fy-=(dy/d)*f;
+    }
+    // integracija + damping
+    for(const n of GRAPH_NODES){
+      n.vx=(n.vx||0)+n.fx; n.vy=(n.vy||0)+n.fy;
+      n.vx*=DAMP; n.vy*=DAMP;
+      const sp=Math.hypot(n.vx,n.vy); if(sp>MAXV){ n.vx*=MAXV/sp; n.vy*=MAXV/sp; }
+      n.x+=n.vx; n.y+=n.vy;
+      n.x=Math.max(8,Math.min(W-8,n.x)); n.y=Math.max(8,Math.min(H-8,n.y));
+    }
+  }
+  // Faza 3 — aktivna vozlišča (realno: daemon teče nalogo → RSI cevovod pulzira).
+  let activeNodes=new Set();
+  async function fetchActive(){
+    try{
+      const r=await fetch('/api/daemon');
+      if(r.ok){
+        const d=await r.json();
+        const running=(d.current_tasks||[]).length>0 || d.state==='running_task';
+        activeNodes=running?new Set(['gbrain','graphify','gstack','hermes','loopx','builder','qa','planner']):new Set();
+      }
+    }catch(e){}
   }
   function initGraph(){
     const c=document.getElementById('graph-canvas'); if(!c) return;
@@ -1195,6 +1243,8 @@
     c.addEventListener('mousemove',e=>{const p=toLogical(e);mouse.x=p.x;mouse.y=p.y;tipX=e.clientX;tipY=e.clientY;});
     c.addEventListener('mouseleave',()=>{mouse.x=-1e4;mouse.y=-1e4;hideTip();});
     c.addEventListener('click',()=>{if(hoverNode){pinned=pinned===hoverNode?null:hoverNode;}});
+    fetchActive();                 // Faza 3 — realno aktivna vozlišča
+    setInterval(fetchActive, 6000); // obnova ob spremembi daemon stanja
     requestAnimationFrame(loop);
   }
   async function loadGraph(){
@@ -1218,10 +1268,7 @@
     const x=c.getContext('2d'); const W=c.width,H=c.height;
     x.clearRect(0,0,W,H);
 
-    GRAPH_NODES.forEach(n=>{
-      n.x=n.hx+Math.sin(t/900+n.p)*6;
-      n.y=n.hy+Math.cos(t/1150+n.p)*6;
-    });
+    stepForces();   // Faza 3 — force-directed (brez D3)
 
     hoverNode=null;
     for(const n of GRAPH_NODES){const dx=n.x-mouse.x,dy=n.y-mouse.y;if(dx*dx+dy*dy<19*19){hoverNode=n;break;}}
@@ -1246,14 +1293,21 @@
       const isFocus=focus&&n.id===focus.id;
       const isNeighbor=focus&&focusSet.has(n.id);
       const lit=isFocus||isNeighbor;
-      const r=isFocus?6:(lit?4.2:3);
+      const active=activeNodes.has(n.id);
+      // Faza 3 — aktivna vozlišča pulzirajo (velikost + sijaj) z realnim stanjem.
+      const pulse=active?1+0.38*Math.sin(t/170+n.p):1;
+      const r=(isFocus?6:(lit?4.2:3))*pulse;
       x.beginPath();x.arc(n.x,n.y,r,0,7);
-      x.fillStyle=GRAPH_COLORS[n.g];
-      x.globalAlpha=dim&&!lit?0.18:0.9;
-      x.shadowColor=GRAPH_COLORS[n.g];x.shadowBlur=lit?14:6;
+      x.fillStyle=active?GRAPH_COLORS[n.g]:GRAPH_COLORS[n.g];
+      x.globalAlpha=active?0.95:(dim&&!lit?0.18:0.9);
+      x.shadowColor=GRAPH_COLORS[n.g];x.shadowBlur=active?(lit?20:14):(lit?14:6);
       x.fill();x.shadowBlur=0;x.globalAlpha=1;
-      if(lit){
-        x.fillStyle='rgba(216,230,245,.9)';
+      if(active){   // obroč okoli aktivnega vozlišča
+        x.beginPath();x.arc(n.x,n.y,r+3+2*Math.sin(t/170+n.p),0,7);
+        x.strokeStyle=GRAPH_COLORS[n.g];x.globalAlpha=.5;x.lineWidth=1;x.stroke();x.globalAlpha=1;
+      }
+      if(lit||active){
+        x.fillStyle=active?'#ffffff':'rgba(216,230,245,.9)';
         x.font='9px "JetBrains Mono", monospace';
         x.textAlign='center';
         x.fillText(n.label,n.x,n.y-r-5);
