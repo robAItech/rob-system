@@ -162,11 +162,14 @@ async function googleExchangeCode(code: string): Promise<boolean> {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `code=${encodeURIComponent(code)}&client_id=${encodeURIComponent(c.client_id)}&client_secret=${encodeURIComponent(c.client_secret)}&redirect_uri=${encodeURIComponent(G_REDIRECT)}&grant_type=authorization_code`,
     });
-    const j = await r.json() as { access_token?: string; refresh_token?: string; expires_in?: number };
-    if (!j.access_token) return false;
+    const j = await r.json() as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string };
+    if (!j.access_token) {
+      console.error('[google] izmenjava kode NAPAKA:', JSON.stringify({ error: j.error, description: j.error_description, redirect: G_REDIRECT }));
+      return false;
+    }
     await saveGoogleToken({ access_token: j.access_token, refresh_token: j.refresh_token ?? null, expires_at: Date.now() + (j.expires_in ?? 3600) * 1000 });
     return true;
-  } catch { return false; }
+  } catch (e) { console.error('[google] izmenjava kode izjema:', e); return false; }
 }
 
 /** Splošni GET proti Google API s tokenom. */
@@ -1326,6 +1329,8 @@ async function handleGoogleApi(req: Request, url: URL): Promise<Response> {
   }
   if (req.method === 'GET' && url.pathname === '/api/google/oauth2callback') {
     const code = url.searchParams.get('code') || '';
+    const gerr = url.searchParams.get('error') || '';
+    console.log(`[google] callback code_len=${code.length} error=${gerr || '—'}`);
     const okCall = await googleExchangeCode(code);
     const html = okCall
       ? '<html><body style="font:15px system-ui;background:#061020;color:#eef;"><div style="max-width:420px;margin:10vh auto;padding:30px;border:1px solid #333;border-radius:14px;background:#0a1628"><h2 style="color:#ffd166">✅ Povezano z Googlom</h2><p>Token je shranjen. Vrni se na dashboard in klikni Drive / Email / Calendar.</p><p><a href="/" style="color:#4fc3ff">Nazaj na dashboard</a></p></div></body></html>'
@@ -1388,9 +1393,12 @@ const server = Bun.serve({
       return new Response(null, { status: 204 });
     }
 
-    // Zaščita API-ja: /api/* (razen /api/auth in /api/health) zahteva veljavno
-    // rob_session piškotko, ko je ROB_API_TOKEN nastavljen.
-    if (url.pathname.startsWith('/api/') && url.pathname !== '/api/auth' && url.pathname !== '/api/health') {
+    // Zaščita API-ja: /api/* (razen /api/auth, /api/health in Google OAuth
+    // callbacka) zahteva veljavno rob_session piškotko, ko je ROB_API_TOKEN
+    // nastavljen. Callback je izvzet: Google preusmeri cross-site (SameSite
+    // cookie se ne pošlje), OAuth code pa je sam po sebi avtorizacija.
+    const API_PUBLIC = ['/api/auth', '/api/health', '/api/google/oauth2callback'];
+    if (url.pathname.startsWith('/api/') && !API_PUBLIC.includes(url.pathname)) {
       if (!isAuthed(req)) return unauthorized();
     }
 
@@ -1406,7 +1414,7 @@ const server = Bun.serve({
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
         headers: { 'Content-Type': 'application/json',
-                   'Set-Cookie': `rob_session=${sid}; HttpOnly; Path=/; SameSite=Strict; Max-Age=86400` },
+                   'Set-Cookie': `rob_session=${sid}; HttpOnly; Path=/; SameSite=Lax; Max-Age=86400` },
       });
     }
 
