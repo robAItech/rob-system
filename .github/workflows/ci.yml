@@ -41,7 +41,7 @@ jobs:
     name: P5 eval nightly (full scale, real LLM + Docker)
     # Nočni eval se POŽENE le, če je DEEPSEEK_API_KEY secret nastavljen — sicer
     # se job PRESKOČI (ne pade), da CI ni rdeč. Nastavi: gh secret set DEEPSEEK_API_KEY
-    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && secrets.DEEPSEEK_API_KEY != ''
+    if: "(github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && secrets.DEEPSEEK_API_KEY != ''"
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
