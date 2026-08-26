@@ -74,18 +74,11 @@ cd AI-podjetje-V5
 
 ## 3. Python okolje in odvisnosti
 
-Priporočljivo v virtualnem okolju (za raven A in B):
+Najenostavneje: **v sistemski Python** (priporočeno na namenskem stroju — tako
+deluje tudi avtomatski zagon daemona, ker `scripts/autostart.bat` kliče
+sistemski `python`):
 
 ```bash
-# Linux / WSL
-python -m venv venv
-source venv/bin/activate
-
-# Windows (cmd/PowerShell ali Git Bash)
-python -m venv venv
-venv\Scripts\activate        # cmd/PowerShell
-# venv/Scripts/activate      # Git Bash
-
 python -m pip install --upgrade pip
 pip install -r requirements-dev.txt
 pip install litellm          # samo za ./dev (raven B)
@@ -93,10 +86,12 @@ pip install playwright       # samo za vizualni QA (neobvezno)
 playwright install chromium  # neobvezno
 ```
 
-> ⚠️ **Windows**: skripta `./rob` avtomatsko aktivira `venv/bin/activate` —
-> ta pot obstaja **samo na Linux/WSL**. Na Windows zato venv **aktiviraj ročno
-> v vsakem terminalu** pred `./rob`, ali pa odvisnosti instaliraj v sistemski
-> Python (`pip install -r requirements-dev.txt` brez venv-a).
+> 🔁 **Želiš venv?** Možno (npr. več projektov na istem stroju), ampak bodi
+> dosleden: `./rob` na Linux/WSL avtomatsko aktivira `venv/bin/activate`, na
+> Windows **ne** (ne preverja `venv/Scripts`). Če uporabiš venv: aktiviraj ga v
+> vsakem terminalu pred `./rob` IN popravi `scripts/autostart.bat`, da kliče
+> `venv\Scripts\python.exe` — sicer daemon ob prijavi tiho uporabi sistemski
+> Python brez odvisnosti.
 
 ---
 

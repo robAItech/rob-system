@@ -136,18 +136,15 @@ Rob AI Studio/
 > ⚠️ **Windows**: `./rob` in `./dev` tečeta v **Git Bash** (ali WSL), ne v
 > PowerShell/cmd. Tam uporabi `dev.bat` (dashboard) oz. `bash rob <ukaz>`.
 
-**Python paketi:**
+**Python paketi** (sistemski Python — najenostavneje in tako kliče tudi
+`autostart.bat` za daemon; venv je opcijski, glej docs/INSTALL.md):
 ```bash
-python -m venv venv
-# Windows: venv\Scripts\activate    Linux/WSL: source venv/bin/activate
+python -m pip install --upgrade pip
 pip install -r requirements-dev.txt
 pip install litellm                 # le za ./dev (proxy)
 pip install playwright              # neobvezno (vizualni QA)
 playwright install chromium         # neobvezno (screenshot HTML)
 ```
-> ⚠️ **Windows**: `./rob` avtomatsko aktivira `venv/bin/activate` — ta pot
-> obstaja samo na Linux/WSL. Na Windows aktiviraj venv ročno v vsakem terminalu
-> ali instaliraj v sistemski Python.
 
 **TS paketi (dashboard):**
 ```bash
