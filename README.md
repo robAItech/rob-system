@@ -102,7 +102,7 @@ Rob AI Studio/
 ├── bridges/litellm_config.yaml       # DeepSeek proxy routing
 ├── scripts/                          # autostart.bat + register-autostart.ps1 (HKCU Run)
 ├── evaluate_autonomy.py              # P0 — SWE-bench stila samo-eval (rob eval)
-├── .github/workflows/ci.yml          # CI: PR gate (pytest + eval dry-run) + nočni eval
+├── .github/workflows/ci.yml          # CI: PR gate (pytest + eval dry-run) + tedenski eval (sobota)
 └── tests/                            # Pytest suite (339 testov, CI zelen)
 ```
 
@@ -110,7 +110,13 @@ Rob AI Studio/
 
 ### 0. Predpogoji — orodja (nov računalnik)
 
-Vse, kar sistem potrebuje na svežem računalniku, v enem povzetku:
+> 📋 **Popolna, korak-po-korak preverjena navodila (vklj. odpravljanje napak):**
+> [docs/INSTALL.md](docs/INSTALL.md).
+
+> 💡 **gbrain / gstack / graphify / hermes / loopx se NE nameščajo ločeno.**
+> To so lastni Python paketi, **že vključeni v rep v `repos/`** (`pytest.ini`
+> jih doda na pot). Nič `pip install gbrain` — na svežem računalniku zadošča
+> `git clone` + Python odvisnosti spodaj.
 
 **Orodja na PATH:**
 
@@ -118,20 +124,30 @@ Vse, kar sistem potrebuje na svežem računalniku, v enem povzetku:
 |---|---|---|
 | **Python 3.11+** | python.org/downloads ali `winget install Python.Python.3.11` | jedro, RSI zanka, daemon |
 | **git** | git-scm.com | klon + CI |
-| **Node.js + npm** | nodejs.org | bun + TS odvisnosti |
+| **Claude Code CLI** | `npm i -g @anthropic-ai/claude-code` | obvezen za `./dev` (proxy → claude); core engine ga ne rabi |
+| **Node.js + npm** | nodejs.org | Bun + TS odvisnosti |
 | **Bun** | `npm i -g bun` | dashboard (`src/server.ts`), TS |
-| **LiteLLM** | `pip install litellm` | proxy :4010 (DeepSeek routing) |
-| **Docker Desktop** | docker.com (Windows: mora biti zagnan) | RSI peskovnik (`rob-sandbox`) |
+| **LiteLLM** | `pip install litellm` | proxy :4010 (DeepSeek routing) — le za `./dev` |
+| **Docker Desktop** | docker.com (Windows: mora biti zagnan) | RSI peskovnik (`rob-sandbox`) — **neobvezen** |
 | **Playwright + chromium** | `pip install playwright` + `playwright install chromium` | vizualni QA (HTML screenshot) — neobvezno |
 | **Ruff** | v requirements-dev.txt | F821 pre-gate v RSI (če manjka, se preskoči) |
 | **Tailscale** | tailscale.com — neobvezno | varen remote dostop do dashboarda |
 
-**Python paketi** (edina zahtevana Python odvisnost):
+> ⚠️ **Windows**: `./rob` in `./dev` tečeta v **Git Bash** (ali WSL), ne v
+> PowerShell/cmd. Tam uporabi `dev.bat` (dashboard) oz. `bash rob <ukaz>`.
+
+**Python paketi:**
 ```bash
+python -m venv venv
+# Windows: venv\Scripts\activate    Linux/WSL: source venv/bin/activate
 pip install -r requirements-dev.txt
-pip install litellm playwright        # playwright le za vizualni QA
-playwright install chromium           # neobvezno (screenshot HTML)
+pip install litellm                 # le za ./dev (proxy)
+pip install playwright              # neobvezno (vizualni QA)
+playwright install chromium         # neobvezno (screenshot HTML)
 ```
+> ⚠️ **Windows**: `./rob` avtomatsko aktivira `venv/bin/activate` — ta pot
+> obstaja samo na Linux/WSL. Na Windows aktiviraj venv ročno v vsakem terminalu
+> ali instaliraj v sistemski Python.
 
 **TS paketi (dashboard):**
 ```bash
@@ -158,8 +174,10 @@ Prvi resničen smoke test — preveri, da RSI/GStack zanka deluje od nule:
 ./rob build testmod "Izdelaj Python modul testmod v actions/testmod/. Funkcija add(a,b) vrne a+b. Vsebuj pytest test, vsi testi 100% zeleni."
 ```
 
-**.env** — ustvari iz `.env.example`: **obvezen `DEEPSEEK_API_KEY`**; opcijsko
-`GEMINI_API_KEY` (semantični spomin + TTS), `SERPER_API_KEY` (spletno iskanje).
+**.env** — `cp .env.example .env` in vpiši **obvezen `DEEPSEEK_API_KEY`**
+(placeholder `sk-your-deepseek-api-key-here` se obravnava kot "ni ključa");
+opcijsko `GEMINI_API_KEY` (semantični spomin + TTS), `SERPER_API_KEY` (spletno
+iskanje), `OPENROUTER_API_KEY` (rezerva, če DeepSeek pade).
 
 **(Windows) avtomatski zagon ob prijavi (daemon 24/7):**
 ```powershell
@@ -171,23 +189,26 @@ pwsh -File scripts\register-autostart.ps1 -Query # preveri registracijo
 
 ```bash
 git clone https://github.com/robAItech/AI-podjetje-V5.git
-cd "Rob system"
-cd "C:\Rob system"
+cd AI-podjetje-V5
 ```
 
-Zahtevana orodja na PATH so v **Predpogoji (0)** zgoraj — tukaj le ključna:
-- **Python 3.11+** (glavni interpreter `python`)
-- **bun** (`npm i -g bun`) — za dashboard (`bun run src/server.ts`)
-- **litellm** (`python -m pip install litellm`) — za proxy :4010
+Zahtevana orodja na PATH — glej **Predpogoji (0)** zgoraj.
 
 ### 2. Konfiguracija okoljskih spremenljivk
 
 Ustvarite datoteko `.env` v korenskem imeniku projekta:
 
+```bash
+cp .env.example .env
+```
+
+in vpišite vsaj **`DEEPSEEK_API_KEY`** — obvezen; brez pravega ključa RSI zanka,
+daemon in eval ne tečejo. Ostali ključi so opcijski:
+
 ```
 DEEPSEEK_API_KEY=vaš_deepseek_api_ključ
-GEMINI_API_KEY=vaš_gemini_api_ključ    # TTS + spletno iskanje + semantični spomin (embeddingi) — https://aistudio.google.com/apikey
-SERPER_API_KEY=vaš_serper_api_ključ    # (opcijsko) pravo Google iskanje — https://serper.dev
+GEMINI_API_KEY=vaš_gemini_api_ključ    # semantični spomin + TTS + spletno iskanje — https://aistudio.google.com/apikey
+SERPER_API_KEY=vaš_serper_api_ključ    # pravo Google iskanje — https://serper.dev
 ```
 
 Poln seznam nastavitev — vklj. `LLM_TOOL_USE` (agentic tool-use), `MEMORY_EMBEDDINGS`,
@@ -317,7 +338,7 @@ Dosežene faze:
 | **F4** | Trajni RSI spomin (samorazvoj / RDI) — LLM se uči iz napak |
 | **F5** | Revizijski dnevnik + števec LLM-klicov (nadzor stroškov) |
 | **F6** | Poslovni avtomat: ideja → predlog → glavna knjiga (prilivi/stranke) |
-| **P0** | SWE-bench stila samo-eval avtonomnosti — eval lestvica (**14 case-ov**: 8 funkcijskih/Pydantic/FastAPI/avtonomnih + **6 realnih bugfix na zlatih modulih**), `evaluate_autonomy.py` meri prehod rate; **PR gate + nočni eval v CI** — **rezultat 14/14 (100 %)** |
+| **P0** | SWE-bench stila samo-eval avtonomnosti — eval lestvica (**14 case-ov**: 8 funkcijskih/Pydantic/FastAPI/avtonomnih + **6 realnih bugfix na zlatih modulih**), `evaluate_autonomy.py` meri prehod rate; **PR gate + tedenski eval v CI (sobota zjutraj — nizke cene tokenov)** — **rezultat 14/14 (100 %)** |
 | **P1** | Avtonomni daemon (24/7 master proces): prazni agendo, sam predlaga naloge (goal autonomy), teče periodične jobe, heartbeat `.rob_ai/daemon.json` |
 | **P2** | Zapri zanko neuspeha: fail-fast (ostri podpis), fix-task v agendo (konzumira `next_step`), poštena metrika iz `run_reviews` |
 | **P3** | Surgical fix + diagnose-first: minimalen diff brez re-scaffolda, targeted verifikacija, dejanski vzrok iz pytest izhoda (ne glava) |
@@ -518,8 +539,9 @@ Skupaj teh deset zank zapre "sistem izboljšuje lastno hitrost izboljševanja".
   REALNE odvisnosti (AST-sken importov), ne trdo-kodiranih.
 - **Avto-rollback** (`LOOPX_ROLLBACK_ON_FAIL`): ob neuspelem buildu se modul povrne
   na pred-build stanje (snapshot v `.loopx/rollback/`).
-- **CI** (`.github/workflows/ci.yml`): PR gate (pytest + eval dry-run) + nočni eval
-  (poln eval z LLM + Docker, poročilo kot artifact).
+- **CI** (`.github/workflows/ci.yml`): PR gate (pytest + eval dry-run) + tedenski eval
+  (1×/teden, sobota 03:23 UTC — nizke cene tokenov; poln eval z LLM + Docker,
+  poročilo kot artifact).
 
 ## 🧪 Testni standardi
 
