@@ -36,7 +36,7 @@ Namesti (vse, razen Dockerja, so obvezne za svojo raven):
 
 | Orodje | Namestitev | Potrebno za | Obvezno? |
 |---|---|---|---|
-| **Python 3.11+** | python.org/downloads ali `winget install Python.Python.3.11` | vse | ✅ |
+| **Python 3.11** | `winget install Python.Python.3.11` — **ne** najnovejši 3.14 (CI testira na 3.11; 3.14 ima težave z venv in nekaterimi paketi) | vse | ✅ |
 | **git** | git-scm.com | klon | ✅ |
 | **Claude Code CLI** | `npm i -g @anthropic-ai/claude-code` | `./dev` | za B |
 | **Node.js + npm** | nodejs.org | Bun, TS | za B |
@@ -215,6 +215,7 @@ Windows: Docker Desktop mora biti **zagnan** (ne le nameščen).
 |---|---|---|
 | `./rob` / `./dev`: *command not found* | v PowerShell/cmd ni izvajanja brez končnice | uporabi **Git Bash**; ali `bash rob <ukaz>`; ali `dev.bat` |
 | `ModuleNotFoundError: httpx` (ali pydantic, fastapi, dotenv…) | Python paketi niso instalirani | `pip install -r requirements-dev.txt` (v aktiviranem venv-u / sistemskem Pythonu) |
+| venv kreacija pade (`Unable to copy venvlauncher.exe`) / `pip install -r requirements-dev.txt` pade (npr. playwright) | Python najnovejši (3.14) | uporabi **Python 3.11** (`winget install Python.Python.3.11`); venv ni potreben — sistemski Python |
 | `ModuleNotFoundError: gbrain` / `gstack` / `graphify` | ob zagonu izven pytest-a, če koda klice repos paket | repos paketi so samo za pytest (jih doda `pytest.ini`); core engine jih ne rabi. Teci prek `./rob test` / `pytest`. |
 | Build pade / eval preskočen, `DEEPSEEK_API_KEY secret ni nastavljen` | `.env` nima pravega ključa (ali ima placeholder `sk-your-deepseek-api-key-here`) | vpiši pravi `DEEPSEEK_API_KEY=sk-...` v `.env` in preveri s `python -c "from core.config import settings; print(settings.is_real_key_available())"` → `True` |
 | `./dev`: *'claude' ni na PATH* | Claude Code CLI ni instaliran | `npm i -g @anthropic-ai/claude-code`; preveri `claude --version` |

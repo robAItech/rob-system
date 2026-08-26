@@ -122,7 +122,7 @@ Rob AI Studio/
 
 | Orodje | Namestitev | Za kaj |
 |---|---|---|
-| **Python 3.11+** | python.org/downloads ali `winget install Python.Python.3.11` | jedro, RSI zanka, daemon |
+| **Python 3.11** | `winget install Python.Python.3.11` — **ne** najnovejši 3.14 (CI testira na 3.11) | jedro, RSI zanka, daemon |
 | **git** | git-scm.com | klon + CI |
 | **Claude Code CLI** | `npm i -g @anthropic-ai/claude-code` | obvezen za `./dev` (proxy → claude); core engine ga ne rabi |
 | **Node.js + npm** | nodejs.org | Bun + TS odvisnosti |
