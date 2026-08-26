@@ -5,8 +5,9 @@ on:
     branches: [master]
   pull_request:
   schedule:
-    # Nočni eval avtonomnosti — 03:23 UTC (minuta 23, izogib :00/:30).
-    - cron: '23 3 * * *'
+    # Nočni eval avtonomnosti — 1× tedensko, sobota zjutraj 03:23 UTC
+    # (vikend = nizke cene tokenov; minuta 23, izogib :00/:30).
+    - cron: '23 3 * * 6'
   workflow_dispatch:
 
 jobs:
