@@ -55,7 +55,8 @@ Na tem repoju delata **DVA (ali več) računalnikov hkrati** v načinu
 | **Agenda (naloge)** | worker → master prek HTTP `/fleet/claim` + `/fleet/result` | takoj (eventual) |
 | **Spomin (učne tabele)** | worker potegne pred nalogo, pošlje po nalogi (`/fleet/memory`) | po nalogi |
 | **Koda / docs** | git (`pull --rebase` / `push`) | ročno / po potrebi |
-| **Backup spomina+agende** | `rob fleet backup` → `fleet/backup.json` → git | ob zagonu / ročno |
+| **Workerjevi build-i (`actions/`)** | worker po uspešnem build-u commit+push (`fleet: worker build <mod>`); master jih dobi ob naslednjem pull-u | po build-u |
+| **Backup spomina+agende+actions** | `rob fleet backup` → `fleet/backup.json` + `actions/` → git | ob zagonu / ročno |
 | **Heartbeat workerjev** | `/fleet/heartbeat` → `rob fleet status` | ~30 s |
 
 ## Povezave med stroji (network promet) — KAJ JE NORMALNO

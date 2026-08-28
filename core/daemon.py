@@ -613,6 +613,12 @@ def _reap_task(entry: dict, settings, cfg, active: list) -> dict:
     if getattr(settings, "fleet_role", "standalone") == "worker" and item.get("fleet_claimed"):
         _fleet_report_result(settings, item, ok, detail=f"rc={rc}", duration_s=duration)
         _fleet_push_memory(settings)
+        # Uspešen build → zgrajeni modul commit+push v git, da ga dobi master.
+        if ok:
+            try:
+                fleet.commit_worker_actions(item.get("target", ""))
+            except Exception as e:
+                _append_error(f"fleet commit actions: {e}")
 
     audit.record(event="daemon-task", project=item.get("target", item_id),
                  status="ok" if ok else "failed",

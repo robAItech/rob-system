@@ -229,7 +229,9 @@ def _cmd_backup() -> int:
     }
     BACKUP_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
                            encoding="utf-8")
-    if subprocess.call(["git", "add", "fleet/backup.json"], cwd=PROJECT_ROOT) != 0:
+    # Vključi tudi actions/ (zgrajeni moduli — workerjevi build-i pridejo sem
+    # prek git-a; tudi masterjevi neposredni `rob build`).
+    if subprocess.call(["git", "add", "fleet/backup.json", "actions/"], cwd=PROJECT_ROOT) != 0:
         print("[fleet] git add ni uspel")
         return 1
     # Ni sprememb → backup je že aktualen, nič za commit.
@@ -246,6 +248,27 @@ def _cmd_backup() -> int:
         return 1
     print(f"[fleet] backup commit + push OK → fleet/backup.json ({ts})")
     return 0
+
+
+def commit_worker_actions(module: str) -> bool:
+    """Worker: po uspešnem build-u commit-a svoj `actions/<module>` v git in
+    push-a — tako kodo dobi tudi master (prek naslednjega backup pull-a).
+    Ne dotika se `fleet/backup.json` (to je masterjev izvoz). Idempotentno:
+    brez sprememb ni commit-a. Push poskusi dvakrat (pre-push hook lahko ob
+    prvem naredi pull --rebase in prekine)."""
+    if not module:
+        return False
+    if subprocess.call(["git", "add", f"actions/{module}"], cwd=PROJECT_ROOT) != 0:
+        return False
+    if subprocess.call(["git", "diff", "--cached", "--quiet"], cwd=PROJECT_ROOT) == 0:
+        return False   # ni sprememb → nič za commit
+    if subprocess.call(["git", "commit", "-m", f"fleet: worker build {module}"],
+                       cwd=PROJECT_ROOT) != 0:
+        return False
+    if subprocess.call(["git", "push"], cwd=PROJECT_ROOT) != 0:
+        # pre-push hook je morda naredil rebase in prekinil → poskusi še enkrat
+        subprocess.call(["git", "push"], cwd=PROJECT_ROOT)
+    return True
 
 
 def _cmd_restore() -> int:
