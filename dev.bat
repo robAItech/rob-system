@@ -9,4 +9,10 @@ REM   dev.bat --proxy-only     samo LiteLLM na 4010 v ospredju
 REM   dev.bat --dashboard-only samo Command-Center (bun src/server.ts) na 8787
 REM   dev.bat --claude-only    samo claude ob že obstoječem proxyju
 cd /d "%~dp0"
+REM Aktiviraj venv (Windows: Scripts\activate.bat), če obstaja; sicer sistemski python.
+if exist "engine\Scripts\activate.bat" (
+    call "engine\Scripts\activate.bat"
+) else if exist "venv\Scripts\activate.bat" (
+    call "venv\Scripts\activate.bat"
+)
 python core\dev_cli.py %*

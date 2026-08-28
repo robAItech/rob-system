@@ -6,11 +6,32 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Aktiviraj venv, če obstaja; sicer uporabi sistemski python (fallback).
+# Cross-platform: Windows venv ima Scripts/activate, POSIX bin/activate.
+# Ime je lahko `venv` ali `engine` (obe se pojavljata v tem repoju).
+# Fallback: če `python` ni na PATH (Git Bash na Windowsu), posreduj na
+# `py -3` (Windows launcher) ali `python3`.
 # Omogoča `./rob test`/`build`/`deploy` tudi brez nameščenega venv-a.
 activate_venv() {
-    if [ -f "$PROJECT_DIR/venv/bin/activate" ]; then
+    local activate_path=""
+    local dir sub
+    for dir in venv engine; do
+        for sub in bin Scripts; do
+            if [ -f "$PROJECT_DIR/$dir/$sub/activate" ]; then
+                activate_path="$PROJECT_DIR/$dir/$sub/activate"
+                break 2
+            fi
+        done
+    done
+    if [ -n "$activate_path" ]; then
         # shellcheck disable=SC1091
-        source "$PROJECT_DIR/venv/bin/activate"
+        source "$activate_path"
+    fi
+    if ! command -v python >/dev/null 2>&1; then
+        if command -v py >/dev/null 2>&1; then
+            python() { py -3 "$@"; }
+        elif command -v python3 >/dev/null 2>&1; then
+            python() { python3 "$@"; }
+        fi
     fi
     return 0
 }

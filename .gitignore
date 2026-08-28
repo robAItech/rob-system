@@ -32,6 +32,7 @@ client_secret.json
 
 # Python (sodelavec / .rob_ai)
 venv/
+engine/
 __pycache__/
 *.py[cod]
 *$py.class
