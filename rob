@@ -6,27 +6,39 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Aktiviraj venv, če obstaja; sicer uporabi sistemski python (fallback).
-# Cross-platform: Windows venv ima Scripts/activate, POSIX bin/activate.
-# Ime je lahko `venv` ali `engine` (obe se pojavljata v tem repoju).
-# Fallback: če `python` ni na PATH (Git Bash na Windowsu), posreduj na
-# `py -3` (Windows launcher) ali `python3`.
-# Omogoča `./rob test`/`build`/`deploy` tudi brez nameščenega venv-a.
-activate_venv() {
-    local activate_path=""
-    local dir sub
+# Odporno na to, KATERI bash poganja skripto (Git Bash ali WSL):
+# - Windows venv: Scripts/python(.exe), POSIX venv: bin/python.
+# - Ime je lahko `venv` ali `engine` (obe se pojavljata v tem repoju).
+# - NE zanašamo se na `source activate` — Windows venv skripta je CRLF in v
+#   WSL razbije; namesto tega python() kaže direktno na venv python.exe, njen
+#   Scripts/bin pa damo na PATH (da `rob dev` najde litellm).
+# - Brez venv-a: poskusi `py -3` (Windows launcher), nato obstoječi
+#   python/python3 — s POZORILOM, da ne bo nejasnih napak.
+_venv_python() {
+    local dir sub cand
     for dir in venv engine; do
-        for sub in bin Scripts; do
-            if [ -f "$PROJECT_DIR/$dir/$sub/activate" ]; then
-                activate_path="$PROJECT_DIR/$dir/$sub/activate"
-                break 2
-            fi
+        for sub in Scripts bin; do
+            for cand in python python.exe; do
+                if [ -x "$PROJECT_DIR/$dir/$sub/$cand" ]; then
+                    printf '%s\n' "$PROJECT_DIR/$dir/$sub/$cand"
+                    return 0
+                fi
+            done
         done
     done
-    if [ -n "$activate_path" ]; then
-        # shellcheck disable=SC1091
-        source "$activate_path"
+    return 1
+}
+
+activate_venv() {
+    local venv_py
+    venv_py="$(_venv_python)" || true
+    if [ -n "$venv_py" ]; then
+        export PATH="$(dirname "$venv_py"):$PATH"
+        python() { "$venv_py" "$@"; }
+        return 0
     fi
     if ! command -v python >/dev/null 2>&1; then
+        echo "[rob] OPOZORILO: ni najdenega venv-a (venv|engine); uporabljam sistemski python." >&2
         if command -v py >/dev/null 2>&1; then
             python() { py -3 "$@"; }
         elif command -v python3 >/dev/null 2>&1; then
