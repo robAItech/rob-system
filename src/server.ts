@@ -1738,6 +1738,38 @@ const server = Bun.serve({
       if (await f.exists()) { try { d = JSON.parse(await f.text()) as Record<string, unknown>; } catch { /* */ } }
       return json({ ok: true, ...d });
     }
+    // P9 — fleet status: workerji, agenda, daemon, spomin (živi pregled flote).
+    if (req.method === 'GET' && url.pathname === '/api/fleet') {
+      const wf = Bun.file(`${OUT_ROOT}/.rob_ai/fleet_workers.json`);
+      let workers: Record<string, unknown> = {};
+      if (await wf.exists()) { try { workers = JSON.parse(await wf.text()); } catch { /* */ } }
+      const af = Bun.file(`${OUT_ROOT}/.rob_ai/agenda.json`);
+      let items: Array<Record<string, unknown>> = [];
+      if (await af.exists()) { try { items = JSON.parse(await af.text()); } catch { /* */ } }
+      const ag: Record<string, number> = { pending: 0, running: 0, done: 0, failed: 0, total: items.length };
+      for (const it of items) {
+        const s = String(it?.status || '');
+        if (s !== 'total' && s in ag) ag[s]++;
+      }
+      const df = Bun.file(`${OUT_ROOT}/.rob_ai/daemon.json`);
+      let daemon: Record<string, unknown> = {};
+      if (await df.exists()) { try { daemon = JSON.parse(await df.text()); } catch { /* */ } }
+      let memory: Record<string, number> = {};
+      try {
+        const mp = Bun.spawn({
+          cmd: ['python', '-c', 'from core.memory_sync import count_memory; import json; print(json.dumps(count_memory()))'],
+          cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+        });
+        const mo = await new Response(mp.stdout).text();
+        await mp.exited;
+        memory = JSON.parse(mo.trim() || '{}');
+      } catch { /* brez pythona → spomin ni na voljo */ }
+      return json({ ok: true, workers, agenda: ag, memory, daemon: {
+        state: daemon.state || null, heartbeat_ts: daemon.heartbeat_ts || null,
+        current_tasks: daemon.current_tasks || null,
+      } });
+    }
     if (req.method === 'POST' && url.pathname === '/api/agenda') {
       const raw = await req.text().catch(() => '');
       let body: { goal?: unknown; kind?: unknown; repeat?: unknown } = {};

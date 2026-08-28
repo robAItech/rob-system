@@ -53,6 +53,30 @@ Na tem repoju delata **DVA (ali več) računalnikov hkrati** v načinu
 | **Backup spomina+agende** | `rob fleet backup` → `fleet/backup.json` → git | ob zagonu / ročno |
 | **Heartbeat workerjev** | `/fleet/heartbeat` → `rob fleet status` | ~30 s |
 
+## Povezave med stroji (network promet) — KAJ JE NORMALNO
+
+Worker ↔ master komunicirata **stalno** prek HTTP-ja (master :8789). To NI
+napad, NI napaka in NE smeš tega blokirati ali "popravljati":
+
+| Kdaj | Worker → master | Zakaj |
+|---|---|---|
+| ob vsaki nalogi | `POST /fleet/claim` | worker prosi za naslednjo nalogo |
+| po vsaki nalogi | `POST /fleet/result` | javi izid (done/failed) |
+| vsakih ~30 s | `POST /fleet/heartbeat` | javi, da je živ + kaj dela |
+| ob boot / pred nalogo / vsakih 60 s | `GET /fleet/memory` | potegne masterjev spomin (fresh lekcije) |
+| po nalogi / vsakih 60 s | `POST /fleet/memory` | pošlje svoje nove lekcije nazaj |
+
+Master → git: **vsako uro** `rob fleet backup` (commit `fleet backup ...` +
+push `fleet/backup.json`). Master → dashboard: `/api/fleet` bere
+`fleet_workers.json` (živi prikaz v Command Centeru).
+
+Če torej vidiš:
+- redne HTTP klice na `:8789` iz drugega stroja → **normalno** (fleet protokol),
+- commit `fleet backup ...` vsako uro → **normalno** (avtomatski backup),
+- spremembe `fleet/backup.json` → **normalno** (avtomatski izdelek),
+- worker občasno "izgine" iz lokalne agende ob rebootu → **normalno** (master ga
+  re-claim-a po lease TTL 30 min; zaščita pred podvajanjem).
+
 ## Napake, ki NISO napake
 
 - `git push` → `[rejected] non-fast-forward` → samo pull --rebase + push.

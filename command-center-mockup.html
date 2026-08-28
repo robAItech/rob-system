@@ -81,6 +81,10 @@
   .view-head .meta{font-size:11px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;}
 
   .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;}
+  /* P9 fleet status — živi pregled drugih strojev */
+  .fleet-body{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+  .fleet-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 9px;border-radius:6px;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+  .fleet-row b{color:var(--accent);font-family:ui-monospace,monospace;font-size:11px}
   .kpi{position:relative;border:1px solid var(--line);border-radius:6px;background:linear-gradient(180deg,var(--surface),var(--bg));padding:15px 16px;overflow:hidden;}
   .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent);opacity:.7;}
   .kpi .k{font-family:var(--font-display);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);}
@@ -466,6 +470,12 @@
         <div class="kpi" onclick="show('agenda')" title="Odpri Agenda"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">17</div><div class="d">GBRAIN task_history</div></div>
         <div class="kpi warn" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">259</div><div class="d">blacklist vzorcev</div></div>
         <div class="kpi" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">AST vozlišča</div><div class="v" id="kpi-nodes">158</div><div class="d">GRAPHIFY graf</div></div>
+      </div>
+
+      <!-- P9 fleet status — živi pregled drugih strojev (poll 5 s) -->
+      <div class="panel">
+        <div class="phead"><span class="ptitle">🛰️ Fleet · drugi stroji</span><span class="ptag">P9 · ŽIVO</span></div>
+        <div class="pbody fleet-body" id="fleet-body"><span style="color:var(--faint)">nalaganje …</span></div>
       </div>
 
       <div class="panel bracket">
@@ -1205,6 +1215,37 @@
     render();
   }
 
+  // ── Fleet (P9) — živi status drugih strojev ─────────────────────
+  async function loadFleet(){
+    try{
+      const r=await fetch('/api/fleet');
+      if(r.ok){ const d=await r.json(); if(d && d.ok) renderFleet(d); }
+    }catch(e){ /* flota nedosegljiva — zadnje stanje ostane */ }
+  }
+  function fleetAge(ts){
+    if(!ts) return '?';
+    const s=Math.max(0,Math.floor(Date.now()/1000-Number(ts)));
+    if(s<90) return 'zdaj';
+    if(s<3600) return 'pred '+(s/60|0)+' min';
+    return 'pred '+(s/3600|0)+' h';
+  }
+  function renderFleet(d){
+    const el=document.getElementById('fleet-body'); if(!el) return;
+    const workers=d.workers||{}, agenda=d.agenda||{}, memory=d.memory||{};
+    const mem=Object.entries(memory).map(([k,v])=>`${k.replace(/_/g,' ')} ${v}`).join(' · ');
+    const state=(d.daemon&&d.daemon.state)?d.daemon.state:'—';
+    let html=`<div class="fleet-row"><span>agenda</span><b>${agenda.pending||0} čaka · ${agenda.running||0} teče</b></div>`;
+    if(mem) html+=`<div class="fleet-row"><span>spomin</span><span>${mem}</span></div>`;
+    html+=`<div class="fleet-row"><span>daemon</span><span>${state}</span></div>`;
+    const wnames=Object.keys(workers);
+    if(wnames.length){
+      wnames.forEach(w=>{const wd=workers[w]||{};html+=`<div class="fleet-row"><span>● ${w}</span><span>${fleetAge(wd.last_seen)} · ${(wd.tasks||[]).length} nalog</span></div>`;});
+    } else {
+      html+=`<div class="fleet-row" style="color:var(--faint)">— ni aktivnih workerjev (master / standalone)</div>`;
+    }
+    el.innerHTML=html;
+  }
+
   // ── Izvoz ───────────────────────────────────────────────────────
   function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2200);}
   function download(name,content,type){const b=new Blob([content],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();URL.revokeObjectURL(a.href);toast('Izvoz: '+name);document.getElementById('export').classList.remove('open');}
@@ -1500,5 +1541,6 @@
   render(); setInterval(refresh,3800);
   restoreConvo();           // pogovor preživi refresh (localStorage)
   loadLive(); setInterval(loadLive,10000);
+  loadFleet(); setInterval(loadFleet,5000);   // P9 — živi fleet status
   loadGraph(); loadResearch();
 </script>
