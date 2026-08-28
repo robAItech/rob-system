@@ -10,82 +10,86 @@ vidi nič; samo tvoje naprave (v isti tailnet).
 
 ## Stanje na tem sistemu (preverjeno — DELUJE)
 
-- **Tailscale nameščen in povezan.**
-- Tailnet IP tega PC-ja: **`100.125.242.115`** (`tailscale ip -4`).
-- Dashboard dosegljiv prek tailnet IP: **`http://100.125.242.115:8787` → HTTP 200** ✓
-- Device: `pcrlprogntb` · `rob.istria@`.
+- **Tailscale nameščen in povezan** (installer: `https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe`).
+- Ta PC (server): **`desktop-a6hvo7u`** · Tailnet IP **`100.93.17.4`** (`tailscale ip -4`).
+- Dashboard dosegljiv prek tailnet IP: **`http://100.93.17.4:8787/command` → HTTP 200** ✓
+- Druga naprava v tailnetu: **`pcrlprogntb`** · `100.125.242.115` — dosegljiva
+  (`tailscale ping 100.125.242.115` → `pong … in ~6ms`).
+- Obe napravi pod računom `rob.istria@`.
 - Vzpostavljeno tako, da se v zagnanem **Tailscale GUI** (tailscale-ipn.exe)
   potrdi/Connect (in po potrebi `tailscale up` v PowerShell).
 
-## DOKONČAJ `tailscale up` (najprej to)
+## Prva namestitev + `tailscale up` (na novem stroju)
 
-Ko se prijaviš ("Login successful"), moraš še **vzpostaviti povezavo**:
+### 1. Namestitev
 
-### Možnost A — prek GUI (najenostavnejše)
-1. Odpri **Tailscale** aplikacijo (vseeno se je odprla / ikona na systray).
-2. V oknu izberi/najdi gumb **»Connect«** (ali »Up«).
-3. Če odpre spletno okno za **avtorizacijo/consent**, ga potrdi.
-4. Po tem postane status **"Connected"** in dobiš IP.
+```powershell
+# Najenostavneje: prenesi installer in ga zaženi (potrdi UAC).
+# https://tailscale.com/download/windows
+# ali neposredno:
+Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "$env:TEMP\tailscale-setup.exe"
+Start-Process "$env:TEMP\tailscale-setup.exe"
+```
 
-### Možnost B — prek CLI (PowerShell, ne Git Bash)
+Po namestitvi je `tailscale.exe` v `C:\Program Files\Tailscale\`.
+
+### 2. Avtorizacija
+
 ```powershell
 tailscale up
 ```
-- Če se odpre URL soglasja, ga odpri in potrdi.
-- Po tem preveriš:
+
+- Prvič vrne **avtorizacijski URL** (npr. `https://login.tailscale.com/a/xxxx`).
+- Odpri URL v brskalniku, prijavi se z **istim računom** (`rob.istria@`) in odobri.
+- Po tem `tailscale status` pokaže `Self` kot online.
+
+### 3. Preverba
 
 ```powershell
-tailscale status        # Self naj bo "online"
-tailscale ip -4         # vrne npr. 100.x.y.z (tunel je vzpostavljen)
+tailscale status        # Self = ta PC, zraven druge naprave v tailnetu
+tailscale ip -4         # npr. 100.93.17.4 (tunel vzpostavljen)
+tailscale ping <ip>     # ping druge naprave (npr. 100.125.242.115)
 ```
 
-### Diagnoza, če je "Unable to connect to coordination server"
-- Pomeni, da daemon še ni sinhroniziral z Tailscale strežnikom — pogosto samo
-  potrdiš `/ dokoletna privolitev v **up** (GUI Connect ali `tailscale up`) in
-  počakaš nekaj sekund.
-- Preveri z `tailscale status` — ko ni več "starting"/`NoState`, je OK.
+### Diagnoza, če je "Logged out" / "Unable to connect to coordination server"
+
+- Daemon je nameščen, a ni avtoriziran → `tailscale status` reče `Logged out`
+  in izpiše login URL. Odpri ga in odobri, nato ponovi `tailscale up`.
+- Če je `NoState` / "Tailscale is starting", počakaj nekaj sekund in ponovi
+  `tailscale status`.
 
 ## Kako dosežeš dashboard prek omrežja
 
 ### 1. Preveri, da je daemon zares »up«
 
-Po `tailscale up` (zgoraj) preveri v PowerShell:
-
 ```powershell
-tailscale status        # prikaže Self + druge naprave; če "starting", počakaj
-tailscale ip -4         # npr. 100.125.242.115 (daemon up → IP prisoten)
+tailscale status        # prikaže Self + druge naprave
+tailscale ip -4         # 100.93.17.4 (daemon up → IP prisoten)
 ```
-
-Če ti `tailscale status` še reče `NoState` / "Tailscale is starting", **še ni
-dokončano** — ponovi korak "DOKONČAJ tailscale up" zgoraj in počakaj.
 
 ### 2. Odpri dashboard prek tailnet IP
 
 ```text
-http://<tailscale-IP>:8787
-```
-
-Primer (IP iz tega setupa):
-```text
-http://100.125.242.115:8787
+http://100.93.17.4:8787/command
 ```
 
 Ta naslov je dosegljiv **samo s tvojih naprav v tailnetu** — varno za javni
-dostop izven doma.
+dostop izven doma. Iz druge naprave odpri ta isti URL.
 
 ### 3. Dostop iz drugih naprav
 
 1. Na laptopu/telefonu namesti **Tailscale** in se prijavi z **istim računom**
    (`rob.istria@gmail.com`).
-2. Ko so vse naprave v istem tailnetu, odprite `http://<tailscale-IP>:8787`
+2. Ko so vse naprave v istem tailnetu, odprite `http://100.93.17.4:8787/command`
    z katere koli naprave.
 
 ## Uporaben CLI
 
 ```powershell
-tailscale up            # vzpostavi tunel
+tailscale up            # vzpostavi tunel (prvič: avtorizacija v brskalniku)
 tailscale down          # ustavi tunel (lokalno še dela)
 tailscale status        # seznam naprav v tailnetu
+tailscale ping <ip>     # preveri povezavo do druge naprave
 tailscale ip -4         # self IPv4 (tailnet)
 tailscale version       # verzija
 ```
@@ -96,7 +100,7 @@ tailscale version       # verzija
   namig za remote dostop. Če ni nameščen → opozori, lokalni dashboard še dela.
 - Dashboard ob poslušanju na `0.0.0.0:8787` je dosegljiv prek LAN IP
   (`http://192.168.0.9:8787`, samo v isti mreži) in prek Tailscale IP
-  (`http://100.x.x.x:8787`, kjer koli).
+  (`http://100.93.17.4:8787`, kjer koli).
 
 ## Varnost — ključno
 
