@@ -1,9 +1,21 @@
 #!/usr/bin/env bash
 set -e
 
+# ── Samozdravljenje CRLF (Windows checkout) ────────────────────────────────
+# Git z core.autocrlf lahko razveljavi .gitattributes in ta skripta dobi CRLF
+# končnice vrstic — bash pade. Če zaznamo CR, se ponovno izvedemo z LF.
+# (GNU grep CR odstrani pred match-anjem, zato uporabimo tr|cmp.)
+# GNU grep pred match-anjem odstrani CR, zato `grep $'\r'` ne deluje — tr|cmp da.
+if [ -f "$0" ] && [ -r "$0" ] && ! tr -d '\r' < "$0" | cmp -s - "$0"; then
+    _ROB_TMP="$(mktemp)"
+    tr -d '\r' < "$0" > "$_ROB_TMP"
+    ROBO_ORIGIN="$(cd "$(dirname "$0")" && pwd)"
+    ROBO_ORIGIN="$ROBO_ORIGIN" exec bash "$_ROB_TMP" "$@"
+fi
+
 # Repo koren = direktorij te skripte (deluje na Windows/Git Bash in WSL/Linux),
 # ne trdo-kodirana pot. To je potrebno za `rob dev`, ki zažene bun iz korena.
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="${ROBO_ORIGIN:-$(cd "$(dirname "$0")" && pwd)}"
 
 # Aktiviraj venv, če obstaja; sicer uporabi sistemski python (fallback).
 # Odporno na to, KATERI bash poganja skripto (Git Bash ali WSL):
@@ -41,10 +53,12 @@ _venv_python() {
 }
 
 activate_venv() {
-    local venv_py py_dir sub
-    venv_py="$(_venv_python)" || true
-    if [ -n "$venv_py" ]; then
-        py_dir="$(dirname "$venv_py")"
+    local py_dir sub
+    # GLOBALNO (ne local): `python()` funkcija teče v globalnem scope-u PO tem,
+    # ko activate_venv že vrne — local bi izginil in python() bi klicala prazno.
+    _ROB_PY="$(_venv_python)" || true
+    if [ -n "$_ROB_PY" ]; then
+        py_dir="$(dirname "$_ROB_PY")"
         export PATH="$py_dir:$PATH"
         # Console skripte (pip/litellm/pytest) so lahko v Scripts/ ali bin/ —
         # ni nujno ista mapa kot python.exe (npr. portabilen Python na korenu).
@@ -53,7 +67,7 @@ activate_venv() {
                 export PATH="$py_dir/$sub:$PATH"
             fi
         done
-        python() { "$venv_py" "$@"; }
+        python() { "$_ROB_PY" "$@"; }
         return 0
     fi
     if ! command -v python >/dev/null 2>&1; then
