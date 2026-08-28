@@ -389,6 +389,47 @@ def _ensure_services(cfg) -> bool:
     return _proxy_ok(cfg)
 
 
+def _fleet_server_ok(settings) -> bool:
+    """Ali fleet strežnik (uvicorn :ROB_FLEET_PORT) že posluša."""
+    return dev_cli.port_listener(getattr(settings, "fleet_port", 8789)) is not None
+
+
+def _ensure_fleet_server(settings) -> bool:
+    """Master: idempotentno dvigne fleet strežnik (`core/fleet.py serve`) v
+    ozadju. Fail-closed: brez ROB_FLEET_TOKEN se `core/fleet.py serve` sam
+    ustavi — tukaj brez tokena sploh ne zaženemo (in javimo razlog)."""
+    if not getattr(settings, "fleet_token", ""):
+        print("[daemon] ROB_FLEET_TOKEN ni nastavljen — fleet strežnik NI dvignjen "
+              "(fail-closed; nastavi v .env na masterju).")
+        return False
+    if _fleet_server_ok(settings):
+        return True   # že teče (npr. ročno `rob fleet serve`)
+    env = dict(os.environ)
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env["PYTHONUTF8"] = "1"
+    try:
+        kwargs: dict = {}
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        subprocess.Popen(
+            [sys.executable, "core/fleet.py", "serve"],
+            env=env, cwd=PROJECT_ROOT,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
+    except OSError as e:
+        print(f"[daemon] fleet serve zagon ni uspel: {e}")
+        _append_error(f"fleet serve: {e}")
+        return False
+    # Počakaj do 5 s, da uvicorn vzpostavi port.
+    for _ in range(10):
+        if _fleet_server_ok(settings):
+            print(f"[daemon] fleet strežnik dvignjen na :{settings.fleet_port}.")
+            return True
+        time.sleep(0.5)
+    print("[daemon] fleet strežnik se ni vzpostavil v 5 s.")
+    _append_error("fleet serve: ni vzpostavljen v 5 s")
+    return False
+
+
 # ------------------------------------------------------------------ #
 #  Izvajanje dela
 # ------------------------------------------------------------------ #
@@ -667,6 +708,9 @@ def run_loop(settings, cfg, once: bool = False) -> int:
         if not _ensure_services(cfg):
             print("[daemon] proxy ni dosegljiv po zagonu — stanje degraded, retry v zanki.")
             _write_heartbeat("degraded", current_tasks=None)
+        # P9 — master: avto-zagon fleet strežnika (:8789) v ozadju.
+        if getattr(settings, "fleet_role", "standalone") == "master":
+            _ensure_fleet_server(settings)
     print(f"[daemon] zagnan (PID {os.getpid()}, once={once}, workers={workers}, "
           f"role={getattr(settings, 'fleet_role', 'standalone')})")
 
@@ -688,6 +732,13 @@ def run_loop(settings, cfg, once: bool = False) -> int:
                     time.sleep(settings.daemon_idle_seconds)
                     continue
                 break
+
+            # Fleet strežnik (master): če pade, ga občasno spet dvignemo.
+            if (not is_worker and getattr(settings, "fleet_role", "standalone") == "master"
+                    and not _fleet_server_ok(settings)
+                    and now - last_hb >= settings.daemon_proxy_retry_seconds):
+                print("[daemon] fleet strežnik dol — ponovni dvig.")
+                _ensure_fleet_server(settings)
 
             # HEALTH GATE — brez proxyja ni novih nalog/tickov (worker ga preskoči).
             if not is_worker and not _proxy_ok(cfg):

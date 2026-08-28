@@ -193,9 +193,9 @@ pwsh -File scripts\register-autostart.ps1 -Query # preveri
 ```bash
 # MASTER (stroj, ki obdrži agendo + dela; v .env):
 #   ROB_FLEET_ROLE=master
-#   ROB_FLEET_TOKEN=<skupna skrivnost>
-./rob fleet serve            # dvigne /fleet/* na :8789 (samo Tailscale/zasebno!)
-./rob daemon                 # master daemon dela + služi agendo workerjem
+#   ROB_FLEET_TOKEN=<skupna skrivnost>   # obvezno — brez njega fleet server ne vstane
+./rob daemon                 # avto-dvigne fleet strežnik (:8789) + proxy + dashboard,
+                             # dela + služi agendo workerjem. (`rob fleet serve` = ročno/izpeljano)
 
 # WORKER (drugi stroj; v .env):
 #   ROB_FLEET_ROLE=worker
