@@ -5262,7 +5262,7 @@
         }
       ]
     },
-    "exported_at": 1787949451
+    "exported_at": 1787950915
   },
   "agenda": [
     {
@@ -5316,49 +5316,7 @@
       "repeat": null,
       "created_at": 1787688510,
       "updated_at": 1787689168
-    },
-    {
-      "id": "33cd54e79352",
-      "goal": "Izdelaj Python modul fleet_net_test v actions/fleet_net_test/. Funkcija add(a,b) vrne a+b. Vsebuj pytest test, vsi testi 100% zeleni.",
-      "kind": "python",
-      "target": "fleet_net_test",
-      "status": "done",
-      "repeat": null,
-      "created_at": 1787945752,
-      "updated_at": 1787947912,
-      "claimed_by": "DESKTOP-A6HVO7U",
-      "claimed_at": 1787947606,
-      "result_worker": "DESKTOP-A6HVO7U",
-      "duration_s": 306.2,
-      "result_detail": "rc=0"
-    },
-    {
-      "id": "5e6f8c19574a",
-      "goal": "Izdelaj Python modul fleet_sync_test v actions/fleet_sync_test/. Funkcija mul(a,b) vrne a*b. Vsebuj pytest test, vsi testi 100% zeleni.",
-      "kind": "python",
-      "target": "fleet_sync_test",
-      "status": "done",
-      "repeat": null,
-      "created_at": 1787948934,
-      "updated_at": 1787949244,
-      "claimed_by": "DESKTOP-A6HVO7U",
-      "claimed_at": 1787948936,
-      "result_worker": "DESKTOP-A6HVO7U",
-      "duration_s": 308.6,
-      "result_detail": "rc=0"
-    },
-    {
-      "id": "14bd22b9a84d",
-      "goal": "Izdelaj Python modul fleet_sync_test v actions/fleet_sync_test/. Funkcija mul(a,b) vrne a*b. Vsebuj pytest test, vsi testi 100% zeleni.",
-      "kind": "python",
-      "target": "fleet_sync_test",
-      "status": "running",
-      "repeat": null,
-      "created_at": 1787949444,
-      "updated_at": 1787949449,
-      "claimed_by": "DESKTOP-A6HVO7U",
-      "claimed_at": 1787949449
     }
   ],
-  "backed_up_at": 1787949451
+  "backed_up_at": 1787950915
 }
