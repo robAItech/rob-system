@@ -2,7 +2,7 @@
 
 Rob System je **avtonomni AI inženirski stroj**: podaš visokonivojski cilj, sistem
 sam zgenerira specifikacijo, arhitekturo, kodo **in teste**, jih požene, ob napaki
-**sam pozdravi** (RSI zanka) in dostavi delujoč izdelek — ali pa eksplicitno
+**samozdravi** (RSI zanka) in dostavi delujoč izdelek — ali pa eksplicitno
 `FAILED` s posnetkom napake in naučeno lekcijo.
 
 Sistem je grajen iz dveh izvedbenih plasti, ki si delita **isto** Python RSI jedro:
@@ -195,13 +195,12 @@ rob-system/
 
 ### 30 Action modulov
 
-**Edge / varnost:** `api_gateway`, `auth_vault`, `rate_limiter`, `circuit_breaker`,
-`feature_flag`, `api_version_manager`, `secret_rotation`
-**Messaging / orkestracija:** `event_bus`, `task_queue`, `saga_orchestrator`, `webhook_dispatcher`
-**Podatki / validacija:** `csv_parser`, `json_deep_merge`, `string_ops`, `iso8601_util`, `contract_schema_engine`
-**Domena:** `currency_converter`, `invoice_calc`, `isbn_validator`, `warehouse_inventory`, `rsi_engine`
-**Observability:** `observability_metrics`, `audit_trail`, `report_builder`, `mailer`
-**Infra:** `config_loader`, `deployment_manager`, `nexus_command_deck`, `cache_layer`, `retry_wrapper`
+- **Edge / varnost:** `api_gateway`, `auth_vault`, `rate_limiter`, `circuit_breaker`, `feature_flag`, `api_version_manager`, `secret_rotation`
+- **Messaging / orkestracija:** `event_bus`, `task_queue`, `saga_orchestrator`, `webhook_dispatcher`
+- **Podatki / validacija:** `csv_parser`, `json_deep_merge`, `string_ops`, `iso8601_util`, `contract_schema_engine`
+- **Domena:** `currency_converter`, `invoice_calc`, `isbn_validator`, `warehouse_inventory`, `rsi_engine`
+- **Observability:** `observability_metrics`, `audit_trail`, `report_builder`, `mailer`
+- **Infra:** `config_loader`, `deployment_manager`, `nexus_command_deck`, `cache_layer`, `retry_wrapper`
 
 ---
 
