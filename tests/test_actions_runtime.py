@@ -1,8 +1,11 @@
 """Testi za actions runtime app (korak 5) — brez omrežja, brez uvicorn.
 
-Preveri: mount vseh 21 modulov (18 originalnih + 3 nova enterprise: webhook_dispatcher,
-api_version_manager, secret_rotation), allowlist health, auth (401/veljaven ključ),
-rate-limit (429), audit na deljenem busu, toleranca na broken modul.
+Preveri: mount vseh 27 modulov (18 originalnih + 9 nova enterprise/konsolidirana:
+webhook_dispatcher, api_version_manager, secret_rotation, resilience_core,
+telemetry_bus, data_format_utils, identity_federation_router,
+pii_masking_sanitizer, usage_billing_aggregator), allowlist health,
+auth (401/veljaven ključ), rate-limit (429), audit na deljenem busu,
+toleranca na broken modul.
 """
 import sys
 from pathlib import Path
@@ -21,6 +24,8 @@ ALL_NAMES = {
     "feature_flag", "mailer", "nexus_command_deck", "observability_metrics",
     "rate_limiter", "rsi_engine", "saga_orchestrator", "task_queue", "warehouse_inventory",
     "webhook_dispatcher", "api_version_manager", "secret_rotation",
+    "resilience_core", "telemetry_bus", "data_format_utils",
+    "identity_federation_router", "pii_masking_sanitizer", "usage_billing_aggregator",
 }
 
 
@@ -30,13 +35,13 @@ def _admin_key(client) -> str:
     return issued["api_key"]
 
 
-def test_mounts_all_21():
+def test_mounts_all_27():
     app = build_runtime_app(modules=sorted(ALL_NAMES))
     with TestClient(app) as client:
         mods = client.get("/api/runtime/modules").json()
     mounted = {m["name"] for m in mods if m["mounted"]}
     assert mounted == ALL_NAMES
-    assert len(mounted) == 21
+    assert len(mounted) == 27
 
 
 def test_health_endpoints_public():
@@ -44,7 +49,9 @@ def test_health_endpoints_public():
     with TestClient(app) as client:
         for name in ("api_gateway", "contract_schema_engine", "observability_metrics",
                      "saga_orchestrator", "webhook_dispatcher", "api_version_manager",
-                     "secret_rotation"):
+                     "secret_rotation", "resilience_core", "telemetry_bus",
+                     "data_format_utils", "identity_federation_router",
+                     "pii_masking_sanitizer", "usage_billing_aggregator"):
             r = client.get(f"/api/{name}/health")
             assert r.status_code == 200, f"{name}: {r.status_code}"
 

@@ -125,3 +125,93 @@ def test_secret_rotation_revoke_and_due():
         assert rv.json()["revoked"] is True
         # Umaknjena skrivnost ni več rotirljiva.
         assert client.post("/rotate", json={"name": "tmp_key"}).status_code == 404
+
+
+# ── Konsolidirana jedra (arhitekturna revizija 2) ───────────────────────────
+from actions.resilience_core.resilience import (
+    CircuitBreaker,
+    RateLimitPolicy,
+    ResiliencePolicyConfig,
+    retry,
+)
+from actions.data_format_utils.formats import deep_merge, parse_csv, parse_iso
+from actions.telemetry_bus.telemetry import TelemetryBus
+from actions.pii_masking_sanitizer.pii import PIIMasker
+from actions.identity_federation_router.federation import IdPConfig, IdentityFederationRouter
+from actions.usage_billing_aggregator.billing import TariffPackage, UsageBillingAggregator
+
+
+def test_resilience_core_consolidated():
+    # retry (nekoč retry_wrapper) + circuit (nekoč circuit_breaker) + rate-limit.
+    calls = []
+    def flaky():
+        calls.append(1)
+        if len(calls) < 2:
+            raise ValueError("x")
+        return 5
+    assert retry(flaky, attempts=3, delay=0) == 5
+
+    policy = RateLimitPolicy(ResiliencePolicyConfig(rate_limit_max=1, rate_limit_window=10))
+    assert policy.is_allowed("k")[0] is True
+    assert policy.is_allowed("k")[0] is False
+
+
+def test_data_format_utils_consolidated():
+    # csv (nekoč csv_parser) + iso (nekoč iso8601_util) + merge (nekoč json_deep_merge).
+    assert parse_csv("a,b\n1,2\n") == [["a", "b"], ["1", "2"]]
+    assert parse_iso("2024-01-15").year == 2024
+    assert deep_merge({"a": 1}, {"b": 2}) == {"a": 1, "b": 2}
+
+
+def test_telemetry_bus_correlation():
+    from actions.event_bus.event_bus import EventBus
+    import asyncio
+
+    tb = TelemetryBus(event_bus=EventBus())
+    seen = []
+    tb.subscribe(lambda ev: seen.append(ev.type))
+    asyncio.run(tb.publish("order.created", {"correlation_id": "cid-1"}))
+    assert seen == ["order.created"]
+    assert tb.events[0].correlation_id == "cid-1"
+
+
+# ── Nova Action: pii_masking_sanitizer ──────────────────────────────────────
+from actions.pii_masking_sanitizer.main import app as pii_app
+
+
+def test_pii_masking_api():
+    with TestClient(pii_app) as client:
+        client.post("/fields", json={"name": "email", "category": "email", "strategy": "partial"})
+        r = client.post("/mask", json={"data": {"email": "ana@example.com", "name": "Ana"}})
+        assert r.json()["masked"]["email"] != "ana@example.com"
+        assert r.json()["masked"]["name"] == "Ana"
+
+
+# ── Nova Action: identity_federation_router ─────────────────────────────────
+from actions.identity_federation_router.main import app as federation_app
+
+
+def test_identity_federation_api():
+    with TestClient(federation_app) as client:
+        r = client.post("/idps", json={
+            "name": "okta", "issuer": "https://okta.example.com",
+            "token_url": "https://okta.example.com/token", "client_id": "c1", "client_secret": "sec",
+        })
+        assert r.status_code == 200
+        t = client.post("/token", json={"idp": "okta", "grant_type": "client_credentials", "scope": ["api"]})
+        assert t.status_code == 200
+        assert t.json()["subject"].startswith("client:")
+        v = client.post("/validate-jwt", json={"idp": "okta", "token": t.json()["raw_token"]})
+        assert v.json()["valid"] is True
+
+
+# ── Nova Action: usage_billing_aggregator ───────────────────────────────────
+from actions.usage_billing_aggregator.main import app as billing_app
+
+
+def test_usage_billing_api():
+    with TestClient(billing_app) as client:
+        client.post("/tariffs", json={"tenant": "acme", "name": "m", "kind": "metered", "unit_price": 0.01})
+        client.post("/usage", json={"tenant": "acme", "metric": "api_calls", "units": 150})
+        b = client.get("/billing/acme")
+        assert b.json()["cost"] == 1.5

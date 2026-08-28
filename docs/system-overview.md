@@ -28,7 +28,7 @@ z dvema izvedbenima plastema in vmesnikom:
    └──────────────────────────┘
                 │
 ┌───────────────┴────────────────────────────────────────────┐
-│  REZULTAT: out/* artefakti · actions/ (30 modulov)          │
+│  REZULTAT: out/* artefakti · actions/ (36 modulov)          │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -53,8 +53,8 @@ spelje zaporedje: **gbrain → graphify → gstack → hermes → loopx**.
 (`core/embedder.py` — Gemini embeddingi, kosinusni priklic z leksikalnim padcem),
 upravljanje konteksta (`LLM_HEAL_*` — budget prompta, trim messages), paralelizem
 (fork + eval `--workers`), avto-rollback (`LOOPX_ROLLBACK_ON_FAIL`), actions/ kot
-enotna runtime app (`core/actions_runtime.py` — 27 mountanih API modulov od 30,
-3 so knjižnice brez API-ja: csv_parser/iso8601_util/retry_wrapper; + middleware
+enotna runtime app (`core/actions_runtime.py` — 34 mountanih API modulov od 36,
+2 sta knjižnici brez API-ja: csv_parser/retry_wrapper; + middleware
 veriga auth→rate-limit→audit→event-bus) in realni odvisnostni graf
 (`core/actions_graph.py`), ter CI (`.github/workflows/ci.yml`).
 

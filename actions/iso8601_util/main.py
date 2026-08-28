@@ -17,8 +17,8 @@ from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from iso8601_util.core import format_iso, parse_iso
-from iso8601_util.schemas import IsoDateRequest, IsoDateTimeRequest, IsoDateResponse
+from .core import format_iso, parse_iso
+from .schemas import IsoDateRequest, IsoDateTimeRequest, IsoDateResponse
 
 router = APIRouter(prefix="/iso8601", tags=["iso8601"])
 

@@ -75,7 +75,7 @@ Vsak modul se gradi v zaporedju: **gbrain → graphify → gstack → hermes →
 | **Verifikacija + zdravljenje** | LoopX (`core/loopx_bridge.py`) | pytest → DeepSeek popravi → ≤5× → zelen / FAILED |
 | **LLM** | DeepSeek (`core/llm_client.py`, `deepseek-v4-flash`) | generira kodo in popravke |
 | **24/7 avtonomija** | Daemon (`core/daemon.py`) | prazni agendo, sam predlaga naloge, teče vzdrževalne jobe, piše heartbeat |
-| **Končni produkt** | 30 `actions/` modulov | delujoče API storitve s testi |
+| **Končni produkt** | 36 `actions/` modulov | delujoče API storitve s testi |
 
 ---
 
@@ -84,8 +84,9 @@ Vsak modul se gradi v zaporedju: **gbrain → graphify → gstack → hermes →
 - **`actions/<modul>/`** — delujoči moduli: koda + Pydantic sheme + FastAPI + pytest testi (vsi zeleni).
 - **`out/*`** — produktni artefakti (dokumenti, UI, skripte) iz TS Hermes plasti.
 - **`.rob_ai/`** — trajno stanje: `memory.db` (GBRAIN spomin), `graph.json` (graf), `daemon.json` (heartbeat), `agenda.json` (čakalna vrsta).
-- **Enotna runtime app** (`core/actions_runtime.py`, port **:8788**) — **27 API modulov** pod eno verigo: `auth → rate-limit → audit → event-bus` (middleware). 3 moduli so knjižnice brez API-ja (`csv_parser`, `iso8601_util`, `retry_wrapper`).
-- **Enterprise API moduli** (arhitekturna revizija, 2026): `webhook_dispatcher` (HMAC + retry + DLQ), `api_version_manager` (SemVer + canary + BC-break), `secret_rotation` (double-buffer + audit).
+- **Enotna runtime app** (`core/actions_runtime.py`, port **:8788**) — **34 API modulov** pod eno verigo: `auth → rate-limit → audit → event-bus` (middleware). 2 modula sta knjižnici brez API-ja (`csv_parser`, `retry_wrapper`).
+- **Enterprise API moduli** (arhitekturna revizija, 2026): `webhook_dispatcher` (HMAC + retry + DLQ), `api_version_manager` (SemVer + canary + BC-break), `secret_rotation` (double-buffer + audit), `identity_federation_router` (OAuth2/OIDC + PKCE + JWT), `pii_masking_sanitizer` (GDPR/HIPAA maskiranje), `usage_billing_aggregator` (tenant obračun + kvote).
+- **Konsolidirana jedra** (revizija 2026): `resilience_core` (retry + circuit + rate-limit), `telemetry_bus` (korelacijski dogodkovni vod), `data_format_utils` (csv + iso8601 + deep-merge).
 
 ---
 
@@ -99,7 +100,7 @@ Vsak modul se gradi v zaporedju: **gbrain → graphify → gstack → hermes →
   ki izboljša vse prihodnje teke.
 - **24/7 avtonomija:** daemon sam prazni agendo, predlaga nove naloge iz šibkosti
   sistema in teče vzdrževalne jobe (konsolidacija spomina, eval).
-- **Enterprise API pokritje:** 30 modulov od edge (gateway, rate-limit, auth) do
+- **Enterprise API pokritje:** 36 modulov od edge (gateway, rate-limit, auth, federacija) do
   domene (invoice, warehouse) in observability (metrike, audit, poročila).
 - **Nadzor:** CLI (`./rob`) + Command-Center dashboard (:8787) + CI gate.
 
@@ -123,7 +124,7 @@ cp .env.example .env
 #   → v .env vpiši DEEPSEEK_API_KEY=sk-...
 
 # 3. Preverba
-./rob test          # 360 testov — mora biti 100% zeleno
+./rob test          # 366 testov — mora biti 100% zeleno
 
 # 4. Prvi resničen build (kliče DeepSeek)
 ./rob build testmod "Izdelaj Python modul testmod v actions/testmod/. Funkcija add(a,b) vrne a+b. Vsebuj pytest test, vsi testi 100% zeleni."
@@ -146,7 +147,7 @@ bun install
 
 | Ukaz | Kaj naredi |
 |---|---|
-| `./rob test` | Celotna testna matrika (360 testov) |
+| `./rob test` | Celotna testna matrika (366 testov) |
 | `./rob review` | LLM arhitekturna revizija (pytest + telemetrija + predlogi) |
 | `./rob build <mod> "<direktiva>"` | Avtonomno zgradi modul (RSI zanka) |
 | `./rob eval` | SWE-bench stila samo-eval avtonomnosti (`--dry-run` brez LLM) |
@@ -175,7 +176,7 @@ rob-system/
 │   ├── loopx_bridge.py     #   RSI zanka: pytest → DeepSeek heal → ≤5×
 │   ├── daemon.py           #   avtonomni daemon 24/7 (P1)
 │   ├── dev_cli.py          #   orkestracija proxy+dashboard+claude (P4)
-│   ├── actions_runtime.py  #   27 API modulov kot enotna app (:8788)
+│   ├── actions_runtime.py  #   34 API modulov kot enotna app (:8788)
 │   ├── actions_graph.py    #   realni odvisnostni robovi modulov
 │   ├── gbrain_bridge.py    #   trajni spomin (SQLite)
 │   ├── graphify_bridge.py  #   AST graf kode
@@ -183,7 +184,7 @@ rob-system/
 │   ├── hermes_bridge.py    #   ogrodje actions/<mod>/
 │   ├── llm_client.py       #   DeepSeek LLM
 │   └── ...                 #   agenda, run_review, meta_eval, embedder, skill_bridge ...
-├── actions/                # 30 produkcijskih modulov (koda + testi)
+├── actions/                # 36 produkcijskih modulov (koda + testi)
 ├── src/                    # TS Command-Center dashboard (server.ts, :8787)
 ├── bridges/litellm_config.yaml   # DeepSeek proxy routing (:4010)
 ├── scripts/                # autostart.bat + register-autostart.ps1 (daemon ob prijavi)
@@ -191,23 +192,24 @@ rob-system/
 │                           # hermes-agent, loopx, gbrain-evals (nič ločenega pip install)
 ├── evaluate_autonomy.py    # P0 eval (./rob eval)
 ├── .github/workflows/ci.yml# CI: PR gate + tedenski eval (sob 03:23 UTC)
-└── tests/                  # 37 test datotek, 360 testov
+└── tests/                  # 38 test datotek, 366 testov
 ```
 
-### 30 Action modulov
+### 36 Action modulov
 
-- **Edge / varnost:** `api_gateway`, `auth_vault`, `rate_limiter`, `circuit_breaker`, `feature_flag`, `api_version_manager`, `secret_rotation`
-- **Messaging / orkestracija:** `event_bus`, `task_queue`, `saga_orchestrator`, `webhook_dispatcher`
-- **Podatki / validacija:** `csv_parser`, `json_deep_merge`, `string_ops`, `iso8601_util`, `contract_schema_engine`
+- **Edge / varnost / identiteta:** `api_gateway`, `auth_vault`, `rate_limiter`, `circuit_breaker`, `feature_flag`, `api_version_manager`, `secret_rotation`, `identity_federation_router`, `pii_masking_sanitizer`
+- **Resilience / obračun:** `resilience_core`, `retry_wrapper`, `usage_billing_aggregator`
+- **Messaging / orkestracija / telemetrija:** `event_bus`, `task_queue`, `saga_orchestrator`, `webhook_dispatcher`, `telemetry_bus`
+- **Podatki / validacija:** `csv_parser`, `json_deep_merge`, `string_ops`, `iso8601_util`, `contract_schema_engine`, `data_format_utils`
 - **Domena:** `currency_converter`, `invoice_calc`, `isbn_validator`, `warehouse_inventory`, `rsi_engine`
 - **Observability:** `observability_metrics`, `audit_trail`, `report_builder`, `mailer`
-- **Infra:** `config_loader`, `deployment_manager`, `nexus_command_deck`, `cache_layer`, `retry_wrapper`
+- **Infra:** `config_loader`, `deployment_manager`, `nexus_command_deck`, `cache_layer`
 
 ---
 
 ## ✅ Testi in eval
 
-- **Poln suite:** `347` testov / `37` datotek — vodi `./rob test` (`pytest tests/`).
+- **Poln suite:** `353` testov / `38` datotek — vodi `./rob test` (`pytest tests/`).
 - **Master suite** poleg tega požene pytest na vsakem tracked Action modulu.
 - **CI** (`.github/workflows/ci.yml`): PR gate = pytest + eval dry-run; tedenski
   eval avtonomnosti (sobota 03:23 UTC).

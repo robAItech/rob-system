@@ -8,7 +8,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from iso8601_util.core import format_iso, parse_iso
+from .core import format_iso, parse_iso
 
 
 class IsoDateRequest(BaseModel):

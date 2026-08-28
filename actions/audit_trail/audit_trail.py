@@ -6,13 +6,16 @@ from typing import List
 from actions.audit_trail.schemas import AuditRecordCreate, AuditRecord, AuditVerificationResult
 
 class AuditTrail:
-    def __init__(self, event_bus=None, topic: str = "audit"):
+    def __init__(self, event_bus=None, topic: str = "audit", telemetry_bus=None):
         self.chain: List[AuditRecord] = []
         self.lock = asyncio.Lock()
         # Audit dogodki se asinhrono razpošiljajo naprej prek event_bus-a,
         # namesto da bi bili zaprti v lastnem sink-u. Chain ostaja za integriteto.
         self.event_bus = event_bus
         self.topic = topic
+        # Refaktor 2 (telemetry_bus): opcijski korelacijski vod — vsak audit
+        # zapis se objavi tudi nanj (audit postane sink). None = brez spremembe.
+        self.telemetry_bus = telemetry_bus
 
     def _calculate_hash(self, prev_hash: str, timestamp: str, actor: str, action: str, target: str, payload_str: str) -> str:
         data = f"{prev_hash}|{timestamp}|{actor}|{action}|{target}|{payload_str}"
@@ -45,6 +48,14 @@ class AuditTrail:
             # Razpošlji dogodek naprej (asinhroni potrošniki prek event_bus-a).
             if self.event_bus is not None:
                 self.event_bus.publish(self.topic, record.model_dump())
+
+            # Refaktor 2: objavi tudi na korelacijski telemetry_bus (če je dan).
+            if self.telemetry_bus is not None:
+                self.telemetry_bus.publish(
+                    f"audit.{request.action.lower()}",
+                    record.model_dump(),
+                    correlation_id=record.id,
+                )
 
             return record
 

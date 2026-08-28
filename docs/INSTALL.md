@@ -133,7 +133,7 @@ model je `deepseek-v4-flash` (preslika tudi vse Claude modele).
 ## 5. Preverba core engine-a (raven A)
 
 ```bash
-./rob test                  # celotna testna matrika (360 testov) — mora biti zelena
+./rob test                  # celotna testna matrika (366 testov) — mora biti zelena
 ./rob eval --dry-run        # strukturna preverba eval lestvice (brez LLM)
 ```
 
@@ -266,7 +266,7 @@ Windows: Docker Desktop mora biti **zagnan** (ne le nameščen).
 **Diagnostika na enem mestu:**
 
 ```bash
-./rob test               # 360 testov zelenih?
+./rob test               # 366 testov zelenih?
 ./rob eval --dry-run     # eval lestvica strukturno OK?
 ./dev --init             # proxy+dashboard: vse pripravljeno?
 ```
