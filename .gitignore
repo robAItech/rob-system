@@ -49,6 +49,8 @@ actions/*/
 .rob_ai/daemon.stop
 .rob_ai/*.log
 .rob_ai/*.tmp
+.rob_ai/fleet_workers.json
+.rob_ai/*.json.tmp
 .rob_ai/business_ledger.json
 .rob_ai/audit.jsonl
 .rob_ai/eval_history.json
