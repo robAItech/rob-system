@@ -48,6 +48,11 @@ activate_venv() {
     return 0
 }
 
+# Razreši python (venv | sistem) ENKRAT na začetku — tako tudi načini brez
+# lastnega activate_venv klica (dev, eval, build, ...) uporabijo pravi python.
+# Brez venv-a je to no-op (sistemski python na PATH). Idempotentno.
+activate_venv
+
 if [ "$1" == "up" ]; then
     cd "$PROJECT_DIR" && docker-compose up -d --build
 elif [ "$1" == "down" ]; then
@@ -65,8 +70,9 @@ elif [ "$1" == "build" ]; then
     fi
     cd "$PROJECT_DIR" && activate_venv && python run_swarm.py --target "$2" --directive "$3"
 elif [ "$1" == "dev" ]; then
-    # P4 orkestracija (proxy :4010 + dashboard :8787 + claude). Brez venv,
-    # telefonira core/dev_cli.py direktno s sistemskim python.
+    # P4 orkestracija (proxy :4010 + dashboard :8787 + claude). Python je
+    # razrešen na vrhu skripte (venv | system); dev_cli.py kliče litellm/bun/
+    # claude prek subprocess (morajo biti na PATH — venv Scripts že je).
     cd "$PROJECT_DIR" && python core/dev_cli.py "${@:2}"
 elif [ "$1" == "eval" ]; then
     # P5 — SWE-bench stila samo-eval za avtonomnost RSI-GStack.
