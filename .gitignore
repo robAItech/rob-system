@@ -39,8 +39,8 @@ __pycache__/
 .pytest_cache/
 
 # RSI runtime buildi (dashboard naloge) — ne v verzioniranje.
-# Zlati moduli (že tracked) ostanejo v gitu; nov namerni modul dodaj z `git add -f`.
-actions/*/
+# (2026-08-28: pravilo actions/*/ ODSTRANJENO — P9 fleet sinhronizira workerjeve
+#  build-e na master in v git; novi moduli se zdaj commitajo ob rob fleet backup.)
 
 # Runtime stanje podjetja (generirano, izven gita)
 .rob_ai/agenda.json
