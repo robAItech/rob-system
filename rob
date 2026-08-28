@@ -169,6 +169,15 @@ elif [ "$1" == "fleet" ]; then
     # P9 — master–worker fleet: `fleet serve` (master), `fleet status` (pregled).
     # Worker = `ROB_FLEET_ROLE=worker` + `rob daemon`. Glej .env.example.
     cd "$PROJECT_DIR" && python core/fleet.py "${@:2}"
+elif [ "$1" == "push" ]; then
+    # P9 — eno-ukazni push za fleet: pull --rebase + push (brez dvostopenjske
+    # ponovitve pre-push hooka). Uporabi ga namesto surovega `git push`.
+    cd "$PROJECT_DIR"
+    branch="${2:-$(git symbolic-ref --short HEAD 2>/dev/null || echo master)}"
+    echo "🤖 [push] pull --rebase --autostash origin $branch ..."
+    git pull --rebase --autostash origin "$branch" || { echo "❌ [push] pull padel — razreši konflikt, nato ponovi."; exit 1; }
+    echo "🤖 [push] push origin $branch ..."
+    git push origin "$branch"
 elif [ "$1" == "deploy" ]; then
     # Zagon python skripte, ki naredi POST request na naš novi manager
     cd "$PROJECT_DIR" && activate_venv && python -c "
@@ -209,4 +218,6 @@ else
     echo "  ./rob patterns    - P5: prečni vzorci neuspehov (≥2 projektov)"
     echo "  ./rob learn       - P7: learning dashboard (eval trend, lekcije, načela, vzorci)"
     echo "  ./rob daemon      - P1: avtonomni daemon 24/7 (--once/--status/--stop/--serve)"
+    echo "  ./rob fleet       - P9: fleet serve (master) / status / claim / memory / backup / restore"
+    echo "  ./rob push        - P9: eno-ukazni push (pull --rebase + push) za fleet"
 fi
