@@ -227,7 +227,7 @@ pwsh -File scripts\register-autostart.ps1 -Query # preveri
 - **Periodični sync (privzeto 1 h):** ko worker miruje, vsakih
   `ROB_FLEET_MEMORY_SYNC_SECONDS` (3600) izmenja spomin + heartbeat z masterjem —
   a SAMO ko je master dosegljiv. Ko ni dosegljiv, worker ne išče povezave
-  (`ROB_FLEET_BACKOFF_SECONDS`, privzeto 1 h). 0 = izključeno (le ob nalogah).
+  (`ROB_FLEET_BACKOFF_SECONDS`, privzeto 5 min). 0 = izključeno (le ob nalogah).
 - **Avtomatski backup na masterju (privzeto 1 h):** daemon sam požene
   `rob fleet backup` vsakih `ROB_FLEET_BACKUP_SECONDS` (izvoz spomina + agende
   v `fleet/backup.json`, commit + push). 0 = le ročno.

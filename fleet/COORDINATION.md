@@ -74,7 +74,7 @@ push `fleet/backup.json`). Master → dashboard: `/api/fleet` bere
 `fleet_workers.json` (Command Center, poll 30 s).
 
 **Backoff (worker):** ko master NI dosegljiv, worker ne "išče" povezave —
-počaka `ROB_FLEET_BACKOFF_SECONDS` (privzeto 1 h), nato poskusi enkrat. Sync
+počaka `ROB_FLEET_BACKOFF_SECONDS` (privzeto 5 min), nato poskusi enkrat. Sync
 in heartbeat potekata SAMO, ko je povezava dejansko živa.
 
 Če torej vidiš:

@@ -66,7 +66,7 @@ def _fleet_offline() -> bool:
 
 def _fleet_mark_offline(settings) -> None:
     global _fleet_offline_until
-    _fleet_offline_until = time.time() + getattr(settings, "fleet_backoff_seconds", 3600)
+    _fleet_offline_until = time.time() + getattr(settings, "fleet_backoff_seconds", 300)
 
 
 def _fleet_mark_online() -> None:

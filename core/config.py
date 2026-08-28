@@ -100,8 +100,9 @@ class SystemSettings(BaseSettings):
     # SAMO ko je master dosegljiv. 0 = izključeno.
     fleet_memory_sync_seconds: int = Field(default=3600, alias="ROB_FLEET_MEMORY_SYNC_SECONDS")
     # Backoff: ko master ni dosegljiv, worker NE išče povezave — počaka ta čas
-    # (sekund) pred naslednjim poskusom. 3600 = 1 h.
-    fleet_backoff_seconds: int = Field(default=3600, alias="ROB_FLEET_BACKOFF_SECONDS")
+    # (sekund) pred naslednjim poskusom. 300 = 5 min (hitro okrevanje, brez
+    # vsiljevanja); sync ostane urna.
+    fleet_backoff_seconds: int = Field(default=300, alias="ROB_FLEET_BACKOFF_SECONDS")
     # Avtomatski git backup na masterju (spomin+agenda → fleet/backup.json).
     # 0 = izključeno (le ročno `rob fleet backup`).
     fleet_backup_seconds: int = Field(default=3600, alias="ROB_FLEET_BACKUP_SECONDS")
