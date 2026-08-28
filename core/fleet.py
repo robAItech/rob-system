@@ -379,6 +379,7 @@ def main(argv: Optional[list] = None) -> int:
     sub.add_parser("backup", help="master: izvoz spomina+agende v fleet/backup.json, commit+push v git")
     sub.add_parser("restore", help="katerikoli stroj: git pull + združi fleet/backup.json v lokalni spomin/agendo")
     sub.add_parser("sync-actions", help="(worker) ročno commit+push zgrajenega modula (npr. sync-actions fleet_sync_test)")
+    sub.add_parser("push-actions", help="(worker) ročno pošlji zgrajeni modul masterju prek HTTP (npr. push-actions fleet_sync_test)")
     args = parser.parse_args(argv)
 
     if args.cmd == "serve":
@@ -404,6 +405,20 @@ def main(argv: Optional[list] = None) -> int:
         module = (argv[1] if len(argv or []) > 1 else "")
         ok = commit_worker_actions(module)
         return 0 if ok else 1
+    if args.cmd == "push-actions":
+        module = (argv[1] if len(argv or []) > 1 else "")
+        files = export_module_files(module)
+        if not files:
+            print(f"[fleet] modul {module} nima datotek na tem stroju.")
+            return 1
+        client = FleetClient(settings.fleet_master_url, settings.fleet_token)
+        try:
+            r = client.push_actions(module, files)
+            print(f"[fleet] push OK: {r}")
+            return 0
+        except Exception as e:
+            print(f"[fleet] push napaka: {e}")
+            return 1
 
     client = FleetClient(settings.fleet_master_url, settings.fleet_token)
     if args.cmd == "status":
