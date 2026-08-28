@@ -133,7 +133,7 @@ model je `deepseek-v4-flash` (preslika tudi vse Claude modele).
 ## 5. Preverba core engine-a (raven A)
 
 ```bash
-./rob test                  # celotna testna matrika (375 testov) — mora biti zelena
+./rob test                  # celotna testna matrika (379 testov) — mora biti zelena
 ./rob eval --dry-run        # strukturna preverba eval lestvice (brez LLM)
 ```
 
@@ -220,12 +220,16 @@ pwsh -File scripts\register-autostart.ps1 -Query # preveri
   lokalni merge učnih tabel: `semantic_memories`, `run_reviews`,
   `blacklist_patterns`, `agent_memory_nodes`), **po** nalogi pošlje svoje nove
   lekcije nazaj (`POST /fleet/memory`, master združi z dedupom).
-- Izklop: `ROB_FLEET_SYNC_MEMORY=false` (ostane le deljena agenda).
+- **Periodični sync (privzeto 60 s):** tudi ko worker miruje, vsakih
+  `ROB_FLEET_MEMORY_SYNC_SECONDS` izmenja spomin z masterjem (pull + push) —
+  "drugi stroj ve, kaj se dogaja" v sekundah, ne šele ob nalogi. 0 = izključeno.
+- **Avtomatski backup na masterju (privzeto 1 h):** daemon sam požene
+  `rob fleet backup` vsakih `ROB_FLEET_BACKUP_SECONDS` (izvoz spomina + agende
+  v `fleet/backup.json`, commit + push). 0 = le ročno.
+- Izklop delitve spomina: `ROB_FLEET_SYNC_MEMORY=false` (ostane le deljena agenda).
 - `./rob fleet memory` — lokalni pregled (števila po tabelah).
-- **Odpornost (master ni slepa ulica):** na masterju redno poženi
-  `./rob fleet backup` — izvoz spomina + agende v `fleet/backup.json`,
-  commit + push v git. Katerikoli stroj: `./rob fleet restore` (git pull →
-  združi backup v lokalni spomin/agendo).
+- **Odpornost (ročno):** `./rob fleet backup` na masterju, `rob fleet restore`
+  kjerkoli (git pull → združi backup v lokalni spomin/agendo).
 
 ---
 
@@ -279,7 +283,7 @@ Windows: Docker Desktop mora biti **zagnan** (ne le nameščen).
 **Diagnostika na enem mestu:**
 
 ```bash
-./rob test               # 375 testov zelenih?
+./rob test               # 379 testov zelenih?
 ./rob eval --dry-run     # eval lestvica strukturno OK?
 ./dev --init             # proxy+dashboard: vse pripravljeno?
 ```

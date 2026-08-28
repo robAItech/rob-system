@@ -159,3 +159,59 @@ class TestFleetClient:
         assert item["claimed_by"] == "worker-x"
         # preveri, da fake_post dejansko ni šel na pravo omrežje
         assert requests.post is not real_post
+
+
+class TestFleetDaemonTicks:
+    """Periodični sync: worker memory tick + master backup tick."""
+
+    def test_tick_fleet_memory_pull_in_push(self, monkeypatch):
+        from core import daemon
+        calls = []
+        monkeypatch.setattr(daemon, "_fleet_pull_memory",
+                            lambda s: calls.append("pull") or {"a": 1})
+        monkeypatch.setattr(daemon, "_fleet_push_memory",
+                            lambda s: calls.append("push") or {"a": 0})
+        r = daemon._tick_fleet_memory(object(), None)
+        assert calls == ["pull", "push"]
+        assert r["pulled"] == {"a": 1}
+
+    def test_tick_fleet_backup_ok(self, monkeypatch):
+        from core import daemon, fleet
+        monkeypatch.setattr(fleet, "_cmd_backup", lambda: 0)
+        assert daemon._tick_fleet_backup(object(), None)["backup"] == "ok"
+
+    def test_tick_fleet_backup_napaka(self, monkeypatch):
+        from core import daemon, fleet
+        monkeypatch.setattr(daemon, "_append_error", lambda msg: None)
+
+        def boom():
+            raise RuntimeError("git dol")
+        monkeypatch.setattr(fleet, "_cmd_backup", boom)
+        r = daemon._tick_fleet_backup(object(), None)
+        assert "napaka" in r["backup"]
+
+    def test_build_scheduler_fleet_jobi(self):
+        from core import daemon
+
+        class S:
+            daemon_consolidate_hours = 24
+            daemon_reflect_hours = 168
+            daemon_improve_hours = 168
+            daemon_meta_check_hours = 168
+            daemon_full_eval_hours = 0
+            daemon_goal_hours = 6
+            fleet_role = "worker"
+            fleet_sync_memory = True
+            fleet_memory_sync_seconds = 60
+            fleet_backup_seconds = 3600
+
+        s = S()
+        names = set(daemon.build_scheduler(s).to_dict().keys())
+        assert "fleet_memory" in names
+        assert "goal" not in names          # worker nima goal ticka
+
+        s2 = S(); s2.fleet_role = "master"
+        names2 = set(daemon.build_scheduler(s2).to_dict().keys())
+        assert "fleet_backup" in names2
+        assert "goal" in names2
+        assert "fleet_memory" not in names2   # master ne potiska spomina workerju

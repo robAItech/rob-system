@@ -308,6 +308,25 @@ def _tick_goal(settings, cfg) -> dict:
     return {"enqueued": enqueued, "proposed": len(proposals)}
 
 
+def _tick_fleet_memory(settings, cfg) -> dict:
+    """Worker: periodična sinhronizacija spomina z masterjem (pull + push).
+    Pull pred tickom (fresh lekcije), push po (svoje nove lekcije nazaj)."""
+    pulled = _fleet_pull_memory(settings)
+    pushed = _fleet_push_memory(settings)
+    return {"pulled": pulled, "pushed": pushed}
+
+
+def _tick_fleet_backup(settings, cfg) -> dict:
+    """Master: avtomatski backup spomina+agende v git (odpornost — master ni
+    slepa ulica). Idempotentno: brez sprememb ne naredi novega commita."""
+    try:
+        rc = fleet._cmd_backup()
+        return {"backup": "ok" if rc == 0 else f"rc={rc}"}
+    except Exception as e:
+        _append_error(f"fleet backup: {e}")
+        return {"backup": f"napaka: {e}"}
+
+
 def build_scheduler(settings) -> Scheduler:
     """Tabela periodicnih jobov, krmiljena z DAEMON_* nastavitvami."""
     sched = Scheduler()
@@ -320,6 +339,15 @@ def build_scheduler(settings) -> Scheduler:
     # Worker ne generira lastnih nalog (goal tick) — le izvaja naloge od masterja.
     if getattr(settings, "fleet_role", "standalone") != "worker":
         sched.add("goal", _tick_goal, settings.daemon_goal_hours * 3600)
+    # P9 — "takojšnji" sync: worker periodično izmenja spomin z masterjem,
+    # master avtomatsko dela git backup. 0 = izključeno.
+    if (getattr(settings, "fleet_role", "standalone") == "worker"
+            and getattr(settings, "fleet_sync_memory", True)
+            and settings.fleet_memory_sync_seconds > 0):
+        sched.add("fleet_memory", _tick_fleet_memory, settings.fleet_memory_sync_seconds)
+    if (getattr(settings, "fleet_role", "standalone") == "master"
+            and settings.fleet_backup_seconds > 0):
+        sched.add("fleet_backup", _tick_fleet_backup, settings.fleet_backup_seconds)
     return sched
 
 
