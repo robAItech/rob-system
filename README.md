@@ -122,7 +122,7 @@ Rob AI Studio/
 
 | Orodje | Namestitev | Za kaj |
 |---|---|---|
-| **Python 3.11** | `winget install Python.Python.3.11` — **ne** najnovejši 3.14 (CI testira na 3.11) | jedro, RSI zanka, daemon |
+| **Python 3.11** | `winget install Python.Python.3.11` — **ne** najnovejši 3.14 (CI testira na 3.11). **Po namestitvi obvezno preveri:** `py -3 --version` → `3.11.x` | jedro, RSI zanka, daemon |
 | **git** | git-scm.com | klon + CI |
 | **Claude Code CLI** | `npm i -g @anthropic-ai/claude-code` | obvezen za `./dev` (proxy → claude); core engine ga ne rabi |
 | **Node.js + npm** | nodejs.org | Bun + TS odvisnosti |
@@ -135,6 +135,13 @@ Rob AI Studio/
 
 > ⚠️ **Windows**: `./rob` in `./dev` tečeta v **Git Bash** (ali WSL), ne v
 > PowerShell/cmd. Tam uporabi `dev.bat` (dashboard) oz. `bash rob <ukaz>`.
+> ⚠️ **Python pred vsem**: `py -3 --version` mora izpisati `3.11.x`. Če vrne
+> *"No installed Python found"*, ali `where python` kaže samo na
+> `C:\Windows\python.exe` (Microsoft Store-stub, ne Python) — pravi Python ni
+> nameščen: `winget install Python.Python.3.11`, potem ponovi preverbo.
+> ⚠️ **WSL**: WSL `bash` ima svoj Linux `python3` (brez projektnih paketov).
+> To je OK — `rob` sam najde `venv`/`engine`/sistemski Windows Python; sistemski
+> Windows Python pa mora biti nameščen za `dev.bat` in daemon.
 
 **Python paketi** (sistemski Python — najenostavneje in tako kliče tudi
 `autostart.bat` za daemon; venv je opcijski, glej docs/INSTALL.md):

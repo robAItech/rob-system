@@ -49,7 +49,8 @@ Namesti (vse, razen Dockerja, so obvezne za svojo raven):
 Preveri, da so orodja na PATH:
 
 ```bash
-python --version    # 3.11+
+py -3 --version     # ← NAJPOMEMBNEJŠA preverba: mora izpisati 3.11.x
+python --version    # 3.11+ (glej ⚠️ spodaj — MORA biti resničen Python)
 git --version
 # za raven B še:
 node --version
@@ -57,6 +58,14 @@ bun --version
 claude --version
 litellm --version   # ali: python -m pip show litellm
 ```
+
+> ⚠️ **Python mora biti RESNIČEN.** `C:\Windows\python.exe` je pogosto Microsoft
+> **Store-stub** (odpre trgovino, kode ne poganja). Če `py -3 --version` vrne
+> *"No installed Python found"*, ali `where python` kaže samo na
+> `C:\Windows\python.exe` — sistemski Python ni registriran. Takrat:
+> `winget install Python.Python.3.11` in **ponovi preverbo** pred nadaljevanjem.
+> (Sistem zmore tudi portabilen Python, npr. `engine\python.exe`, ampak
+> sistemski je priporočen — glej korak 3.)
 
 ---
 
@@ -86,12 +95,11 @@ pip install playwright       # samo za vizualni QA (neobvezno)
 playwright install chromium  # neobvezno
 ```
 
-> 🔁 **Želiš venv?** Možno (npr. več projektov na istem stroju), ampak bodi
-> dosleden: `./rob` na Linux/WSL avtomatsko aktivira `venv/bin/activate`, na
-> Windows **ne** (ne preverja `venv/Scripts`). Če uporabiš venv: aktiviraj ga v
-> vsakem terminalu pred `./rob` IN popravi `scripts/autostart.bat`, da kliče
-> `venv\Scripts\python.exe` — sicer daemon ob prijavi tiho uporabi sistemski
-> Python brez odvisnosti.
+> 🔁 **Želiš venv?** Možno (npr. več projektov na istem stroju). `./rob` najde
+> python sam — venv (`venv` ali `engine`, v `Scripts/` na Windows ali `bin/` na
+> POSIX), portabilen Python v korenu (npr. `engine\python.exe`) ali sistemski
+> Python. **Ničesar ni treba ročno aktivirati.** Tudi `scripts/autostart.bat`
+> (daemon ob prijavi) razreši python na isti način.
 
 ---
 
@@ -216,6 +224,9 @@ Windows: Docker Desktop mora biti **zagnan** (ne le nameščen).
 | `./rob` / `./dev`: *command not found* | v PowerShell/cmd ni izvajanja brez končnice | uporabi **Git Bash**; ali `bash rob <ukaz>`; ali `dev.bat` |
 | `ModuleNotFoundError: httpx` (ali pydantic, fastapi, dotenv…) | Python paketi niso instalirani | `pip install -r requirements-dev.txt` (v aktiviranem venv-u / sistemskem Pythonu) |
 | venv kreacija pade (`Unable to copy venvlauncher.exe`) / `pip install -r requirements-dev.txt` pade (npr. playwright) | Python najnovejši (3.14) | uporabi **Python 3.11** (`winget install Python.Python.3.11`); venv ni potreben — sistemski Python |
+| `py -3 --version` → *"No installed Python found"* | sistemski Python ni registriran (Store-stub `C:\Windows\python.exe` ne šteje) | `winget install Python.Python.3.11`, potem ponovi `py -3 --version` → 3.11.x |
+| WSL `bash rob` uporabi Linux `python3` (npr. `/usr/bin/python3` brez pytest) | `bash` je WSL, ne Git Bash — Windows venv/engine python ni bil najden | `rob` najde python sam; preveri `venv\Scripts\python.exe` ali `engine\python.exe`, ali namesti sistemski Python 3.11 (korak 1) |
+| `rob: line N: : command not found` | star bug v `rob` (scoping/CRLF), popravljen | `git pull` na zadnjo verzijo (≥ `705e979`) — `rob` sam poišče venv/engine python in ima CRLF self-heal |
 | `ModuleNotFoundError: gbrain` / `gstack` / `graphify` | ob zagonu izven pytest-a, če koda klice repos paket | repos paketi so samo za pytest (jih doda `pytest.ini`); core engine jih ne rabi. Teci prek `./rob test` / `pytest`. |
 | Build pade / eval preskočen, `DEEPSEEK_API_KEY secret ni nastavljen` | `.env` nima pravega ključa (ali ima placeholder `sk-your-deepseek-api-key-here`) | vpiši pravi `DEEPSEEK_API_KEY=sk-...` v `.env` in preveri s `python -c "from core.config import settings; print(settings.is_real_key_available())"` → `True` |
 | `./dev`: *'claude' ni na PATH* | Claude Code CLI ni instaliran | `npm i -g @anthropic-ai/claude-code`; preveri `claude --version` |
