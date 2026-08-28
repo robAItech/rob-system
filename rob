@@ -18,8 +18,10 @@ _venv_python() {
     local dir sub cand
     for dir in venv engine; do
         for sub in Scripts bin; do
-            for cand in python python.exe; do
-                if [ -x "$PROJECT_DIR/$dir/$sub/$cand" ]; then
+            # `-e` (ne `-x`): WSL DrvFS mounti ne javijo vedno izvršljivega bita
+            # za Windows .exe datoteke, `-x` bi zgrešil obstoječ venv.
+            for cand in python python.exe python3 python3.exe; do
+                if [ -e "$PROJECT_DIR/$dir/$sub/$cand" ]; then
                     printf '%s\n' "$PROJECT_DIR/$dir/$sub/$cand"
                     return 0
                 fi
@@ -39,6 +41,8 @@ activate_venv() {
     fi
     if ! command -v python >/dev/null 2>&1; then
         echo "[rob] OPOZORILO: ni najdenega venv-a (venv|engine); uporabljam sistemski python." >&2
+        echo "      Če manjka litellm: preveri 'Test-Path engine\\Scripts\\python.exe'." >&2
+        echo "      Rekreacija: python -m venv engine && engine\\Scripts\\python -m pip install litellm" >&2
         if command -v py >/dev/null 2>&1; then
             python() { py -3 "$@"; }
         elif command -v python3 >/dev/null 2>&1; then
