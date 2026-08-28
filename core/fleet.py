@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import socket
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -42,7 +43,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core import agenda
+from core import agenda, memory_sync
 from core.config import settings
 
 FLEET_PORT = 8789
@@ -137,7 +138,18 @@ def create_app(token: Optional[str] = None) -> FastAPI:
                 "total": len(items),
             },
             "workers": _load_workers(),
+            "memory": memory_sync.count_memory(),
         }
+
+    @app.get("/fleet/memory", dependencies=[Depends(auth)])
+    def memory_export() -> dict:
+        """Worker potegne masterjev spomin (izvoz učnih tabel)."""
+        return memory_sync.export_memory()
+
+    @app.post("/fleet/memory", dependencies=[Depends(auth)])
+    def memory_merge(payload: dict) -> dict:
+        """Worker pošlje svoj spomin nazaj — master združi (dedup, idempotentno)."""
+        return memory_sync.merge_memory(payload)
 
     return app
 
@@ -188,6 +200,66 @@ class FleetClient:
         r.raise_for_status()
         return r.json()
 
+    def memory_pull(self) -> dict:
+        """Potegni masterjev izvoz spomina (učne tabele)."""
+        r = requests.get(f"{self.base}/fleet/memory",
+                         headers=self._headers(), timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
+    def memory_push(self, payload: dict) -> dict:
+        """Pošlji svoj izvoz spomina masterju (master združi z dedupom)."""
+        r = requests.post(f"{self.base}/fleet/memory", json=payload,
+                          headers=self._headers(), timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
+
+# ── Git backup / restore (odpornost — master ni slepa ulica) ──────────────
+BACKUP_FILE = PROJECT_ROOT / "fleet" / "backup.json"
+
+
+def _cmd_backup() -> int:
+    """Izvoz spomina + agende v fleet/backup.json, commit+push v git."""
+    BACKUP_FILE.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "memory": memory_sync.export_memory(),
+        "agenda": agenda.all_(),
+        "backed_up_at": int(time.time()),
+    }
+    BACKUP_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
+                           encoding="utf-8")
+    if subprocess.call(["git", "add", "fleet/backup.json"], cwd=PROJECT_ROOT) != 0:
+        print("[fleet] git add ni uspel")
+        return 1
+    # Ni sprememb → backup je že aktualen, nič za commit.
+    if subprocess.call(["git", "diff", "--cached", "--quiet"], cwd=PROJECT_ROOT) == 0:
+        print("[fleet] backup že aktualen (ni sprememb).")
+        return 0
+    ts = time.strftime("%Y-%m-%d %H:%M")
+    if subprocess.call(["git", "commit", "-m", f"fleet backup {ts} — spomin+agenda"],
+                       cwd=PROJECT_ROOT) != 0:
+        print("[fleet] git commit ni uspel")
+        return 1
+    if subprocess.call(["git", "push"], cwd=PROJECT_ROOT) != 0:
+        print("[fleet] git push ni uspel (preveri remote/povezavo)")
+        return 1
+    print(f"[fleet] backup commit + push OK → fleet/backup.json ({ts})")
+    return 0
+
+
+def _cmd_restore() -> int:
+    """git pull + združi fleet/backup.json v lokalni spomin in agendo."""
+    subprocess.call(["git", "pull", "--rebase"], cwd=PROJECT_ROOT)
+    if not BACKUP_FILE.exists():
+        print("[fleet] ni fleet/backup.json (še ni bilo backupa na masterju).")
+        return 1
+    payload = json.loads(BACKUP_FILE.read_text(encoding="utf-8"))
+    mem_stats = memory_sync.merge_memory(payload.get("memory") or {})
+    agenda_n = agenda.restore_pending(payload.get("agenda") or [])
+    print(f"[fleet] restore OK — spomin dodano: {mem_stats}; agenda uvoženih: {agenda_n}")
+    return 0
+
 
 # ── CLI (rob fleet ...) ───────────────────────────────────────────────────
 def main(argv: Optional[list] = None) -> int:
@@ -199,6 +271,9 @@ def main(argv: Optional[list] = None) -> int:
     sub.add_parser("serve", help="master: zaženi fleet strežnik (FastAPI/uvicorn)")
     sub.add_parser("status", help="prikaži stanje flote (od masterja)")
     sub.add_parser("claim", help="(worker, debug) claim eno nalogo od masterja")
+    sub.add_parser("memory", help="prikaži lokalni spomin (števila po učnih tabelah)")
+    sub.add_parser("backup", help="master: izvoz spomina+agende v fleet/backup.json, commit+push v git")
+    sub.add_parser("restore", help="katerikoli stroj: git pull + združi fleet/backup.json v lokalni spomin/agendo")
     args = parser.parse_args(argv)
 
     if args.cmd == "serve":
@@ -210,6 +285,16 @@ def main(argv: Optional[list] = None) -> int:
               f"(role=master, token zaščiten). Za workerje: ROB_FLEET_ROLE=worker.")
         uvicorn.run(create_app(), host="0.0.0.0", port=settings.fleet_port)
         return 0
+
+    if args.cmd == "memory":
+        for table, n in memory_sync.count_memory().items():
+            print(f"  {table:<22} {n}")
+        return 0
+
+    if args.cmd == "backup":
+        return _cmd_backup()
+    if args.cmd == "restore":
+        return _cmd_restore()
 
     client = FleetClient(settings.fleet_master_url, settings.fleet_token)
     if args.cmd == "status":

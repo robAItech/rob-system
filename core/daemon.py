@@ -45,7 +45,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core import agenda, audit, config, dev_cli, fleet
+from core import agenda, audit, config, dev_cli, fleet, memory_sync
 
 ROB_AI = PROJECT_ROOT / ".rob_ai"
 DAEMON_FILE = ROB_AI / "daemon.json"
@@ -407,6 +407,39 @@ def _fleet_report_result(settings, item: dict, ok: bool, detail: str, duration_s
         _append_error(f"fleet result: {e}")
 
 
+def _fleet_pull_memory(settings) -> dict:
+    """Worker: potegni masterjev spomin (učne tabele) in ga združi lokalno —
+    pred vsako nalogo, da ima worker sveže lekcije."""
+    if not getattr(settings, "fleet_sync_memory", True):
+        return {}
+    try:
+        client = fleet.FleetClient(settings.fleet_master_url, settings.fleet_token)
+        payload = client.memory_pull()
+        stats = memory_sync.merge_memory(payload)
+        if any((stats or {}).values()):
+            print(f"[daemon] fleet: povlekel spomin od masterja → {stats}")
+        return stats or {}
+    except Exception as e:
+        _append_error(f"fleet memory pull: {e}")
+        return {}
+
+
+def _fleet_push_memory(settings) -> dict:
+    """Worker: pošlji svoj spomin (nove lekcije) nazaj masterju — agregacija."""
+    if not getattr(settings, "fleet_sync_memory", True):
+        return {}
+    try:
+        client = fleet.FleetClient(settings.fleet_master_url, settings.fleet_token)
+        payload = memory_sync.export_memory()
+        added = client.memory_push(payload)
+        if added and any((added or {}).values()):
+            print(f"[daemon] fleet: poslal spomin masterju → {added}")
+        return added or {}
+    except Exception as e:
+        _append_error(f"fleet memory push: {e}")
+        return {}
+
+
 def _spawn_task(item: dict, settings, cfg) -> dict:
     """Zažene run_swarm.py --item v subprocesu (NE-blokirajoče). Vrne entry dict."""
     item_id = item["id"]
@@ -463,9 +496,11 @@ def _reap_task(entry: dict, settings, cfg, active: list) -> dict:
 
     duration = round(time.time() - entry["started_at"], 1)
 
-    # Worker: izid posreduj masterju (naloga pripada floti, ne lokalni agendi).
+    # Worker: izid posreduj masterju (naloga pripada floti, ne lokalni agendi)
+    # + pošlji nazaj svoj spomin (nove lekcije iz tega teka).
     if getattr(settings, "fleet_role", "standalone") == "worker" and item.get("fleet_claimed"):
         _fleet_report_result(settings, item, ok, detail=f"rc={rc}", duration_s=duration)
+        _fleet_push_memory(settings)
 
     audit.record(event="daemon-task", project=item.get("target", item_id),
                  status="ok" if ok else "failed",
@@ -595,6 +630,9 @@ def run_loop(settings, cfg, once: bool = False) -> int:
             agenda.delete_item(it["id"])
         if stale:
             print(f"[daemon] worker: počiščenih {len(stale)} nedokončanih fleet senčnih nalog.")
+        # Faza 4 — deljen spomin: ob boot-u potegni masterjev spomin, da ima
+        # worker od začetka sveže lekcije (in jih nato vrača po vsaki nalogi).
+        _fleet_pull_memory(settings)
         _write_heartbeat("boot_worker", current_tasks=None, current_tick=None)
     else:
         _write_heartbeat("ensure_services", current_tasks=None)

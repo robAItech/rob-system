@@ -93,6 +93,9 @@ class SystemSettings(BaseSettings):
     fleet_token: str = Field(default="", alias="ROB_FLEET_TOKEN")
     fleet_port: int = Field(default=8789, alias="ROB_FLEET_PORT")
     fleet_claim_ttl_seconds: int = Field(default=1800, alias="ROB_FLEET_CLAIM_TTL_SECONDS")
+    # Faza 4 — deljen spomin: worker pred nalogo potegne masterjev spomin in po
+    # nalogi pošlje svoje nove lekcije nazaj (agregacija). false = le agenda.
+    fleet_sync_memory: bool = Field(default=True, alias="ROB_FLEET_SYNC_MEMORY")
 
     def is_real_key_available(self) -> bool:
         return bool(

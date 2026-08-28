@@ -133,7 +133,7 @@ model je `deepseek-v4-flash` (preslika tudi vse Claude modele).
 ## 5. Preverba core engine-a (raven A)
 
 ```bash
-./rob test                  # celotna testna matrika (366 testov) — mora biti zelena
+./rob test                  # celotna testna matrika (369 testov) — mora biti zelena
 ./rob eval --dry-run        # strukturna preverba eval lestvice (brez LLM)
 ```
 
@@ -214,6 +214,19 @@ pwsh -File scripts\register-autostart.ps1 -Query # preveri
   **NIKOLI javnega porta** — Tailscale ali zasebno omrežje.
 - `ROB_FLEET_ROLE=standalone` (privzeto) = današnje vedenje, nič se ne spremeni.
 
+**Faza 4 — deljen spomin (workerji se učijo skupaj):**
+
+- Worker **pred** vsako nalogo potegne masterjev spomin (`GET /fleet/memory` →
+  lokalni merge učnih tabel: `semantic_memories`, `run_reviews`,
+  `blacklist_patterns`, `agent_memory_nodes`), **po** nalogi pošlje svoje nove
+  lekcije nazaj (`POST /fleet/memory`, master združi z dedupom).
+- Izklop: `ROB_FLEET_SYNC_MEMORY=false` (ostane le deljena agenda).
+- `./rob fleet memory` — lokalni pregled (števila po tabelah).
+- **Odpornost (master ni slepa ulica):** na masterju redno poženi
+  `./rob fleet backup` — izvoz spomina + agende v `fleet/backup.json`,
+  commit + push v git. Katerikoli stroj: `./rob fleet restore` (git pull →
+  združi backup v lokalni spomin/agendo).
+
 ---
 
 ## 7. Docker RSI peskovnik (neobvezno, a priporočeno)
@@ -266,7 +279,7 @@ Windows: Docker Desktop mora biti **zagnan** (ne le nameščen).
 **Diagnostika na enem mestu:**
 
 ```bash
-./rob test               # 366 testov zelenih?
+./rob test               # 369 testov zelenih?
 ./rob eval --dry-run     # eval lestvica strukturno OK?
 ./dev --init             # proxy+dashboard: vse pripravljeno?
 ```

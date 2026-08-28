@@ -339,6 +339,31 @@ def upsert_fleet(item: dict) -> None:
     _locked(_do)
 
 
+def restore_pending(items: list) -> int:
+    """Fleet restore: uvozi PENDING iteme iz backupa, ki ne obstajajo že po
+    (goal, target). Fleet/claimed/running itemov ne uvozi (pripadajo živi
+    floti). Vsak uvoženi item dobi svež id (brez kolizij). Vrne število."""
+    def _do() -> int:
+        cur = _load()
+        existing = {(i.get("goal"), i.get("target")) for i in cur}
+        n = 0
+        for it in items:
+            if it.get("status") != "pending":
+                continue
+            if (it.get("goal"), it.get("target")) in existing:
+                continue
+            it = dict(it)
+            it["id"] = uuid.uuid4().hex[:12]
+            it["updated_at"] = int(time.time())
+            existing.add((it.get("goal"), it.get("target")))
+            cur.append(it)
+            n += 1
+        if n:
+            _save(cur)
+        return n
+    return _locked(_do)
+
+
 def record_fleet_result(item_id: str, status: str, worker: str | None = None,
                         detail: str = "", duration_s: float | None = None) -> None:
     """Master: po prejetem rezultatu od workerja označi item done/failed in
