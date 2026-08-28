@@ -202,10 +202,15 @@ def merge_memory(payload: dict, db_path=None) -> dict:
 
 
 def count_memory(db_path=None) -> dict:
-    """Število vrstic po učnih tabelah (za preglede/status)."""
+    """Število vrstic po učnih tabelah (za preglede/status).
+
+    Samozadosten kot export/merge: `_ensure_schema` ustvari manjkajoče tabele
+    tudi na sveži DB (npr. CI brez .rob_ai) — drugače `SELECT COUNT(*)` pade z
+    "no such table" (napaka, ki lokalno ni vidna, ker .rob_ai že obstaja)."""
     db = _resolve(db_path)
     out: dict = {}
     with _connect(db) as conn:
+        _ensure_schema(conn)
         for table in LEARNING_TABLES:
             out[table] = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     return out

@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import core.agenda as agenda
-from core import fleet
+from core import fleet, memory_sync
 
 
 H = {"Authorization": "Bearer test-token"}
@@ -19,9 +19,13 @@ H = {"Authorization": "Bearer test-token"}
 
 @pytest.fixture
 def tmp_state(tmp_path, monkeypatch):
-    """Agenda + fleet workers v začasni mapi (izven .rob_ai)."""
+    """Agenda + fleet workers + memory.db v začasni mapi (izven .rob_ai).
+
+    Hermetično: testi ne smejo odvisni od obstoječega .rob_ai (CI nima
+    memory.db) — drugače /fleet/status pade kot "no such table" samo v CI."""
     monkeypatch.setattr(agenda, "AGENDA_FILE", tmp_path / "agenda.json")
     monkeypatch.setattr(fleet, "FLEET_WORKERS_FILE", tmp_path / "fleet_workers.json")
+    monkeypatch.setattr(memory_sync, "DEFAULT_DB", tmp_path / "mem.db")
     return tmp_path
 
 
