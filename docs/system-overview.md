@@ -28,7 +28,7 @@ z dvema izvedbenima plastema in vmesnikom:
    └──────────────────────────┘
                 │
 ┌───────────────┴────────────────────────────────────────────┐
-│  REZULTAT: out/* artefakti · actions/ (18 modulov)          │
+│  REZULTAT: out/* artefakti · actions/ (30 modulov)          │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -53,9 +53,16 @@ spelje zaporedje: **gbrain → graphify → gstack → hermes → loopx**.
 (`core/embedder.py` — Gemini embeddingi, kosinusni priklic z leksikalnim padcem),
 upravljanje konteksta (`LLM_HEAL_*` — budget prompta, trim messages), paralelizem
 (fork + eval `--workers`), avto-rollback (`LOOPX_ROLLBACK_ON_FAIL`), actions/ kot
-enotna runtime app (`core/actions_runtime.py` — mount vseh 18 modulov + middleware
+enotna runtime app (`core/actions_runtime.py` — 27 mountanih API modulov od 30,
+3 so knjižnice brez API-ja: csv_parser/iso8601_util/retry_wrapper; + middleware
 veriga auth→rate-limit→audit→event-bus) in realni odvisnostni graf
 (`core/actions_graph.py`), ter CI (`.github/workflows/ci.yml`).
+
+**Enterprise Actions (arhitekturna konsolidacija 2026):** `webhook_dispatcher`
+(HMAC-SHA256, idempotency, eksponentni backoff, DLQ, health), `api_version_manager`
+(SemVer, deprecation/Sunset, weighted routing, BC-break detekcija) in
+`secret_rotation` (double-buffer, due scheduler, audit sled, auto-revoke). Tečejo
+v runtime skupaj z ostalimi moduli.
 
 ---
 
@@ -66,7 +73,7 @@ veriga auth→rate-limit→audit→event-bus) in realni odvisnostni graf
 | **TS Hermes** | `Runner` — edini z zmožnostmi (disk, omrežje, `cmd.exec`). Zanka: dogodek → `foldState` → `reduce` agentov → `Command[]` → izvedi. | `planner` (plan), `builder` (piše datoteke), `qa` (verify), `screenshot` (vizualna namera) |
 | **Python RSI** | `RobAIOrchestrator._phase` | `gbrain` (spomin), `graphify` (AST), `gstack` (spec), `hermes` (ogrodje), `loopx` (pytest + heal) |
 | **LLM** | — | `DeepSeekLLMClient` (`deepseek-v4-flash`) — generira kodo/popravke |
-| **Nad nivo** | `dev_cli.py` — orkestracija procesov | 18 `actions/` modulov — končni produkt |
+| **Nad nivo** | `dev_cli.py` — orkestracija procesov | 30 `actions/` modulov — končni produkt (27 z API-jem) |
 
 **Vodilni agent** v Python poti je en sam: `GSTACK-Architect` (privzeto iz
 `run_swarm.py --agent`), ne jata agentov. `architect`/`engineer` v TS plasti

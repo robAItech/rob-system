@@ -72,8 +72,8 @@ litellm --version   # ali: python -m pip show litellm
 ## 2. Klon repozitorija
 
 ```bash
-git clone https://github.com/robAItech/AI-podjetje-V5.git
-cd AI-podjetje-V5
+git clone https://github.com/robAItech/rob-system.git
+cd rob-system
 ```
 
 > Repo je nastavljen tako, da se vse datoteke (tudi `rob` skripta) ob klonu
@@ -133,7 +133,7 @@ model je `deepseek-v4-flash` (preslika tudi vse Claude modele).
 ## 5. Preverba core engine-a (raven A)
 
 ```bash
-./rob test                  # celotna testna matrika (339 testov) — mora biti zelena
+./rob test                  # celotna testna matrika (347 testov) — mora biti zelena
 ./rob eval --dry-run        # strukturna preverba eval lestvice (brez LLM)
 ```
 
@@ -240,7 +240,7 @@ Windows: Docker Desktop mora biti **zagnan** (ne le nameščen).
 **Diagnostika na enem mestu:**
 
 ```bash
-./rob test               # 339 testov zelenih?
+./rob test               # 347 testov zelenih?
 ./rob eval --dry-run     # eval lestvica strukturno OK?
 ./dev --init             # proxy+dashboard: vse pripravljeno?
 ```
