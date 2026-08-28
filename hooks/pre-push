@@ -1,0 +1,32 @@
+#!/bin/sh
+# pre-push (P9 fleet) — samodejni `git pull --rebase` pred pushom.
+#
+# Na repoju delata DVA (ali več) stroja hkrati; remote je pogosto korak naprej.
+# Git izračuna push načrt PRED hookom, zato hook ne more samo rebase-ati in
+# nadaljevati — namesto tega:
+#   1. fetch + preverba: če je remote pred lokalnim → `git pull --rebase`,
+#   2. push se PREKINE z jasnim sporočilom,
+#   3. ob PONOVLJENEM `git push` je lokalno že posodobljeno → push uspe.
+# (Vsi sesiji na tem repoju: če push reče "ponovi push" — samo zaženi znova.)
+
+branch="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+[ -z "$branch" ] && exit 0
+
+# Veja še ne obstaja na remote-u → push nove veje, nič za rebase.
+if ! git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+    exit 0
+fi
+
+git fetch origin 2>/dev/null
+if git merge-base --is-ancestor "origin/$branch" HEAD 2>/dev/null; then
+    exit 0   # lokalno je že na/vključuje remote → push normalno.
+fi
+
+echo "[pre-push] remote je naprej — pull --rebase (autostash) ..."
+if ! git pull --rebase --autostash origin "$branch"; then
+    echo "[pre-push] PULL JE PADEL — push preklican."
+    echo "[pre-push] Razreši konflikt, nato ponovi push."
+    exit 1
+fi
+echo "[pre-push] rebase opravljen — ZAŽENI git push še enkrat."
+exit 1

@@ -30,6 +30,11 @@ Na tem repoju delata **DVA (ali več) računalnikov hkrati** v načinu
    git push
    ```
    **NIKOLI** `git push --force`, **NIKOLI** `git reset --hard` proti remote-u.
+
+> ⚙️ **Avto `pull --rebase` pred pushom** (`hooks/pre-push`, nastavi ga `rob`):
+> prvi `git push`, ko je remote naprej, sam naredi `pull --rebase` in javi
+> **"rebase opravljen — zaženi git push še enkrat"**. To NI napaka — samo zaženi
+> `git push` znova (drugi bo uspel). Ne prekini, ne --force, ne reset.
 3. **`fleet/backup.json` je avtomatski izdelek** (`rob fleet backup`) — ne
    briši ga, ne vračaj njegovih sprememb, ne commitaj ga ročno.
 4. **`fleet/COORDINATION.md`** (ta datoteka) naj ostane nespremenjena — je

@@ -17,6 +17,15 @@ fi
 # ne trdo-kodirana pot. To je potrebno za `rob dev`, ki zažene bun iz korena.
 PROJECT_DIR="${ROBO_ORIGIN:-$(cd "$(dirname "$0")" && pwd)}"
 
+# P9 fleet — aktiviraj skupni pre-push hook (samodejni pull --rebase pred
+# pushom), da push med dvema strojema nikoli ne pade non-fast-forward.
+# Per-klon nastavitev, idempotentno; `git config` na ne-git kopiji preskoči.
+if [ -f "$PROJECT_DIR/hooks/pre-push" ] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if [ "$(git config core.hooksPath 2>/dev/null)" != "hooks" ]; then
+        git config core.hooksPath hooks 2>/dev/null || true
+    fi
+fi
+
 # Aktiviraj venv, če obstaja; sicer uporabi sistemski python (fallback).
 # Odporno na to, KATERI bash poganja skripto (Git Bash ali WSL):
 # - Windows venv: Scripts/python(.exe), POSIX venv: bin/python.

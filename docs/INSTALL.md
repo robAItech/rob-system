@@ -212,6 +212,10 @@ pwsh -File scripts\register-autostart.ps1 -Query # preveri
   (privzeto 1800 s) nalogo spet sprosti drugemu workerju.
 - **Varnost:** `/fleet/*` zahteva `ROB_FLEET_TOKEN` (fail-closed brez tokena).
   **NIKOLI javnega porta** — Tailscale ali zasebno omrežje.
+- **Avto `pull --rebase` pred pushom:** skupni `hooks/pre-push` (nastavi ga `rob`
+  sam prek `core.hooksPath=hooks`). Če je remote naprej, 1. `git push` naredi
+  rebase in javi *"rebase opravljen — zaženi git push še enkrat"* — samo ponovi
+  push. Nikoli `--force` / `reset --hard` proti remote-u.
 - `ROB_FLEET_ROLE=standalone` (privzeto) = današnje vedenje, nič se ne spremeni.
 
 **Faza 4 — deljen spomin (workerji se učijo skupaj):**
