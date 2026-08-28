@@ -552,6 +552,26 @@ def _fleet_heartbeat(settings) -> None:
         _fleet_mark_offline(settings)
 
 
+def _fleet_push_actions(settings, module: str) -> None:
+    """Worker: po uspešnem build-u pošlje zgrajeni modul masterju prek HTTP
+    (`POST /fleet/actions`) — master zapiše v actions/<module>/. Brez gita na
+    workerju; isti kanal kot claim/result/spomin."""
+    if not module or _fleet_offline():
+        return
+    try:
+        files = fleet.export_module_files(module)
+        if not files:
+            print(f"[daemon] fleet: modul {module} nima datotek — preskočim push.")
+            return
+        fleet.FleetClient(settings.fleet_master_url, settings.fleet_token).push_actions(
+            module, files)
+        _fleet_mark_online()
+        print(f"[daemon] fleet: poslal modul {module} masterju ({len(files)} datotek).")
+    except Exception as e:
+        _append_error(f"fleet push actions: {e}")
+        _fleet_mark_offline(settings)
+
+
 def _spawn_task(item: dict, settings, cfg) -> dict:
     """Zažene run_swarm.py --item v subprocesu (NE-blokirajoče). Vrne entry dict."""
     item_id = item["id"]
@@ -613,12 +633,9 @@ def _reap_task(entry: dict, settings, cfg, active: list) -> dict:
     if getattr(settings, "fleet_role", "standalone") == "worker" and item.get("fleet_claimed"):
         _fleet_report_result(settings, item, ok, detail=f"rc={rc}", duration_s=duration)
         _fleet_push_memory(settings)
-        # Uspešen build → zgrajeni modul commit+push v git, da ga dobi master.
+        # Uspešen build → zgrajeni modul pošlji masterju prek HTTP (ne git).
         if ok:
-            try:
-                fleet.commit_worker_actions(item.get("target", ""))
-            except Exception as e:
-                _append_error(f"fleet commit actions: {e}")
+            _fleet_push_actions(settings, item.get("target", ""))
 
     audit.record(event="daemon-task", project=item.get("target", item_id),
                  status="ok" if ok else "failed",

@@ -238,3 +238,47 @@ class TestFleetDaemonTicks:
         assert daemon._fleet_offline() is True
         daemon._fleet_mark_online()
         assert daemon._fleet_offline() is False
+
+
+class TestFleetActions:
+    """Prenos zgrajenih modulov worker → master prek HTTP (brez gita)."""
+
+    @pytest.fixture
+    def act_client(self, tmp_state, monkeypatch, tmp_path):
+        monkeypatch.setattr(fleet, "PROJECT_ROOT", tmp_path)   # piši v tmp, ne v repo
+        return TestClient(fleet.create_app(token="test-token"))
+
+    def test_push_actions_zapise_datoteke(self, act_client, tmp_path):
+        r = act_client.post("/fleet/actions",
+                            json={"module": "mymod",
+                                  "files": {"__init__.py": "", "main.py": "print(1)"}},
+                            headers=H)
+        assert r.status_code == 200
+        assert r.json()["files"] == 2
+        assert (tmp_path / "actions" / "mymod" / "main.py").read_text() == "print(1)"
+
+    def test_push_actions_path_traversal(self, act_client):
+        r = act_client.post("/fleet/actions",
+                            json={"module": "mymod", "files": {"../evil.py": "x"}},
+                            headers=H)
+        assert r.status_code == 400
+
+    def test_push_actions_bad_module(self, act_client):
+        r = act_client.post("/fleet/actions",
+                            json={"module": "../../etc", "files": {"a.py": "x"}},
+                            headers=H)
+        assert r.status_code == 400
+
+    def test_push_actions_zahteva_auth(self, act_client):
+        r = act_client.post("/fleet/actions", json={"module": "m", "files": {}})
+        assert r.status_code == 401
+
+    def test_export_module_files(self, tmp_state, monkeypatch, tmp_path):
+        monkeypatch.setattr(fleet, "PROJECT_ROOT", tmp_path)
+        (tmp_path / "actions" / "mod" / "sub").mkdir(parents=True)
+        (tmp_path / "actions" / "mod" / "main.py").write_text("x=1", encoding="utf-8")
+        (tmp_path / "actions" / "mod" / "sub" / "util.py").write_text("y=2", encoding="utf-8")
+        (tmp_path / "actions" / "mod" / "__pycache__").mkdir()
+        (tmp_path / "actions" / "mod" / "__pycache__" / "main.cpython-311.pyc").write_bytes(b"bin")
+        files = fleet.export_module_files("mod")
+        assert set(files) == {"main.py", "sub/util.py"}

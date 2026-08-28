@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import socket
 import subprocess
 import sys
@@ -72,6 +73,28 @@ class ResultRequest(BaseModel):
 class HeartbeatRequest(BaseModel):
     worker: str
     tasks: list = []
+
+
+class ActionPushRequest(BaseModel):
+    """Worker → master: zgrajeni modul (`actions/<module>/` datoteke)."""
+    module: str
+    files: dict = {}
+
+
+# ── Varnost prenosa modulov ────────────────────────────────────────────────
+def _safe_module(module: str) -> bool:
+    """Modul sme biti samo varen slug (kot agenda target)."""
+    return bool(module) and bool(re.match(r"^[A-Za-z0-9_-]+$", module))
+
+
+def _safe_relpath(relpath: str) -> Optional[str]:
+    """Relativna pot v modulu: brez `..`, absolutnih poti in pogonskih črk."""
+    p = str(relpath).replace("\\", "/")
+    if not p or p.startswith("/") or ":" in p:
+        return None
+    if ".." in p.split("/"):
+        return None
+    return p
 
 
 # ── Heartbeat workerjev (master): .rob_ai/fleet_workers.json ──────────────
@@ -151,6 +174,25 @@ def create_app(token: Optional[str] = None) -> FastAPI:
         """Worker pošlje svoj spomin nazaj — master združi (dedup, idempotentno)."""
         return memory_sync.merge_memory(payload)
 
+    @app.post("/fleet/actions", dependencies=[Depends(auth)])
+    def actions_receive(req: ActionPushRequest) -> dict:
+        """Worker pošlje zgrajeni modul (`actions/<module>/` datoteke) → master
+        jih zapiše lokalno. Varnost: modul + vsaka pot se preveri (brez `..`,
+        absolutnih poti, pogonskih črk) — pisanje zgolj pod actions/<module>/."""
+        if not _safe_module(req.module):
+            raise HTTPException(status_code=400, detail="neveljaven module name")
+        base = PROJECT_ROOT / "actions" / req.module
+        written = 0
+        for rel, content in (req.files or {}).items():
+            safe = _safe_relpath(rel)
+            if safe is None:
+                raise HTTPException(status_code=400, detail=f"neveljavna pot v modulu: {rel}")
+            target = base / safe
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            written += 1
+        return {"ok": True, "module": req.module, "files": written}
+
     return app
 
 
@@ -214,6 +256,14 @@ class FleetClient:
         r.raise_for_status()
         return r.json()
 
+    def push_actions(self, module: str, files: dict) -> dict:
+        """Pošlji zgrajeni modul (`actions/<module>/` datoteke) masterju."""
+        r = requests.post(f"{self.base}/fleet/actions",
+                          json={"module": module, "files": files},
+                          headers=self._headers(), timeout=self.timeout)
+        r.raise_for_status()
+        return r.json()
+
 
 # ── Git backup / restore (odpornost — master ni slepa ulica) ──────────────
 BACKUP_FILE = PROJECT_ROOT / "fleet" / "backup.json"
@@ -248,6 +298,24 @@ def _cmd_backup() -> int:
         return 1
     print(f"[fleet] backup commit + push OK → fleet/backup.json ({ts})")
     return 0
+
+
+def export_module_files(module: str) -> dict:
+    """Worker: prebere `actions/<module>/` v {relpath: vsebina} (text datoteke,
+    preskoči `__pycache__`/`.pyc`). Prazno, če modul ne obstaja."""
+    base = PROJECT_ROOT / "actions" / module
+    if not base.is_dir():
+        return {}
+    files: dict = {}
+    for p in sorted(base.rglob("*")):
+        if not p.is_file() or "__pycache__" in p.parts or p.suffix == ".pyc":
+            continue
+        rel = p.relative_to(base).as_posix()
+        try:
+            files[rel] = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+    return files
 
 
 def commit_worker_actions(module: str) -> bool:
