@@ -11,12 +11,16 @@ from typing import Any, Dict, List, Optional
 
 
 # ── Schema registry (runtime JSON Schema) ─────────────────────────────────────
+#
+# Polje `schema_definition` (alias "schema"): field name NE sme biti "schema",
+# ker to zasenči `BaseModel.schema` (PydanticUserWarning). Alias ohrani JSON
+# ključ "schema" na žici — API kontrakt ostane nespremenjen.
 
 class SchemaRegisterRequest(BaseModel):
     """Request model for registering a new schema."""
     name: str = Field(..., description="Name of the schema")
     version: int = Field(..., description="Version of the schema")
-    schema: Dict[str, Any] = Field(..., description="The schema definition (JSON Schema)")
+    schema_definition: Dict[str, Any] = Field(..., alias="schema", description="The schema definition (JSON Schema)")
 
 
 class SchemaRegisterResponse(BaseModel):
@@ -30,7 +34,7 @@ class SchemaGetResponse(BaseModel):
     """Response model for retrieving a schema."""
     name: str
     version: int
-    schema: Dict[str, Any]
+    schema_definition: Dict[str, Any] = Field(..., alias="schema")
 
 
 class SchemaValidateRequest(BaseModel):
@@ -49,14 +53,14 @@ class SchemaValidateResponse(BaseModel):
 class ContractGenerateRequest(BaseModel):
     """Request schema for generating a contract."""
     service_name: str = Field(..., min_length=1, description="Name of the service")
-    schema: Dict[str, Any] = Field(..., description="JSON schema for the contract")
+    schema_definition: Dict[str, Any] = Field(..., alias="schema", description="JSON schema for the contract")
 
 
 class ContractGenerateResponse(BaseModel):
     """Response schema for generating a contract."""
     contract_id: str
     service_name: str
-    schema: Dict[str, Any]
+    schema_definition: Dict[str, Any] = Field(..., alias="schema")
     version: str
     checksum: str
     created_at: str
@@ -79,7 +83,7 @@ class ContractInfo(BaseModel):
     """Schema for contract information."""
     contract_id: str
     service_name: str
-    schema: Dict[str, Any]
+    schema_definition: Dict[str, Any] = Field(..., alias="schema")
     version: str
     checksum: str
     created_at: str

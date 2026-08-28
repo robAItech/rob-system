@@ -38,7 +38,7 @@ manager = ContractManager()
 async def register_schema(request: SchemaRegisterRequest) -> SchemaRegisterResponse:
     """Register a new schema."""
     try:
-        registry.register(request.name, request.version, request.schema)
+        registry.register(request.name, request.version, request.schema_definition)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return SchemaRegisterResponse(name=request.name, version=request.version)
@@ -75,7 +75,7 @@ async def health_check() -> dict:
 async def generate_contract(request: ContractGenerateRequest) -> ContractGenerateResponse:
     """Generate a new contract."""
     try:
-        contract = manager.generate_contract(request.service_name, request.schema)
+        contract = manager.generate_contract(request.service_name, request.schema_definition)
         return ContractGenerateResponse(**contract)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
