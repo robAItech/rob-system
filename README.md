@@ -151,6 +151,7 @@ bun install
 | `./rob build <mod> "<direktiva>"` | Avtonomno zgradi modul (RSI zanka) |
 | `./rob eval` | SWE-bench stila samo-eval avtonomnosti (`--dry-run` brez LLM) |
 | `./rob daemon` | Avtonomni daemon 24/7 (`--once/--status/--stop/--serve`) |
+| `./rob fleet` | P9 master–worker fleet: `serve` (master, deljena agenda) / `status` / `claim` |
 | `./rob dev` | Proxy + dashboard + claude (`--serve` = avtonomno v ozadju) |
 | `./rob dashboard` | Live TUI dashboard |
 | `./rob up` / `./rob down` | Docker ekosistem gor / dol |

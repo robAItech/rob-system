@@ -156,6 +156,10 @@ elif [ "$1" == "daemon" ]; then
     # P1 — avtonomni daemon (24/7): agendo prazni, sam predlaga naloge,
     # teče periodične jobe, piše heartbeat. --once/--status/--stop/--serve.
     cd "$PROJECT_DIR" && python core/daemon.py "${@:2}"
+elif [ "$1" == "fleet" ]; then
+    # P9 — master–worker fleet: `fleet serve` (master), `fleet status` (pregled).
+    # Worker = `ROB_FLEET_ROLE=worker` + `rob daemon`. Glej .env.example.
+    cd "$PROJECT_DIR" && python core/fleet.py "${@:2}"
 elif [ "$1" == "deploy" ]; then
     # Zagon python skripte, ki naredi POST request na naš novi manager
     cd "$PROJECT_DIR" && activate_venv && python -c "

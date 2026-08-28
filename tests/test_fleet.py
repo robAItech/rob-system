@@ -1,0 +1,161 @@
+"""P9 — fleet master–worker: server enota, agenda lease, client roundtrip.
+
+Brez pravih omrežnih klicev: server se testira prek TestClient, client pa prek
+monkeypatch-a `requests.post` na TestClient (roundtrip v enem procesu, dve
+"mapi" — master agendo + workerjevo senčno agendo).
+"""
+
+import time
+
+import pytest
+from fastapi.testclient import TestClient
+
+import core.agenda as agenda
+from core import fleet
+
+
+H = {"Authorization": "Bearer test-token"}
+
+
+@pytest.fixture
+def tmp_state(tmp_path, monkeypatch):
+    """Agenda + fleet workers v začasni mapi (izven .rob_ai)."""
+    monkeypatch.setattr(agenda, "AGENDA_FILE", tmp_path / "agenda.json")
+    monkeypatch.setattr(fleet, "FLEET_WORKERS_FILE", tmp_path / "fleet_workers.json")
+    return tmp_path
+
+
+@pytest.fixture
+def client(tmp_state):
+    return TestClient(fleet.create_app(token="test-token"))
+
+
+def _add_pending(n=1, prefix="naloga"):
+    return [agenda.add(f"{prefix}-{i}", kind="python", target=f"mod{prefix}-{i}")
+            for i in range(n)]
+
+
+class TestFleetServer:
+    def test_claim_vrne_pending_in_mark_running(self, client):
+        _add_pending(1)
+        r = client.post("/fleet/claim", json={"worker": "worker-a"}, headers=H)
+        assert r.status_code == 200
+        items = r.json()["items"]
+        assert len(items) == 1
+        assert items[0]["status"] == "running"
+        assert items[0]["claimed_by"] == "worker-a"
+        assert agenda.pending() == []   # ni več pending → lokalni claim je ne vzame
+
+    def test_claim_prazna_vrsta(self, client):
+        r = client.post("/fleet/claim", json={"worker": "w"}, headers=H)
+        assert r.status_code == 200
+        assert r.json()["items"] == []
+
+    def test_claim_ne_duplicira_running(self, client):
+        _add_pending(2)
+        c1 = client.post("/fleet/claim", json={"worker": "w1"}, headers=H).json()["items"]
+        c2 = client.post("/fleet/claim", json={"worker": "w2"}, headers=H).json()["items"]
+        assert len(c1) == 1 and len(c2) == 1
+        assert c1[0]["id"] != c2[0]["id"]
+
+    def test_auth_fail_closed(self, client):
+        r = client.post("/fleet/claim", json={"worker": "w"})
+        assert r.status_code == 401
+        r = client.post("/fleet/claim", json={"worker": "w"},
+                        headers={"Authorization": "Bearer wrong-token"})
+        assert r.status_code == 401
+
+    def test_result_done(self, client):
+        item = _add_pending(1)[0]
+        client.post("/fleet/claim", json={"worker": "w1"}, headers=H)
+        r = client.post("/fleet/result",
+                        json={"item_id": item["id"], "ok": True,
+                              "target": item["target"], "worker": "w1",
+                              "detail": "vse zeleno", "duration_s": 12.5},
+                        headers=H)
+        assert r.status_code == 200
+        got = agenda.get(item["id"])
+        assert got["status"] == "done"
+        assert got["result_worker"] == "w1"
+        assert got["duration_s"] == 12.5
+
+    def test_result_failed(self, client):
+        item = _add_pending(1)[0]
+        client.post("/fleet/claim", json={"worker": "w1"}, headers=H)
+        client.post("/fleet/result", json={"item_id": item["id"], "ok": False,
+                                           "target": item["target"]}, headers=H)
+        assert agenda.get(item["id"])["status"] == "failed"
+
+    def test_lease_sprosti_mrtvega_workerja(self, client):
+        _add_pending(1)
+        client.post("/fleet/claim", json={"worker": "w1"}, headers=H)
+        # postaraj, da je claim prestar (worker umrl sredi naloge)
+        items = agenda.all_()
+        items[0]["claimed_at"] = int(time.time()) - 99999
+        agenda._save(items)
+        r = client.post("/fleet/claim", json={"worker": "w2"}, headers=H)
+        assert len(r.json()["items"]) == 1
+        assert r.json()["items"][0]["claimed_by"] == "w2"
+
+    def test_heartbeat_worker_viden(self, client):
+        r = client.post("/fleet/heartbeat",
+                        json={"worker": "w1", "tasks": [{"id": "x", "goal": "g"}]},
+                        headers=H)
+        assert r.status_code == 200
+        workers = fleet._load_workers()
+        assert "w1" in workers
+        assert workers["w1"]["last_seen"] > 0
+
+    def test_status(self, client):
+        _add_pending(2)
+        r = client.get("/fleet/status", headers=H)
+        assert r.status_code == 200
+        assert r.json()["agenda"]["pending"] == 2
+
+
+class TestFleetAgenda:
+    def test_claim_fleet_razlicni_targeti(self, tmp_state):
+        _add_pending(3)
+        got = agenda.claim_fleet(limit=3, worker="w1")
+        assert len(got) == 3
+        assert len({i["target"] for i in got}) == 3
+
+    def test_upsert_fleet_skrije_pred_lokalnim_claimom(self, tmp_state):
+        item = _add_pending(1)[0]
+        item["fleet_claimed"] = True
+        item["status"] = "running"
+        agenda.upsert_fleet(item)
+        assert agenda.claim_pending() == []   # running ni pending → ni podvajanja
+
+    def test_release_ne_dotika_lokalnih_running(self, tmp_state):
+        item = _add_pending(1)[0]
+        agenda.mark(item["id"], "running")    # lokalni running (brez claimed_at)
+        assert agenda.release_expired_claims(10) == 0
+
+
+class TestFleetClient:
+    def test_claim_roundtrip(self, client, tmp_state, monkeypatch):
+        import requests
+        _add_pending(1)
+        real_post = requests.post
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            path = url.split("/fleet")[1]
+            r = client.post(f"/fleet{path}", json=json, headers=headers)
+
+            class _R:
+                def raise_for_status(self):
+                    if r.status_code >= 400:
+                        raise RuntimeError(f"HTTP {r.status_code}")
+                def json(self):
+                    return r.json()
+            return _R()
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        c = fleet.FleetClient("http://master:8789", "test-token")
+        item = c.claim(worker="worker-x")
+        assert item is not None
+        assert item["status"] == "running"
+        assert item["claimed_by"] == "worker-x"
+        # preveri, da fake_post dejansko ni šel na pravo omrežje
+        assert requests.post is not real_post

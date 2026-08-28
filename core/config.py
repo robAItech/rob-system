@@ -84,6 +84,15 @@ class SystemSettings(BaseSettings):
     daemon_goal_pending_cap: int = Field(default=3, alias="DAEMON_GOAL_PENDING_CAP")
     # Guard pred polnim diskom za težek full_eval.
     daemon_min_free_gb: float = Field(default=2.0, alias="DAEMON_MIN_FREE_GB")
+    # ─── P9 — master–worker fleet (core/fleet.py) ─────────────────────────
+    # standalone (privzeto, današnje vedenje) | master (dela + služi agendo
+    # workerjem prek /fleet/*) | worker (potegne naloge od masterja, izvede
+    # lokalno skozi run_swarm --item, pošlje rezultat nazaj).
+    fleet_role: str = Field(default="standalone", alias="ROB_FLEET_ROLE")
+    fleet_master_url: str = Field(default="http://127.0.0.1:8789", alias="ROB_FLEET_MASTER_URL")
+    fleet_token: str = Field(default="", alias="ROB_FLEET_TOKEN")
+    fleet_port: int = Field(default=8789, alias="ROB_FLEET_PORT")
+    fleet_claim_ttl_seconds: int = Field(default=1800, alias="ROB_FLEET_CLAIM_TTL_SECONDS")
 
     def is_real_key_available(self) -> bool:
         return bool(

@@ -45,7 +45,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core import agenda, audit, config, dev_cli
+from core import agenda, audit, config, dev_cli, fleet
 
 ROB_AI = PROJECT_ROOT / ".rob_ai"
 DAEMON_FILE = ROB_AI / "daemon.json"
@@ -317,7 +317,9 @@ def build_scheduler(settings) -> Scheduler:
     sched.add("meta_check", _tick_meta_check, settings.daemon_meta_check_hours * 3600)
     if settings.daemon_full_eval_hours > 0:
         sched.add("full_eval", _tick_full_eval, settings.daemon_full_eval_hours * 3600)
-    sched.add("goal", _tick_goal, settings.daemon_goal_hours * 3600)
+    # Worker ne generira lastnih nalog (goal tick) — le izvaja naloge od masterja.
+    if getattr(settings, "fleet_role", "standalone") != "worker":
+        sched.add("goal", _tick_goal, settings.daemon_goal_hours * 3600)
     return sched
 
 
@@ -372,6 +374,37 @@ def _heartbeat_tasks(active: list) -> list:
          "started_at": e["started_at"]}
         for e in active
     ]
+
+
+def _fleet_claim_remote(settings) -> list:
+    """Worker: claim eno nalogo od masterja in jo zapiši v LOKALNO senčno
+    agendo (fleet_claimed, status running), da `run_swarm.py --item` deluje.
+    Master ni dosegljiv → prazno (daemon poskusi znova naslednji tick)."""
+    try:
+        client = fleet.FleetClient(settings.fleet_master_url, settings.fleet_token)
+        item = client.claim(worker=fleet.host_id())
+    except Exception as e:
+        print(f"[daemon] fleet claim napaka: {e}")
+        _append_error(f"fleet claim: {e}")
+        return []
+    if not item:
+        return []
+    item["fleet_claimed"] = True
+    item["status"] = "running"   # senčna agenda: lokalni claim_pending je ne vzame
+    item["updated_at"] = int(time.time())
+    agenda.upsert_fleet(item)
+    return [item]
+
+
+def _fleet_report_result(settings, item: dict, ok: bool, detail: str, duration_s: float) -> None:
+    """Worker: po zaključku naloge pošlje izid masterju. Napaka se zabeleži,
+    naloga pa ostane lokalno (master jo bo re-claim-a po lease TTL)."""
+    try:
+        fleet.FleetClient(settings.fleet_master_url, settings.fleet_token).result(
+            item_id=item["id"], ok=ok, target=item.get("target", item["id"]),
+            detail=detail, duration_s=duration_s, worker=fleet.host_id())
+    except Exception as e:
+        _append_error(f"fleet result: {e}")
 
 
 def _spawn_task(item: dict, settings, cfg) -> dict:
@@ -429,6 +462,11 @@ def _reap_task(entry: dict, settings, cfg, active: list) -> dict:
         _append_error(f"meta snapshot: {e}")
 
     duration = round(time.time() - entry["started_at"], 1)
+
+    # Worker: izid posreduj masterju (naloga pripada floti, ne lokalni agendi).
+    if getattr(settings, "fleet_role", "standalone") == "worker" and item.get("fleet_claimed"):
+        _fleet_report_result(settings, item, ok, detail=f"rc={rc}", duration_s=duration)
+
     audit.record(event="daemon-task", project=item.get("target", item_id),
                  status="ok" if ok else "failed",
                  detail=f"duration_s={duration}"
@@ -533,6 +571,9 @@ def run_loop(settings, cfg, once: bool = False) -> int:
 
     workers = 1 if once else max(1, int(getattr(settings, "daemon_workers", 1) or 1))
     active: list = []   # [{item, popen, started_at, deadline, killed}]
+    # P9 fleet: worker ne dviga storitev (proxy/dashboard) in ne generira lastnih
+    # nalog — le potegne in izvede naloge od masterja (single-flight claim).
+    is_worker = getattr(settings, "fleet_role", "standalone") == "worker"
 
     # BOOT
     _write_heartbeat("boot", current_tasks=None, current_tick=None)
@@ -545,11 +586,23 @@ def run_loop(settings, cfg, once: bool = False) -> int:
     if recovered:
         print(f"[daemon] obnovljenih nalog (running→pending): {recovered}")
 
-    _write_heartbeat("ensure_services", current_tasks=None)
-    if not _ensure_services(cfg):
-        print("[daemon] proxy ni dosegljiv po zagonu — stanje degraded, retry v zanki.")
-        _write_heartbeat("degraded", current_tasks=None)
-    print(f"[daemon] zagnan (PID {os.getpid()}, once={once}, workers={workers})")
+    if is_worker:
+        # Nedokončane fleet senčne naloge (reboot workerja) izginejo — master
+        # jih re-claim-a po lease TTL. Ni lokalnega podvajanja ob reboot.
+        stale = [it for it in agenda.all_()
+                 if it.get("fleet_claimed") and it.get("status") != "done"]
+        for it in stale:
+            agenda.delete_item(it["id"])
+        if stale:
+            print(f"[daemon] worker: počiščenih {len(stale)} nedokončanih fleet senčnih nalog.")
+        _write_heartbeat("boot_worker", current_tasks=None, current_tick=None)
+    else:
+        _write_heartbeat("ensure_services", current_tasks=None)
+        if not _ensure_services(cfg):
+            print("[daemon] proxy ni dosegljiv po zagonu — stanje degraded, retry v zanki.")
+            _write_heartbeat("degraded", current_tasks=None)
+    print(f"[daemon] zagnan (PID {os.getpid()}, once={once}, workers={workers}, "
+          f"role={getattr(settings, 'fleet_role', 'standalone')})")
 
     last_hb = _now()
     try:
@@ -570,8 +623,8 @@ def run_loop(settings, cfg, once: bool = False) -> int:
                     continue
                 break
 
-            # HEALTH GATE — brez proxyja ni novih nalog/tickov.
-            if not _proxy_ok(cfg):
+            # HEALTH GATE — brez proxyja ni novih nalog/tickov (worker ga preskoči).
+            if not is_worker and not _proxy_ok(cfg):
                 if now - last_hb >= settings.daemon_proxy_retry_seconds:
                     print("[daemon] proxy dol — ponovni poskus dviga storitev.")
                     _ensure_services(cfg)
@@ -596,7 +649,11 @@ def run_loop(settings, cfg, once: bool = False) -> int:
                 if once:
                     limit = min(limit, 1) if not active else 0
                 if limit > 0:
-                    for item in agenda.claim_pending(exclude_targets=exclude, limit=limit):
+                    if is_worker:
+                        items = _fleet_claim_remote(settings)
+                    else:
+                        items = agenda.claim_pending(exclude_targets=exclude, limit=limit)
+                    for item in items:
                         active.append(_spawn_task(item, settings, cfg))
                         spawned += 1
 

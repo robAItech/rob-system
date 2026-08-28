@@ -188,6 +188,32 @@ pwsh -File scripts\register-autostart.ps1        # registrira
 pwsh -File scripts\register-autostart.ps1 -Query # preveri
 ```
 
+**Master–worker fleet (P9 — deljena agenda čez več strojev):**
+
+```bash
+# MASTER (stroj, ki obdrži agendo + dela; v .env):
+#   ROB_FLEET_ROLE=master
+#   ROB_FLEET_TOKEN=<skupna skrivnost>
+./rob fleet serve            # dvigne /fleet/* na :8789 (samo Tailscale/zasebno!)
+./rob daemon                 # master daemon dela + služi agendo workerjem
+
+# WORKER (drugi stroj; v .env):
+#   ROB_FLEET_ROLE=worker
+#   ROB_FLEET_MASTER_URL=http://<master-tailscale-ip>:8789
+#   ROB_FLEET_TOKEN=<ista skrivnost>
+./rob daemon                 # worker: claim → run_swarm --item → result nazaj
+./rob fleet status           # pregled flote (od masterja)
+```
+
+- Worker nikoli ne piše v master agendo neposredno: nalogo dobi prek
+  `/fleet/claim`, izvede skozi isto RSI pot (`run_swarm.py --item`) in pošlje
+  rezultat nazaj (`/fleet/result`).
+- **Lease:** če worker umre sredi naloge, master po `ROB_FLEET_CLAIM_TTL_SECONDS`
+  (privzeto 1800 s) nalogo spet sprosti drugemu workerju.
+- **Varnost:** `/fleet/*` zahteva `ROB_FLEET_TOKEN` (fail-closed brez tokena).
+  **NIKOLI javnega porta** — Tailscale ali zasebno omrežje.
+- `ROB_FLEET_ROLE=standalone` (privzeto) = današnje vedenje, nič se ne spremeni.
+
 ---
 
 ## 7. Docker RSI peskovnik (neobvezno, a priporočeno)

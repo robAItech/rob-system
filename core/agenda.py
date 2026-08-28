@@ -274,6 +274,91 @@ def rearm_repeat() -> int:
     return _locked(_do)
 
 
+# ── P9 — fleet (master–worker): claim / lease / senčni zapis / rezultat ── #
+def claim_fleet(limit: int = 1, worker: str | None = None) -> list:
+    """Fleet: atomično rezervira do `limit` pending itemov za oddaljenega
+    workerja. Item dobi status "running" (lokalni `claim_pending` ga ne vrne
+    več), `claimed_by` (worker) in `claimed_at` (za lease TTL). Worker, ki umre
+    sredi naloge, se reši prek `release_expired_claims`."""
+    def _do() -> list:
+        items = _load()
+        claimed: list = []
+        seen: set = set()
+        for it in items:
+            if it.get("status") != "pending":
+                continue
+            target = it.get("target") or it["id"]
+            if target in seen:
+                continue
+            seen.add(target)
+            it["status"] = "running"
+            it["claimed_by"] = worker or "master"
+            it["claimed_at"] = int(time.time())
+            it["updated_at"] = int(time.time())
+            claimed.append(dict(it))
+            if len(claimed) >= limit:
+                break
+        if claimed:
+            _save(items)
+        return claimed
+    return _locked(_do)
+
+
+def release_expired_claims(ttl_seconds: int) -> int:
+    """Fleet: itemi v 'running' s `claimed_at` starejšim od ttl → spet pending
+    (worker je umrl sredi naloge). Ne dotika se lokalnih running itemov, ki
+    `claimed_at` nimajo. Vrne število sproščenih."""
+    def _do() -> int:
+        items = _load()
+        n = 0
+        now = int(time.time())
+        for it in items:
+            if it.get("status") == "running" and it.get("claimed_at"):
+                try:
+                    age = now - int(it["claimed_at"])
+                except (TypeError, ValueError):
+                    age = 0
+                if age > ttl_seconds:
+                    it["status"] = "pending"
+                    it["updated_at"] = now
+                    n += 1
+        if n:
+            _save(items)
+        return n
+    return _locked(_do)
+
+
+def upsert_fleet(item: dict) -> None:
+    """Worker: zapiše item, ki je prispel od masterja, v LOKALNO senčno agendo.
+    Ohrani id (`run_swarm.py --item` ga išče) in status (running → lokalni
+    `claim_pending` ga ne vzame)."""
+    def _do() -> None:
+        items = [i for i in _load() if i.get("id") != item.get("id")]
+        items.append(dict(item))
+        _save(items)
+    _locked(_do)
+
+
+def record_fleet_result(item_id: str, status: str, worker: str | None = None,
+                        detail: str = "", duration_s: float | None = None) -> None:
+    """Master: po prejetem rezultatu od workerja označi item done/failed in
+    shrani meta (worker, trajanje, kratek izid)."""
+    def _do() -> None:
+        items = _load()
+        for it in items:
+            if it.get("id") == item_id:
+                it["status"] = status
+                it["updated_at"] = int(time.time())
+                if worker:
+                    it["result_worker"] = worker
+                if duration_s is not None:
+                    it["duration_s"] = round(duration_s, 1)
+                if detail:
+                    it["result_detail"] = str(detail)[:400]
+        _save(items)
+    _locked(_do)
+
+
 def _slug(goal: str) -> str:
     """Iz cilja izpelje target (ime modula), ne zgolj prve besede.
 
