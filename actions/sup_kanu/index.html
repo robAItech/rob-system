@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SUP Kanu Ljubljanica – izposoja SUP desk in kanujev na reki Ljubljanici. Ponudba, cene izposoje, kontakt, odpiralni čas in kako do nas.">
+  <meta name="theme-color" content="#0b2e4f">
+  <title>SUP Kanu Ljubljanica | Izposoja SUP desk in kanujev na Ljubljanici</title>
+  <style>
+    :root {
+      --navy: #0b2e4f;
+      --teal: #0e7c86;
+      --aqua: #17b8c4;
+      --sand: #fdf6ec;
+      --orange: #f28c28;
+      --text: #22343c;
+      --white: #ffffff;
+      --muted: #5b6b74;
+      --shadow: 0 6px 24px rgba(11, 46, 79, 0.12);
+      --radius: 14px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+      color: var(--text);
+      background: var(--sand);
+      line-height: 1.65;
+    }
+    img { max-width: 100%; display: block; }
+    a { color: var(--teal); text-decoration: none; }
+    .container { width: min(1100px, 92%); margin: 0 auto; }
+
+    /* Skip link */
+    .skip-link {
+      position: absolute; left: -9999px; top: 0; background: var(--navy); color: var(--white);
+      padding: 0.6rem 1rem; border-radius: 0 0 8px 0; z-index: 200;
+    }
+    .skip-link:focus { left: 0; }
+
+    /* Header / navigation */
+    .site-header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--navy);
+      box-shadow: 0 2px 10px rgba(11, 46, 79, 0.35);
+    }
+    .header-inner { display: flex; align-items: center; justify-content: space-between; min-height: 64px; }
+    .brand { display: inline-flex; align-items: center; gap: 0.55rem; color: var(--white); font-size: 1.15rem; }
+    .brand-logo { font-size: 1.5rem; }
+    .brand-name strong { color: var(--aqua); }
+    .site-nav ul { display: flex; list-style: none; gap: 0.25rem; flex-wrap: wrap; }
+    .site-nav a {
+      display: block; padding: 0.5rem 0.75rem; color: #dbe9f2; font-weight: 500;
+      border-radius: 8px; transition: background 0.2s, color 0.2s;
+    }
+    .site-nav a:hover { background: rgba(23, 184, 196, 0.18); color: var(--white); }
+    .nav-toggle { display: none; }
+    .nav-toggle-label { display: none; }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--teal) 60%, var(--aqua) 100%);
+      color: var(--white);
+      padding: 6.5rem 0 5.5rem;
+      text-align: center;
+    }
+    .hero-kicker {
+      display: inline-block; background: rgba(255, 255, 255, 0.15);
+      padding: 0.35rem 1rem; border-radius: 999px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.85rem;
+      margin-bottom: 1.1rem;
+    }
+    .hero h1 { font-size: clamp(2rem, 5vw, 3.4rem); line-height: 1.15; margin-bottom: 1rem; }
+    .hero-text { max-width: 640px; margin: 0 auto 1.8rem; font-size: 1.1rem; color: #e7f3f8; }
+    .hero-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block; padding: 0.8rem 1.6rem; border-radius: 999px;
+      font-weight: 600; transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn-primary { background: var(--orange); color: var(--white); box-shadow: 0 8px 20px rgba(242, 140, 40, 0.4); }
+    .btn-primary:hover { background: #e07c16; }
+    .btn-secondary { background: rgba(255, 255, 255, 0.15); color: var(--white); border: 1px solid rgba(255, 255, 255, 0.5); }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.25); }
+
+    /* Sections */
+    .section { padding: 4.5rem 0; }
+    .section-alt { background: var(--white); }
+    .section-title {
+      font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+      color: var(--navy); text-align: center; margin-bottom: 2.2rem;
+    }
+    .section-title::after {
+      content: ""; display: block; width: 72px; height: 4px; margin: 0.7rem auto 0;
+      background: var(--orange); border-radius: 4px;
+    }
+    .lead { max-width: 760px; margin: 0 auto 1.4rem; text-align: center; }
+
+    /* Cards (ponudba) */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; }
+    .card {
+      background: var(--sand); border: 1px solid #eee2cf; border-radius: var(--radius);
+      padding: 1.8rem 1.6rem; box-shadow: var(--shadow);
+      display: flex; flex-direction: column; gap: 0.8rem;
+      transition: transform 0.2s;
+    }
+    .card:hover { transform: translateY(-4px); }
+    .card-icon { font-size: 2.4rem; }
+    .card h3 { color: var(--navy); font-size: 1.25rem; }
+    .card p { color: var(--muted); flex: 1; }
+
+    /* Price table */
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); box-shadow: var(--shadow); }
+    table { width: 100%; border-collapse: collapse; background: var(--white); min-width: 520px; }
+    caption { caption-side: top; text-align: left; font-weight: 600; color: var(--navy); padding: 0.5rem 0 1rem; }
+    th, td { padding: 0.9rem 1.1rem; text-align: left; border-bottom: 1px solid #eee2cf; }
+    thead th { background: var(--navy); color: var(--white); font-weight: 600; }
+    tbody tr:nth-child(even) { background: #f8f1e4; }
+    td.price { font-weight: 700; color: var(--teal); white-space: nowrap; }
+    .note { margin-top: 1.1rem; font-size: 0.95rem; color: var(--muted); text-align: center; }
+
+    /* Gallery */
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.2rem; }
+    .gallery figure {
+      border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+      background: linear-gradient(160deg, #0e7c86 0%, #17b8c4 70%, #7fdbe2 100%);
+      color: var(--white);
+    }
+    .gallery .g-img {
+      min-height: 190px; display: flex; align-items: center; justify-content: center;
+      font-size: 3.4rem; background: rgba(255, 255, 255, 0.12);
+    }
+    .gallery figcaption { padding: 0.8rem 1rem; background: rgba(11, 46, 79, 0.85); font-size: 0.95rem; }
+
+    /* How to get there */
+    .steps { list-style: none; display: grid; gap: 1rem; max-width: 760px; margin: 0 auto; }
+    .steps li {
+      display: flex; gap: 1rem; align-items: flex-start;
+      background: var(--white); border: 1px solid #eee2cf; border-radius: var(--radius);
+      padding: 1.1rem 1.3rem; box-shadow: var(--shadow);
+    }
+    .step-num {
+      flex: 0 0 40px; height: 40px; border-radius: 50%;
+      background: var(--teal); color: var(--white);
+      display: flex; align-items: center; justify-content: center; font-weight: 700;
+    }
+
+    /* Opening hours */
+    .hours-table { max-width: 620px; margin: 0 auto; }
+
+    /* Contact */
+    .contact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; }
+    .contact-item {
+      background: var(--white); border: 1px solid #eee2cf; border-radius: var(--radius);
+      padding: 1.6rem; text-align: center; box-shadow: var(--shadow);
+    }
+    .contact-item .c-icon { font-size: 2rem; }
+    .contact-item h3 { color: var(--navy); margin: 0.5rem 0 0.3rem; }
+    .contact-item a { font-weight: 600; }
+    .contact-item a:hover { text-decoration: underline; }
+
+    /* Footer */
+    .site-footer { background: var(--navy); color: #cfe0ea; padding: 2rem 0; text-align: center; }
+    .site-footer p + p { margin-top: 0.3rem; font-size: 0.9rem; color: #93aebb; }
+
+    /* Responsive */
+    @media (max-width: 860px) {
+      .nav-toggle-label {
+        display: block; cursor: pointer; padding: 0.6rem 0.4rem;
+      }
+      .nav-toggle-label span,
+      .nav-toggle-label span::before,
+      .nav-toggle-label span::after {
+        content: ""; display: block; width: 26px; height: 3px; border-radius: 3px;
+        background: var(--white); transition: transform 0.25s;
+      }
+      .nav-toggle-label span::before { transform: translateY(-8px); }
+      .nav-toggle-label span::after { transform: translateY(5px); }
+      .site-nav {
+        display: none; position: absolute; top: 64px; left: 0; right: 0;
+        background: var(--navy); padding: 0.6rem 4%;
+        box-shadow: 0 8px 16px rgba(11, 46, 79, 0.35);
+      }
+      .nav-toggle:checked ~ .site-nav { display: block; }
+      .site-nav ul { flex-direction: column; gap: 0; }
+      .site-nav a { padding: 0.8rem 0.5rem; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+      .hero { padding: 4.2rem 0 3.6rem; }
+    }
+    @media (max-width: 480px) {
+      .section { padding: 3rem 0; }
+      .hero-text { font-size: 1rem; }
+      .contact-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#vsebina">Preskoči na vsebino</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#domov">
+        <span class="brand-logo" aria-hidden="true">🏄</span>
+        <span class="brand-name">SUP Kanu <strong>Ljubljanica</strong></span>
+      </a>
+      <input type="checkbox" id="nav-toggle" class="nav-toggle">
+      <label for="nav-toggle" class="nav-toggle-label" aria-label="Odpri navigacijo"><span></span></label>
+      <nav class="site-nav" aria-label="Glavna navigacija">
+        <ul>
+          <li><a href="#domov">Domov</a></li>
+          <li><a href="#o-nas">O nas</a></li>
+          <li><a href="#ponudba">Ponudba</a></li>
+          <li><a href="#cene">Cene</a></li>
+          <li><a href="#galerija">Galerija</a></li>
+          <li><a href="#kako-do-nas">Kako do nas</a></li>
+          <li><a href="#odpiralni-cas">Odpiralni čas</a></li>
+          <li><a href="#kontakt">Kontakt</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="vsebina">
+    <!-- DOMOV -->
+    <section id="domov" class="hero">
+      <div class="container">
+        <p class="hero-kicker">Ljubljanica te čaka</p>
+        <h1>Doživi Ljubljanico z reke</h1>
+        <p class="hero-text">
+          Izposoja SUP desk in kanujev v samem središču Ljubljane. Brez izkušenj? Brez skrbi —
+          oprema, rešilni jopiči in kratek uvodni tečaj so vedno všteti v ceno.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#cene">Cene izposoje</a>
+          <a class="btn btn-secondary" href="#kontakt">Rezerviraj termin</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- O NAS -->
+    <section id="o-nas" class="section">
+      <div class="container">
+        <h2 class="section-title">O nas</h2>
+        <p class="lead">
+          SUP Kanu Ljubljanica je domača ekipa, ki domačinom in obiskovalcem že več kot deset let
+          omogoča, da Ljubljano doživijo iz povsem druge perspektive — z reke.
+        </p>
+        <p class="lead">
+          Naš ponton leži ob Gallusovem nabrežju, v srcu mesta. Za vsakega gosta imamo pregledano
+          in vzdrževano opremo, rešilne jopiče, nepremočljive vrečke za osebne stvari ter prijazen
+          uvodni tečaj, da se na vodi počutite varno že od prve minute. Pridružite se nam in odplujte
+          mimo Plečnikovih znamenitosti, Grajskega griča in zelenih brežin — na deski ali v kanuju.
+        </p>
+      </div>
+    </section>
+
+    <!-- PONUDBA -->
+    <section id="ponudba" class="section section-alt">
+      <div class="container">
+        <h2 class="section-title">Ponudba</h2>
+        <div class="cards">
+          <article class="card">
+            <span class="card-icon" aria-hidden="true">🏄‍♂️</span>
+            <h3>Izposoja SUP desk</h3>
+            <p>
+              Stabilne SUP deske za vse ravni znanja — od popolnih začetnikov do izkušenih veslačev.
+              Vključeno: veslo, rešilni jopič in kratek uvodni tečaj.
+            </p>
+          </article>
+          <article class="card">
+            <span class="card-icon" aria-hidden="true">🛶</span>
+            <h3>Izposoja kanujev</h3>
+            <p>
+              Dvosedežni in trisedežni kanuji za raziskovanje Ljubljanice v svojem ritmu.
+              Idealni za pare, prijatelje in družine.
+            </p>
+          </article>
+          <article class="card">
+            <span class="card-icon" aria-hidden="true">🧭</span>
+            <h3>Najem in vodeni izleti</h3>
+            <p>
+              Dolgoročni najem, skupinski izleti in team building ob sončnem zahodu.
+              Za skupine in podjetja pripravimo program po meri.
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- CENE -->
+    <section id="cene" class="section">
+      <div class="container">
+        <h2 class="section-title">Cene izposoje</h2>
+        <div class="table-wrap">
+          <table>
+            <caption>Cene za eno uro, dve uri in cel dan izposoje</caption>
+            <thead>
+              <tr>
+                <th scope="col">Izposoja</th>
+                <th scope="col">1 ura</th>
+                <th scope="col">2 uri</th>
+                <th scope="col">Cel dan</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">SUP deska</th>
+                <td class="price">12 €</td>
+                <td class="price">20 €</td>
+                <td class="price">35 €</td>
+              </tr>
+              <tr>
+                <th scope="row">Kanu (2 osebi)</th>
+                <td class="price">15 €</td>
+                <td class="price">25 €</td>
+                <td class="price">45 €</td>
+              </tr>
+              <tr>
+                <th scope="row">Kanu (3 osebe)</th>
+                <td class="price">18 €</td>
+                <td class="price">30 €</td>
+                <td class="price">55 €</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          V ceno je všteta vsa oprema (deska ali kanu, veslo, rešilni jopič) in kratek uvodni tečaj.
+          Polog 50 € na kos opreme, vrnjen ob vrnitvi.
+        </p>
+      </div>
+    </section>
+
+    <!-- GALERIJA -->
+    <section id="galerija" class="section section-alt">
+      <div class="container">
+        <h2 class="section-title">Galerija</h2>
+        <div class="gallery">
+          <figure>
+            <div class="g-img" aria-hidden="true">🏄</div>
+            <figcaption>SUP deske pripravljene ob nabrežju</figcaption>
+          </figure>
+          <figure>
+            <div class="g-img" aria-hidden="true">🛶</div>
+            <figcaption>Kanu na mirni Ljubljanici</figcaption>
+          </figure>
+          <figure>
+            <div class="g-img" aria-hidden="true">🌅</div>
+            <figcaption>Vodeni izlet ob sončnem zahodu</figcaption>
+          </figure>
+          <figure>
+            <div class="g-img" aria-hidden="true">🎓</div>
+            <figcaption>Začetniški tečaj SUP-a</figcaption>
+          </figure>
+          <figure>
+            <div class="g-img" aria-hidden="true">👨‍👩‍👧</div>
+            <figcaption>Družinski izlet po reki</figcaption>
+          </figure>
+          <figure>
+            <div class="g-img" aria-hidden="true">🦺</div>
+            <figcaption>Varnostna oprema in rešilni jopiči</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- KAKO DO NAS -->
+    <section id="kako-do-nas" class="section">
+      <div class="container">
+        <h2 class="section-title">Kako do nas</h2>
+        <ol class="steps">
+          <li>
+            <span class="step-num" aria-hidden="true">1</span>
+            <p><strong>Peš:</strong> od Prešernovega trga le 5 minut hoje ob nabrežju proti Špici.</p>
+          </li>
+          <li>
+            <span class="step-num" aria-hidden="true">2</span>
+            <p><strong>S kolesom:</strong> po urejeni kolesarski poti ob reki naravnost do našega pontona.</p>
+          </li>
+          <li>
+            <span class="step-num" aria-hidden="true">3</span>
+            <p><strong>Z mestnim avtobusom:</strong> izstopite na postaji Ljubljana – Trnovo (liniji 5 in 9) in se 3 minute sprehodite do nabrežja.</p>
+          </li>
+          <li>
+            <span class="step-num" aria-hidden="true">4</span>
+            <p><strong>Z avtomobilom:</strong> najbližje plačljivo parkirišče je na Krakovskem nasipu.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ODPIRALNI ČAS -->
+    <section id="odpiralni-cas" class="section section-alt">
+      <div class="container">
+        <h2 class="section-title">Odpiralni čas</h2>
+        <div class="table-wrap hours-table">
+          <table>
+            <caption>Odpiralni čas izposojevalnice</caption>
+            <thead>
+              <tr>
+                <th scope="col">Dan</th>
+                <th scope="col">Ure</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Ponedeljek – petek</th>
+                <td>10:00 – 20:00</td>
+              </tr>
+              <tr>
+                <th scope="row">Sobota</th>
+                <td>09:00 – 21:00</td>
+              </tr>
+              <tr>
+                <th scope="row">Nedelja in prazniki</th>
+                <td>09:00 – 20:00</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          Sezona: maj – september. V izvensezonskem času smo na voljo po dogovoru za skupine in team building.
+        </p>
+      </div>
+    </section>
+
+    <!-- KONTAKT -->
+    <section id="kontakt" class="section">
+      <div class="container">
+        <h2 class="section-title">Kontakt</h2>
+        <div class="contact-grid">
+          <div class="contact-item">
+            <span class="c-icon" aria-hidden="true">📍</span>
+            <h3>Naslov</h3>
+            <p>Gallusovo nabrežje 27<br>1000 Ljubljana</p>
+          </div>
+          <div class="contact-item">
+            <span class="c-icon" aria-hidden="true">📞</span>
+            <h3>Telefon</h3>
+            <p><a href="tel:+38640123456">+386 40 123 456</a><br>(tudi WhatsApp)</p>
+          </div>
+          <div class="contact-item">
+            <span class="c-icon" aria-hidden="true">✉️</span>
+            <h3>E-pošta</h3>
+            <p><a href="mailto:info@supkanu-ljubljanica.si">info@supkanu-ljubljanica.si</a></p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>© 2025 SUP Kanu Ljubljanica. Vse pravice pridržane.</p>
+      <p>Izposoja SUP desk in kanujev na reki Ljubljanici — Gallusovo nabrežje 27, 1000 Ljubljana.</p>
+    </div>
+  </footer>
+</body>
+</html>
