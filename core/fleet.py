@@ -255,19 +255,32 @@ def commit_worker_actions(module: str) -> bool:
     push-a — tako kodo dobi tudi master (prek naslednjega backup pull-a).
     Ne dotika se `fleet/backup.json` (to je masterjev izvoz). Idempotentno:
     brez sprememb ni commit-a. Push poskusi dvakrat (pre-push hook lahko ob
-    prvem naredi pull --rebase in prekine)."""
+    prvem naredi pull --rebase in prekine). Izpisuje vsak korak — za debug."""
+    print(f"[fleet] commit_worker_actions: module={module!r}")
     if not module:
+        print("[fleet]   ✗ prazen module (target) — preskočim.")
+        return False
+    p = PROJECT_ROOT / "actions" / module
+    if not p.exists():
+        print(f"[fleet]   ✗ {p} ne obstaja — nič za commit.")
         return False
     if subprocess.call(["git", "add", f"actions/{module}"], cwd=PROJECT_ROOT) != 0:
+        print("[fleet]   ✗ git add ni uspel.")
         return False
     if subprocess.call(["git", "diff", "--cached", "--quiet"], cwd=PROJECT_ROOT) == 0:
-        return False   # ni sprememb → nič za commit
+        print("[fleet]   – ni sprememb (že commitano?) — preskočim.")
+        return False
     if subprocess.call(["git", "commit", "-m", f"fleet: worker build {module}"],
                        cwd=PROJECT_ROOT) != 0:
+        print("[fleet]   ✗ git commit ni uspel (preveri git user/email).")
         return False
+    print("[fleet]   ✓ commit OK, push ...")
     if subprocess.call(["git", "push"], cwd=PROJECT_ROOT) != 0:
         # pre-push hook je morda naredil rebase in prekinil → poskusi še enkrat
-        subprocess.call(["git", "push"], cwd=PROJECT_ROOT)
+        if subprocess.call(["git", "push"], cwd=PROJECT_ROOT) != 0:
+            print("[fleet]   ✗ git push ni uspel.")
+            return False
+    print("[fleet]   ✓ push OK.")
     return True
 
 
@@ -297,6 +310,7 @@ def main(argv: Optional[list] = None) -> int:
     sub.add_parser("memory", help="prikaži lokalni spomin (števila po učnih tabelah)")
     sub.add_parser("backup", help="master: izvoz spomina+agende v fleet/backup.json, commit+push v git")
     sub.add_parser("restore", help="katerikoli stroj: git pull + združi fleet/backup.json v lokalni spomin/agendo")
+    sub.add_parser("sync-actions", help="(worker) ročno commit+push zgrajenega modula (npr. sync-actions fleet_sync_test)")
     args = parser.parse_args(argv)
 
     if args.cmd == "serve":
@@ -318,6 +332,10 @@ def main(argv: Optional[list] = None) -> int:
         return _cmd_backup()
     if args.cmd == "restore":
         return _cmd_restore()
+    if args.cmd == "sync-actions":
+        module = (argv[1] if len(argv or []) > 1 else "")
+        ok = commit_worker_actions(module)
+        return 0 if ok else 1
 
     client = FleetClient(settings.fleet_master_url, settings.fleet_token)
     if args.cmd == "status":
