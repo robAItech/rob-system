@@ -5,9 +5,8 @@ from typing import Dict
 
 class DeploymentManager:
     # Moduli, ki so samo CI/knjižnice in se NE deployajo kot runtime storitve.
-    # Trenutno prazen — contract_testing je bil združen v contract_schema_engine,
-    # ki je runtime storitev (JSON Schema validacija). Mehanizem ostaja za prihodnost.
-    CI_ONLY_MODULES = set()
+    # - testmod_e: testni modul iz dev/test okolja (arhitekturna konsolidacija).
+    CI_ONLY_MODULES = {"testmod_e"}
 
     def __init__(self, base_dir: str = "."):
         self.base_dir = Path(base_dir)
@@ -22,12 +21,15 @@ class DeploymentManager:
         - nedirektorije,
         - skrite run-time artefakte (`.pytest_cache`, `.git`, ...),
         - Python meta-mape (`__pycache__`, ...),
+        - eval bugfix klone (`fix_*` — SWE-bench stil, namerno bugirani),
         - CI-only module (ki se ne deployajo kot storitve).
         """
         if not d.is_dir():
             return False
         name = d.name
         if name.startswith(".") or name.startswith("__"):
+            return False
+        if name.startswith("fix_"):
             return False
         if name in cls.CI_ONLY_MODULES:
             return False

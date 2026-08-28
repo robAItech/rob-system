@@ -20,6 +20,7 @@ except ImportError:  # pragma: no cover
     from actions.csv_parser.parse_csv import parse_csv  # type: ignore
 
 from actions.string_ops import slug
+from actions.report_builder.markdown import render_report_as_markdown
 
 TITLE_COLUMN = "naslov"
 FALLBACK_TITLE_COLUMN = "title"
@@ -105,3 +106,12 @@ def build_report(csv_tekst: str) -> Dict[str, List[Any]]:
 async def build_report_async(csv_tekst: str) -> Dict[str, List[Any]]:
     """Async priročnica okoli ``build_report`` (čista async logika na vrhu)."""
     return build_report(csv_tekst)
+
+
+def build_report_markdown(csv_tekst: str, title: str = "Poročilo") -> str:
+    """Zgradi poročilo iz CSV in ga izpiše kot Markdown (output adapter).
+
+    Konsolidacija observability plasti: Markdown izhod ni več samostojen Action
+    (nekdanji ``markdown_summary``) — je adapter znotraj report_builderja.
+    """
+    return render_report_as_markdown(build_report(csv_tekst), title=title)

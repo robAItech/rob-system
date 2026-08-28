@@ -8,6 +8,8 @@ from .currency_converter import (
     CurrencyConversionError,
     UnsupportedCurrencyError,
     InvalidAmountError,
+    InvertedRateError,
+    InvertRateSanitizer,
 )
 from .schemas import ConversionRequest, ConversionResponse, ErrorResponse
 from .main import router
@@ -21,6 +23,8 @@ __all__ = [
     "CurrencyConversionError",
     "UnsupportedCurrencyError",
     "InvalidAmountError",
+    "InvertedRateError",
+    "InvertRateSanitizer",
     "ConversionRequest",
     "ConversionResponse",
     "ErrorResponse",

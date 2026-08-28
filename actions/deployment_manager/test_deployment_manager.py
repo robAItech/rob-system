@@ -60,6 +60,23 @@ async def test_get_services_excludes_artifacts_and_ci_only(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_get_services_excludes_eval_and_dev_modules(tmp_path):
+    # `fix_*` (eval bugfix kloni) in `testmod_e` (dev/test) NISO deployables.
+    actions = tmp_path / "actions"
+    actions.mkdir()
+    (actions / "api_gateway").mkdir()
+    (actions / "fix_currency_inverted_rate").mkdir()   # eval klon — izključen
+    (actions / "testmod_e").mkdir()                    # dev/test modul — izključen
+
+    mgr = DeploymentManager(base_dir=str(tmp_path))
+    services = mgr.get_services()
+
+    assert "api_gateway" in services
+    assert "fix_currency_inverted_rate" not in services
+    assert "testmod_e" not in services
+
+
+@pytest.mark.asyncio
 async def test_deployment_subprocess_mock(mock_env):
     mgr = DeploymentManager(base_dir=str(mock_env))
     

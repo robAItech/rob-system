@@ -1,6 +1,7 @@
 """Testi za actions runtime app (korak 5) — brez omrežja, brez uvicorn.
 
-Preveri: mount vseh 18 modulov, allowlist health, auth (401/veljaven ključ),
+Preveri: mount vseh 21 modulov (18 originalnih + 3 nova enterprise: webhook_dispatcher,
+api_version_manager, secret_rotation), allowlist health, auth (401/veljaven ključ),
 rate-limit (429), audit na deljenem busu, toleranca na broken modul.
 """
 import sys
@@ -19,6 +20,7 @@ ALL_NAMES = {
     "contract_schema_engine", "currency_converter", "deployment_manager", "event_bus",
     "feature_flag", "mailer", "nexus_command_deck", "observability_metrics",
     "rate_limiter", "rsi_engine", "saga_orchestrator", "task_queue", "warehouse_inventory",
+    "webhook_dispatcher", "api_version_manager", "secret_rotation",
 }
 
 
@@ -28,19 +30,21 @@ def _admin_key(client) -> str:
     return issued["api_key"]
 
 
-def test_mounts_all_18():
+def test_mounts_all_21():
     app = build_runtime_app(modules=sorted(ALL_NAMES))
     with TestClient(app) as client:
         mods = client.get("/api/runtime/modules").json()
     mounted = {m["name"] for m in mods if m["mounted"]}
     assert mounted == ALL_NAMES
-    assert len(mounted) == 18
+    assert len(mounted) == 21
 
 
 def test_health_endpoints_public():
     app = build_runtime_app(modules=sorted(ALL_NAMES))
     with TestClient(app) as client:
-        for name in ("api_gateway", "contract_schema_engine", "observability_metrics", "saga_orchestrator"):
+        for name in ("api_gateway", "contract_schema_engine", "observability_metrics",
+                     "saga_orchestrator", "webhook_dispatcher", "api_version_manager",
+                     "secret_rotation"):
             r = client.get(f"/api/{name}/health")
             assert r.status_code == 200, f"{name}: {r.status_code}"
 

@@ -13,6 +13,8 @@ from .currency_converter import (
     CurrencyConversionError,
     UnsupportedCurrencyError,
     InvalidAmountError,
+    InvertedRateError,
+    InvertRateSanitizer,
 )
 from .schemas import ConversionRequest, ConversionResponse, ErrorResponse
 from .main import router
@@ -176,6 +178,49 @@ class TestConvertAPI:
             "extra": "field"
         })
         assert response.status_code == 422
+
+
+# --- Regression Tests: InvertRateSanitizer (absorbcija fix_currency_inverted_rate) ---
+
+class TestInvertRateSanitizer:
+    """Obrnjeni tečaji v custom tabelah se ujamejo pri viru, ne tiho zmotijo."""
+
+    def test_ok_rates_pass_unchanged(self):
+        custom_rates = {
+            "USD": Decimal("1.0"),
+            "EUR": Decimal("0.85"),
+            "JPY": Decimal("110.0"),
+        }
+        result = InvertRateSanitizer().sanitize(custom_rates)
+        assert result == custom_rates
+
+    def test_inverted_eur_detected(self):
+        # 0.85 EUR/USD je pravilen; 1.18 je recipročen (USD/EUR) → obrnjen.
+        inverted = {"EUR": Decimal("1.18")}
+        with pytest.raises(InvertedRateError):
+            InvertRateSanitizer().sanitize(inverted)
+
+    def test_inverted_jpy_detected(self):
+        inverted = {"JPY": Decimal("0.0091")}  # reciprok od 110
+        with pytest.raises(InvertedRateError):
+            InvertRateSanitizer().sanitize(inverted)
+
+    @pytest.mark.asyncio
+    async def test_convert_currency_custom_inverted_raises(self):
+        with pytest.raises(InvertedRateError):
+            await convert_currency(
+                100, "USD", "EUR",
+                rates={"USD": Decimal("1.0"), "EUR": Decimal("1.18")},
+            )
+
+    def test_custom_reference_supported(self):
+        # Reference po meri (npr. base: EUR) — vnos mora biti konsistenten z njo.
+        sanitizer = InvertRateSanitizer(reference={"USD": Decimal("1.0"), "EUR": Decimal("0.85")})
+        assert sanitizer.sanitize({"USD": Decimal("1.0"), "EUR": Decimal("0.85")})
+
+    def test_default_rates_not_touched(self):
+        # Privzete tečaje jedra vhodna strategija pusti nedotaknjene.
+        assert InvertRateSanitizer().sanitize(dict(EXCHANGE_RATES)) == dict(EXCHANGE_RATES)
 
 
 # --- Schema Tests ---
