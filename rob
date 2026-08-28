@@ -26,6 +26,12 @@ if [ -f "$PROJECT_DIR/hooks/pre-push" ] && git rev-parse --is-inside-work-tree >
     fi
 fi
 
+# P9 fleet — opomnik za VSE sesije: zakaj commit-i/povezave niso napaka.
+# (stderr, da ne pokvari stdout-a — npr. JSON iz `rob fleet status`.)
+if [ -f "$PROJECT_DIR/fleet/COORDINATION.md" ]; then
+    echo "📄 fleet: commit-i/povezave drugega stroja NISO napaka — preberi fleet/COORDINATION.md" >&2
+fi
+
 # Aktiviraj venv, če obstaja; sicer uporabi sistemski python (fallback).
 # Odporno na to, KATERI bash poganja skripto (Git Bash ali WSL):
 # - Windows venv: Scripts/python(.exe), POSIX venv: bin/python.
