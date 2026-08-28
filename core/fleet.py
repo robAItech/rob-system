@@ -378,8 +378,10 @@ def main(argv: Optional[list] = None) -> int:
     sub.add_parser("memory", help="prikaži lokalni spomin (števila po učnih tabelah)")
     sub.add_parser("backup", help="master: izvoz spomina+agende v fleet/backup.json, commit+push v git")
     sub.add_parser("restore", help="katerikoli stroj: git pull + združi fleet/backup.json v lokalni spomin/agendo")
-    sub.add_parser("sync-actions", help="(worker) ročno commit+push zgrajenega modula (npr. sync-actions fleet_sync_test)")
-    sub.add_parser("push-actions", help="(worker) ročno pošlji zgrajeni modul masterju prek HTTP (npr. push-actions fleet_sync_test)")
+    _p = sub.add_parser("sync-actions", help="(worker) ročno commit+push zgrajenega modula (npr. sync-actions fleet_sync_test)")
+    _p.add_argument("module", nargs="?", default="")
+    _p = sub.add_parser("push-actions", help="(worker) ročno pošlji zgrajeni modul masterju prek HTTP (npr. push-actions fleet_sync_test)")
+    _p.add_argument("module", nargs="?", default="")
     args = parser.parse_args(argv)
 
     if args.cmd == "serve":
@@ -402,11 +404,11 @@ def main(argv: Optional[list] = None) -> int:
     if args.cmd == "restore":
         return _cmd_restore()
     if args.cmd == "sync-actions":
-        module = (argv[1] if len(argv or []) > 1 else "")
+        module = getattr(args, "module", "")
         ok = commit_worker_actions(module)
         return 0 if ok else 1
     if args.cmd == "push-actions":
-        module = (argv[1] if len(argv or []) > 1 else "")
+        module = getattr(args, "module", "")
         files = export_module_files(module)
         if not files:
             print(f"[fleet] modul {module} nima datotek na tem stroju.")
