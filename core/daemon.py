@@ -811,6 +811,12 @@ def run_loop(settings, cfg, once: bool = False) -> int:
                 if limit > 0:
                     if is_worker:
                         items = _fleet_claim_remote(settings)
+                    elif getattr(settings, "fleet_role", "standalone") == "master":
+                        # Master = koordinator: naloge SLUŽI workerjem prek
+                        # /fleet/claim, sam jih NE izvaja — sicer tekmuje z
+                        # workerji in jim (hitreje) pobere vse (claim_pending
+                        # ne postavi claimed_by → worker nikoli nič ne dobi).
+                        items = []
                     else:
                         items = agenda.claim_pending(exclude_targets=exclude, limit=limit)
                     for item in items:
