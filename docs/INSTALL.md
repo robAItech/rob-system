@@ -224,9 +224,10 @@ pwsh -File scripts\register-autostart.ps1 -Query # preveri
   lokalni merge učnih tabel: `semantic_memories`, `run_reviews`,
   `blacklist_patterns`, `agent_memory_nodes`), **po** nalogi pošlje svoje nove
   lekcije nazaj (`POST /fleet/memory`, master združi z dedupom).
-- **Periodični sync (privzeto 60 s):** tudi ko worker miruje, vsakih
-  `ROB_FLEET_MEMORY_SYNC_SECONDS` izmenja spomin z masterjem (pull + push) —
-  "drugi stroj ve, kaj se dogaja" v sekundah, ne šele ob nalogi. 0 = izključeno.
+- **Periodični sync (privzeto 1 h):** ko worker miruje, vsakih
+  `ROB_FLEET_MEMORY_SYNC_SECONDS` (3600) izmenja spomin + heartbeat z masterjem —
+  a SAMO ko je master dosegljiv. Ko ni dosegljiv, worker ne išče povezave
+  (`ROB_FLEET_BACKOFF_SECONDS`, privzeto 1 h). 0 = izključeno (le ob nalogah).
 - **Avtomatski backup na masterju (privzeto 1 h):** daemon sam požene
   `rob fleet backup` vsakih `ROB_FLEET_BACKUP_SECONDS` (izvoz spomina + agende
   v `fleet/backup.json`, commit + push). 0 = le ročno.

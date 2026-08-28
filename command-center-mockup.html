@@ -1541,6 +1541,6 @@
   render(); setInterval(refresh,3800);
   restoreConvo();           // pogovor preživi refresh (localStorage)
   loadLive(); setInterval(loadLive,10000);
-  loadFleet(); setInterval(loadFleet,5000);   // P9 — živi fleet status
+  loadFleet(); setInterval(loadFleet,30000);  // P9 — fleet status (30 s, ne 5 s)
   loadGraph(); loadResearch();
 </script>

@@ -96,8 +96,12 @@ class SystemSettings(BaseSettings):
     # Faza 4 — deljen spomin: worker pred nalogo potegne masterjev spomin in po
     # nalogi pošlje svoje nove lekcije nazaj (agregacija). false = le agenda.
     fleet_sync_memory: bool = Field(default=True, alias="ROB_FLEET_SYNC_MEMORY")
-    # "Takojšnji" sync: worker periodično (pull+push spomina) — 0 = izključeno.
-    fleet_memory_sync_seconds: int = Field(default=60, alias="ROB_FLEET_MEMORY_SYNC_SECONDS")
+    # Periodični sync: worker 1×/uro izmenja spomin z masterjem (pull+push+heartbeat)
+    # SAMO ko je master dosegljiv. 0 = izključeno.
+    fleet_memory_sync_seconds: int = Field(default=3600, alias="ROB_FLEET_MEMORY_SYNC_SECONDS")
+    # Backoff: ko master ni dosegljiv, worker NE išče povezave — počaka ta čas
+    # (sekund) pred naslednjim poskusom. 3600 = 1 h.
+    fleet_backoff_seconds: int = Field(default=3600, alias="ROB_FLEET_BACKOFF_SECONDS")
     # Avtomatski git backup na masterju (spomin+agenda → fleet/backup.json).
     # 0 = izključeno (le ročno `rob fleet backup`).
     fleet_backup_seconds: int = Field(default=3600, alias="ROB_FLEET_BACKUP_SECONDS")

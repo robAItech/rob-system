@@ -55,6 +55,24 @@ DB_PATH = ROB_AI / "memory.db"
 
 _stop_requested = False
 
+# P9 fleet — odpornost: ko master ni dosegljiv, worker NE "išče" povezave
+# (backoff). Po preteku se poskusi enkrat; uspeh ga ponastavi.
+_fleet_offline_until = 0.0
+
+
+def _fleet_offline() -> bool:
+    return time.time() < _fleet_offline_until
+
+
+def _fleet_mark_offline(settings) -> None:
+    global _fleet_offline_until
+    _fleet_offline_until = time.time() + getattr(settings, "fleet_backoff_seconds", 3600)
+
+
+def _fleet_mark_online() -> None:
+    global _fleet_offline_until
+    _fleet_offline_until = 0.0
+
 
 def _now() -> int:
     return int(time.time())
@@ -309,10 +327,11 @@ def _tick_goal(settings, cfg) -> dict:
 
 
 def _tick_fleet_memory(settings, cfg) -> dict:
-    """Worker: periodična sinhronizacija spomina z masterjem (pull + push).
-    Pull pred tickom (fresh lekcije), push po (svoje nove lekcije nazaj)."""
+    """Worker: periodična sinhronizacija z masterjem (1×/uro, le ko je dosegljiv):
+    pull (fresh lekcije) + push (svoje nove) + heartbeat (last_seen na masterju)."""
     pulled = _fleet_pull_memory(settings)
     pushed = _fleet_push_memory(settings)
+    _fleet_heartbeat(settings)
     return {"pulled": pulled, "pushed": pushed}
 
 
@@ -448,13 +467,17 @@ def _heartbeat_tasks(active: list) -> list:
 def _fleet_claim_remote(settings) -> list:
     """Worker: claim eno nalogo od masterja in jo zapiši v LOKALNO senčno
     agendo (fleet_claimed, status running), da `run_swarm.py --item` deluje.
-    Master ni dosegljiv → prazno (daemon poskusi znova naslednji tick)."""
+    Master ni dosegljiv (ali backoff aktiven) → prazno, BREZ iskanja povezave."""
+    if _fleet_offline():
+        return []
     try:
         client = fleet.FleetClient(settings.fleet_master_url, settings.fleet_token)
         item = client.claim(worker=fleet.host_id())
+        _fleet_mark_online()
     except Exception as e:
         print(f"[daemon] fleet claim napaka: {e}")
         _append_error(f"fleet claim: {e}")
+        _fleet_mark_offline(settings)
         return []
     if not item:
         return []
@@ -468,45 +491,65 @@ def _fleet_claim_remote(settings) -> list:
 def _fleet_report_result(settings, item: dict, ok: bool, detail: str, duration_s: float) -> None:
     """Worker: po zaključku naloge pošlje izid masterju. Napaka se zabeleži,
     naloga pa ostane lokalno (master jo bo re-claim-a po lease TTL)."""
+    if _fleet_offline():
+        return
     try:
         fleet.FleetClient(settings.fleet_master_url, settings.fleet_token).result(
             item_id=item["id"], ok=ok, target=item.get("target", item["id"]),
             detail=detail, duration_s=duration_s, worker=fleet.host_id())
+        _fleet_mark_online()
     except Exception as e:
         _append_error(f"fleet result: {e}")
+        _fleet_mark_offline(settings)
 
 
 def _fleet_pull_memory(settings) -> dict:
-    """Worker: potegni masterjev spomin (učne tabele) in ga združi lokalno —
-    pred vsako nalogo, da ima worker sveže lekcije."""
-    if not getattr(settings, "fleet_sync_memory", True):
+    """Worker: potegni masterjev spomin (učne tabele) in ga združi lokalno.
+    Backoff (master nedosegljiv) → prazno, brez iskanja povezave."""
+    if not getattr(settings, "fleet_sync_memory", True) or _fleet_offline():
         return {}
     try:
         client = fleet.FleetClient(settings.fleet_master_url, settings.fleet_token)
         payload = client.memory_pull()
+        _fleet_mark_online()
         stats = memory_sync.merge_memory(payload)
         if any((stats or {}).values()):
             print(f"[daemon] fleet: povlekel spomin od masterja → {stats}")
         return stats or {}
     except Exception as e:
         _append_error(f"fleet memory pull: {e}")
+        _fleet_mark_offline(settings)
         return {}
 
 
 def _fleet_push_memory(settings) -> dict:
     """Worker: pošlji svoj spomin (nove lekcije) nazaj masterju — agregacija."""
-    if not getattr(settings, "fleet_sync_memory", True):
+    if not getattr(settings, "fleet_sync_memory", True) or _fleet_offline():
         return {}
     try:
         client = fleet.FleetClient(settings.fleet_master_url, settings.fleet_token)
         payload = memory_sync.export_memory()
         added = client.memory_push(payload)
+        _fleet_mark_online()
         if added and any((added or {}).values()):
             print(f"[daemon] fleet: poslal spomin masterju → {added}")
         return added or {}
     except Exception as e:
         _append_error(f"fleet memory push: {e}")
+        _fleet_mark_offline(settings)
         return {}
+
+
+def _fleet_heartbeat(settings) -> None:
+    """Worker: sporoči masterju, da je živ (ob urnem sync ticku)."""
+    if _fleet_offline():
+        return
+    try:
+        fleet.FleetClient(settings.fleet_master_url, settings.fleet_token).heartbeat(
+            worker=fleet.host_id(), tasks=[])
+        _fleet_mark_online()
+    except Exception as e:
+        _fleet_mark_offline(settings)
 
 
 def _spawn_task(item: dict, settings, cfg) -> dict:

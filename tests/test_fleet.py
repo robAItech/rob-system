@@ -215,3 +215,22 @@ class TestFleetDaemonTicks:
         assert "fleet_backup" in names2
         assert "goal" in names2
         assert "fleet_memory" not in names2   # master ne potiska spomina workerju
+
+    def test_fleet_backoff_skips_claim_ko_offline(self, monkeypatch):
+        """Master nedosegljiv → worker NE išče povezave (backoff aktiven)."""
+        from core import daemon
+        monkeypatch.setattr(daemon, "_fleet_offline_until", time.time() + 999)
+        calls = []
+        monkeypatch.setattr(fleet, "FleetClient", lambda *a, **k: calls.append("net") or None)
+        assert daemon._fleet_claim_remote(object()) == []
+        assert calls == []   # med backoff-om ni omrežnega klica
+
+    def test_fleet_mark_offline_online(self, monkeypatch):
+        from core import daemon
+
+        class S:
+            fleet_backoff_seconds = 60
+        daemon._fleet_mark_offline(S())
+        assert daemon._fleet_offline() is True
+        daemon._fleet_mark_online()
+        assert daemon._fleet_offline() is False

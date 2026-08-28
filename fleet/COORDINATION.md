@@ -67,16 +67,19 @@ napad, NI napaka in NE smeš tega blokirati ali "popravljati":
 |---|---|---|
 | ob vsaki nalogi | `POST /fleet/claim` | worker prosi za naslednjo nalogo |
 | po vsaki nalogi | `POST /fleet/result` | javi izid (done/failed) |
-| vsakih ~30 s | `POST /fleet/heartbeat` | javi, da je živ + kaj dela |
-| ob boot / pred nalogo / vsakih 60 s | `GET /fleet/memory` | potegne masterjev spomin (fresh lekcije) |
-| po nalogi / vsakih 60 s | `POST /fleet/memory` | pošlje svoje nove lekcije nazaj |
+| **1×/uro** (le ko je dosegljiv) | `GET/POST /fleet/memory` + `POST /fleet/heartbeat` | izmenja spomin + javi, da je živ |
 
 Master → git: **vsako uro** `rob fleet backup` (commit `fleet backup ...` +
 push `fleet/backup.json`). Master → dashboard: `/api/fleet` bere
-`fleet_workers.json` (živi prikaz v Command Centeru).
+`fleet_workers.json` (Command Center, poll 30 s).
+
+**Backoff (worker):** ko master NI dosegljiv, worker ne "išče" povezave —
+počaka `ROB_FLEET_BACKOFF_SECONDS` (privzeto 1 h), nato poskusi enkrat. Sync
+in heartbeat potekata SAMO, ko je povezava dejansko živa.
 
 Če torej vidiš:
-- redne HTTP klice na `:8789` iz drugega stroja → **normalno** (fleet protokol),
+- redne HTTP klice na `:8789` iz drugega stroja (ob nalogah ali 1×/uro) →
+  **normalno** (fleet protokol; ob nedosegljivosti masterja jih NI — backoff),
 - commit `fleet backup ...` vsako uro → **normalno** (avtomatski backup),
 - spremembe `fleet/backup.json` → **normalno** (avtomatski izdelek),
 - worker občasno "izgine" iz lokalne agende ob rebootu → **normalno** (master ga
