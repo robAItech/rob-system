@@ -17,6 +17,15 @@ PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 _venv_python() {
     local dir sub cand
     for dir in venv engine; do
+        # 1) Python v KORENU (venv|engine)/ — npr. portabilen/copiran Python
+        #    (engine/python.exe z Lib/site-packages), ne samo standarden venv.
+        for cand in python python.exe python3 python3.exe; do
+            if [ -e "$PROJECT_DIR/$dir/$cand" ]; then
+                printf '%s\n' "$PROJECT_DIR/$dir/$cand"
+                return 0
+            fi
+        done
+        # 2) Standarden venv: python v Scripts/ (Windows) ali bin/ (POSIX).
         for sub in Scripts bin; do
             # `-e` (ne `-x`): WSL DrvFS mounti ne javijo vedno izvršljivega bita
             # za Windows .exe datoteke, `-x` bi zgrešil obstoječ venv.
@@ -32,17 +41,23 @@ _venv_python() {
 }
 
 activate_venv() {
-    local venv_py
+    local venv_py py_dir sub
     venv_py="$(_venv_python)" || true
     if [ -n "$venv_py" ]; then
-        export PATH="$(dirname "$venv_py"):$PATH"
+        py_dir="$(dirname "$venv_py")"
+        export PATH="$py_dir:$PATH"
+        # Console skripte (pip/litellm/pytest) so lahko v Scripts/ ali bin/ —
+        # ni nujno ista mapa kot python.exe (npr. portabilen Python na korenu).
+        for sub in Scripts bin; do
+            if [ -d "$py_dir/$sub" ]; then
+                export PATH="$py_dir/$sub:$PATH"
+            fi
+        done
         python() { "$venv_py" "$@"; }
         return 0
     fi
     if ! command -v python >/dev/null 2>&1; then
-        echo "[rob] OPOZORILO: ni najdenega venv-a (venv|engine); uporabljam sistemski python." >&2
-        echo "      Če manjka litellm: preveri 'Test-Path engine\\Scripts\\python.exe'." >&2
-        echo "      Rekreacija: python -m venv engine && engine\\Scripts\\python -m pip install litellm" >&2
+        echo "[rob] OPOZORILO: ni najdenega projekta python (venv|engine); uporabljam sistemski python." >&2
         if command -v py >/dev/null 2>&1; then
             python() { py -3 "$@"; }
         elif command -v python3 >/dev/null 2>&1; then
