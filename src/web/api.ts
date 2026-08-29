@@ -1,10 +1,27 @@
 // src/web/api.ts — tipiziran API client (server.ts kontrakt iz shared/types).
 import type { FleetStatus, SystemMetrics, AgendaCounts } from '../shared/types';
 
+let onUnauthorized: (() => void) | null = null;
+
+export function setUnauthorizedHandler(fn: () => void): void {
+  onUnauthorized = fn;
+}
+
 export async function getJSON<T>(path: string): Promise<T> {
   const r = await fetch(path);
+  if (r.status === 401) {
+    if (onUnauthorized) onUnauthorized();   // prikaži login
+    throw new Error('unauthorized');
+  }
   if (!r.ok) throw new Error(`HTTP ${r.status} — ${path}`);
   return r.json() as Promise<T>;
+}
+
+export function auth(token: string): Promise<boolean> {
+  return fetch('/api/auth', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  }).then(r => r.ok).catch(() => false);
 }
 
 export const fetchFleet = () => getJSON<FleetStatus>('/api/fleet');

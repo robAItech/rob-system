@@ -1,6 +1,6 @@
 // src/web/main.ts — Command Center v2: modularna vstopna točka.
-// Bun build → src/web/dist/bundle.js; server.ts služi /command.
-import { fetchFleet, fetchMetrics, getJSON } from './api';
+// Boot check (/api/me) → login overlay, če ni seje; šele nato data init.
+import { fetchFleet, fetchMetrics, getJSON, setUnauthorizedHandler, auth } from './api';
 import { renderFleet } from './components/fleet';
 import { connectFeed } from './components/feed';
 import { renderKpis, recordSample } from './components/kpis';
@@ -15,43 +15,80 @@ function ready(fn: () => void): void {
 }
 
 ready(() => {
-  const fleetEl = document.getElementById('fleet-body');
-  const feedEl = document.getElementById('feed');
-  const dotEl = document.getElementById('sse-dot');
+  const overlay = document.getElementById('login-overlay');
+  const loginBtn = document.getElementById('login-btn') as HTMLButtonElement | null;
+  const loginInput = document.getElementById('login-token') as HTMLInputElement | null;
+  const loginMsg = document.getElementById('login-msg') as HTMLDivElement | null;
 
-  // KPI — realni podatki iz /api/metrics + trend (delta, sparkline).
-  const loadKpis = () => fetchMetrics()
-    .then(m => { recordSample(m); renderKpis(m); })
-    .catch(() => { /* */ });
-  loadKpis();
-  setInterval(loadKpis, 15000);
+  const showLogin = (msg?: string): void => {
+    if (!overlay) return;
+    overlay.classList.remove('hidden');
+    if (msg && loginMsg) loginMsg.textContent = msg;
+  };
+  // Globalni 401 interceptor — če seja poteče med delom, prikaži login.
+  setUnauthorizedHandler(() => showLogin('Seja je potekla ali ni veljavna — prijavi se.'));
 
-  // Fleet ops panel — /api/fleet.
-  const loadFleet = () => fetchFleet().then(d => fleetEl && renderFleet(fleetEl, d)).catch(() => { /* */ });
-  loadFleet();
-  setInterval(loadFleet, 15000);
+  const startApp = (): void => {
+    const fleetEl = document.getElementById('fleet-body');
+    const feedEl = document.getElementById('feed');
+    const dotEl = document.getElementById('sse-dot');
 
-  // SSE živi tok dogodkov — najprej seed zadnjih iz /api/events, nato živo.
-  if (feedEl) {
-    getJSON<{ ok: boolean; events: EventLine[] }>('/api/events')
-      .then(r => connectFeed(feedEl, dotEl, () => { /* */ }, r.events || []))
-      .catch(() => connectFeed(feedEl, dotEl, () => { /* */ }));
-  }
+    // KPI — realni podatki + trend (delta, sparkline).
+    const loadKpis = () => fetchMetrics()
+      .then(m => { recordSample(m); renderKpis(m); })
+      .catch(() => { /* 401 → interceptor prikaže login */ });
+    loadKpis();
+    setInterval(loadKpis, 15000);
 
-  // Pogovor + Agenda + Graf (komponente).
-  initChat();
-  initAgenda();
-  initGraph();
+    // Fleet ops panel.
+    const loadFleet = () => fetchFleet().then(d => fleetEl && renderFleet(fleetEl, d)).catch(() => { /* */ });
+    loadFleet();
+    setInterval(loadFleet, 15000);
 
-  // Navigacija med pogledi.
-  document.querySelectorAll<HTMLButtonElement>('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const v = btn.dataset.view;
-      document.querySelectorAll<HTMLElement>('[data-view-panel]').forEach(p => {
-        p.classList.toggle('hidden', p.dataset.viewPanel !== v);
+    // SSE živi tok — seed zadnjih iz /api/events, nato živo.
+    if (feedEl) {
+      getJSON<{ ok: boolean; events: EventLine[] }>('/api/events')
+        .then(r => connectFeed(feedEl, dotEl, () => { /* */ }, r.events || []))
+        .catch(() => connectFeed(feedEl, dotEl, () => { /* */ }));
+    }
+
+    // Pogovor + Agenda + Graf.
+    initChat();
+    initAgenda();
+    initGraph();
+
+    // Navigacija.
+    document.querySelectorAll<HTMLButtonElement>('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const v = btn.dataset.view;
+        document.querySelectorAll<HTMLElement>('[data-view-panel]').forEach(p => {
+          p.classList.toggle('hidden', p.dataset.viewPanel !== v);
+        });
       });
     });
-  });
+  };
+
+  // Boot check: /api/me → 200 = prijavljen; 401 = login.
+  fetch('/api/me').then(r => {
+    if (r.ok) startApp();
+    else showLogin();
+  }).catch(() => showLogin());
+
+  // Login.
+  if (loginBtn && loginInput) {
+    const doLogin = async (): Promise<void> => {
+      const t = loginInput.value.trim();
+      if (!t) return;
+      const ok = await auth(t);
+      if (ok) {
+        location.reload();   // zdaj s session cookie → startApp
+      } else if (loginMsg) {
+        loginMsg.textContent = 'Napačen token. Preveri ROB_API_TOKEN v .env.';
+      }
+    };
+    loginBtn.addEventListener('click', doLogin);
+    loginInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+  }
 });

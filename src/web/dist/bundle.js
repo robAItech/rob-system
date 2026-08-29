@@ -1,9 +1,25 @@
 // src/web/api.ts
+var onUnauthorized = null;
+function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn;
+}
 async function getJSON(path) {
   const r = await fetch(path);
+  if (r.status === 401) {
+    if (onUnauthorized)
+      onUnauthorized();
+    throw new Error("unauthorized");
+  }
   if (!r.ok)
     throw new Error(`HTTP ${r.status} — ${path}`);
   return r.json();
+}
+function auth(token) {
+  return fetch("/api/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token })
+  }).then((r) => r.ok).catch(() => false);
 }
 var fetchFleet = () => getJSON("/api/fleet");
 var fetchMetrics = () => getJSON("/api/metrics");
@@ -390,32 +406,70 @@ function ready(fn) {
     document.addEventListener("DOMContentLoaded", fn);
 }
 ready(() => {
-  const fleetEl = document.getElementById("fleet-body");
-  const feedEl = document.getElementById("feed");
-  const dotEl = document.getElementById("sse-dot");
-  const loadKpis = () => fetchMetrics().then((m) => {
-    recordSample(m);
-    renderKpis(m);
-  }).catch(() => {});
-  loadKpis();
-  setInterval(loadKpis, 15000);
-  const loadFleet = () => fetchFleet().then((d) => fleetEl && renderFleet(fleetEl, d)).catch(() => {});
-  loadFleet();
-  setInterval(loadFleet, 15000);
-  if (feedEl) {
-    getJSON("/api/events").then((r) => connectFeed(feedEl, dotEl, () => {}, r.events || [])).catch(() => connectFeed(feedEl, dotEl, () => {}));
-  }
-  initChat();
-  initAgenda();
-  initGraph();
-  document.querySelectorAll(".nav-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      const v = btn.dataset.view;
-      document.querySelectorAll("[data-view-panel]").forEach((p) => {
-        p.classList.toggle("hidden", p.dataset.viewPanel !== v);
+  const overlay = document.getElementById("login-overlay");
+  const loginBtn = document.getElementById("login-btn");
+  const loginInput = document.getElementById("login-token");
+  const loginMsg = document.getElementById("login-msg");
+  const showLogin = (msg) => {
+    if (!overlay)
+      return;
+    overlay.classList.remove("hidden");
+    if (msg && loginMsg)
+      loginMsg.textContent = msg;
+  };
+  setUnauthorizedHandler(() => showLogin("Seja je potekla ali ni veljavna — prijavi se."));
+  const startApp = () => {
+    const fleetEl = document.getElementById("fleet-body");
+    const feedEl = document.getElementById("feed");
+    const dotEl = document.getElementById("sse-dot");
+    const loadKpis = () => fetchMetrics().then((m) => {
+      recordSample(m);
+      renderKpis(m);
+    }).catch(() => {});
+    loadKpis();
+    setInterval(loadKpis, 15000);
+    const loadFleet = () => fetchFleet().then((d) => fleetEl && renderFleet(fleetEl, d)).catch(() => {});
+    loadFleet();
+    setInterval(loadFleet, 15000);
+    if (feedEl) {
+      getJSON("/api/events").then((r) => connectFeed(feedEl, dotEl, () => {}, r.events || [])).catch(() => connectFeed(feedEl, dotEl, () => {}));
+    }
+    initChat();
+    initAgenda();
+    initGraph();
+    document.querySelectorAll(".nav-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const v = btn.dataset.view;
+        document.querySelectorAll("[data-view-panel]").forEach((p) => {
+          p.classList.toggle("hidden", p.dataset.viewPanel !== v);
+        });
       });
     });
-  });
+  };
+  fetch("/api/me").then((r) => {
+    if (r.ok)
+      startApp();
+    else
+      showLogin();
+  }).catch(() => showLogin());
+  if (loginBtn && loginInput) {
+    const doLogin = async () => {
+      const t = loginInput.value.trim();
+      if (!t)
+        return;
+      const ok = await auth(t);
+      if (ok) {
+        location.reload();
+      } else if (loginMsg) {
+        loginMsg.textContent = "Napačen token. Preveri ROB_API_TOKEN v .env.";
+      }
+    };
+    loginBtn.addEventListener("click", doLogin);
+    loginInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter")
+        doLogin();
+    });
+  }
 });

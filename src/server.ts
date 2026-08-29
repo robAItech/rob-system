@@ -1447,6 +1447,8 @@ const server = Bun.serve({
 
     // API: health / ledger / runs / news
     if (req.method === 'GET' && url.pathname === '/api/health') return json(await health());
+    // Boot session check: 200 = prijavljen, 401 = login potreben (zaščita zgoraj).
+    if (req.method === 'GET' && url.pathname === '/api/me') return json({ ok: true });
     if (req.method === 'GET' && url.pathname === '/api/ledger') return json({ events: readEvents() });
     if (req.method === 'GET' && url.pathname === '/api/runs') return json({ runs: readRuns() });
     if (req.method === 'GET' && url.pathname === '/api/news') return json({ news: await getNews() });

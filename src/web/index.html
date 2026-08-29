@@ -83,6 +83,17 @@
       </section>
     </main>
   </div>
+  <!-- LOGIN OVERLAY — ko ni veljavne seje -->
+  <div id="login-overlay" class="login-overlay hidden">
+    <div class="login-card">
+      <div class="login-logo">◆</div>
+      <h2>Prijava v Command Center</h2>
+      <p>Vnesi <b>ROB_API_TOKEN</b> (vrednost v <code>.env</code>) za dostop.</p>
+      <input id="login-token" type="password" placeholder="ROB_API_TOKEN …" autocomplete="off" />
+      <button id="login-btn" class="btn login-btn">Prijava</button>
+      <div id="login-msg" class="login-msg"></div>
+    </div>
+  </div>
   <script src="/assets/bundle.js"></script>
 </body>
 </html>
