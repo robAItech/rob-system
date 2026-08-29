@@ -91,4 +91,6 @@ certs/
 .rob_ai/research/
 
 # Claude Code lokalni state (settings, worktrees) — ne commitaj.
-.claude/
+# Projektni settings.json je izjema (shared allowlist); settings.local.json je osebni.
+.claude/*
+!.claude/settings.json

@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh run *)",
+      "Bash(gh run view *)",
+      "Bash(gh run list *)",
+      "Bash(gh run watch *)",
+      "Bash(gh repo view *)",
+      "Bash(git ls-remote *)",
+      "Bash(git rev-parse *)",
+      "Bash(git stash list *)",
+      "Bash(curl -s http://*)",
+      "Bash(curl -s -o /dev/null *)",
+      "Bash(tasklist *)",
+      "Bash(netstat -ano *)",
+      "Bash(tailscale ping *)",
+      "Bash(tailscale status *)",
+      "Bash(tailscale ip *)",
+      "Bash(bash rob daemon --status *)",
+      "Bash(bash rob daemon --stop *)",
+      "Bash(bash rob eval --dry-run *)",
+      "Bash(python -m pytest actions/ *)",
+      "Bash(python -m pytest tests/ *)"
+    ]
+  }
+}
