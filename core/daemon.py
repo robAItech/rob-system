@@ -430,10 +430,13 @@ def _ensure_fleet_server(settings) -> bool:
         kwargs: dict = {}
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        # Log v datoteko (ne DEVNULL), da je worker promet viden od zunaj
+        # (/fleet/claim|result|memory|actions) — za debug in preverbo sync-a.
+        logf = open(ROB_AI / "fleet_server.log", "a", encoding="utf-8")
         subprocess.Popen(
             [sys.executable, "core/fleet.py", "serve"],
             env=env, cwd=PROJECT_ROOT,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
+            stdout=logf, stderr=logf, **kwargs)
     except OSError as e:
         print(f"[daemon] fleet serve zagon ni uspel: {e}")
         _append_error(f"fleet serve: {e}")
