@@ -1,5 +1,14 @@
 // src/web/components/chat.ts — Pogovor (chat UI prek /api/chat).
+// Če sporočilo vsebuje nalogo (naredi/izdelaj/zgradi/build/modul …), jo
+// samodejno doda v agendo — worker jo bo zgradil.
 import type { ChatReply } from '../../shared/types';
+
+const TASK_RE = /(?:naredi|izdelaj|zgradi|napiši|ustvari|build|razvij|implement|create|make|modul|module)\b/i;
+const HTML_RE = /(?:spletno\s+stran|html|stran|ui|dashboard|zastavi\s+ogled|landing\s+page)/i;
+
+function detectKind(text: string): string {
+  return HTML_RE.test(text) ? 'html' : 'python';
+}
 
 export function initChat(): void {
   const box = document.getElementById('chat-box');
@@ -25,16 +34,30 @@ export function initChat(): void {
     busy.textContent = '…';
     box.appendChild(busy);
     box.scrollTop = box.scrollHeight;
+    let reply = 'napaka pri povezavi';
     try {
       const r = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, kind: 'chat' }),
       });
       const d: ChatReply = await r.json();
-      busy.textContent = d.reply ?? (d.error ?? 'napaka');
-    } catch (e) {
-      busy.textContent = 'napaka pri povezavi';
+      reply = d.reply ?? (d.error ?? 'napaka');
+    } catch (e) { /* offline */ }
+
+    // Naloga v pogovoru → samodejno v agendo.
+    if (TASK_RE.test(text)) {
+      try {
+        const kind = detectKind(text);
+        await fetch('/api/agenda', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ goal: text, kind }),
+        });
+        reply += '\n\n➕ Dodano v agendo (kind=' + kind + ') — worker bo zgradil.';
+      } catch (e) {
+        reply += '\n\n⚠️ Napaka pri dodajanju v agendo.';
+      }
     }
+    busy.textContent = reply;
     box.scrollTop = box.scrollHeight;
   };
 

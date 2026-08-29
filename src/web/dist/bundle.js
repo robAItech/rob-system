@@ -94,6 +94,11 @@ function renderKpis(m) {
 }
 
 // src/web/components/chat.ts
+var TASK_RE = /(?:naredi|izdelaj|zgradi|napiši|ustvari|build|razvij|implement|create|make|modul|module)\b/i;
+var HTML_RE = /(?:spletno\s+stran|html|stran|ui|dashboard|zastavi\s+ogled|landing\s+page)/i;
+function detectKind(text) {
+  return HTML_RE.test(text) ? "html" : "python";
+}
 function initChat() {
   const box = document.getElementById("chat-box");
   const input = document.getElementById("chat-input");
@@ -118,6 +123,7 @@ function initChat() {
     busy.textContent = "…";
     box.appendChild(busy);
     box.scrollTop = box.scrollHeight;
+    let reply = "napaka pri povezavi";
     try {
       const r = await fetch("/api/chat", {
         method: "POST",
@@ -125,10 +131,26 @@ function initChat() {
         body: JSON.stringify({ message: text, kind: "chat" })
       });
       const d = await r.json();
-      busy.textContent = d.reply ?? (d.error ?? "napaka");
-    } catch (e) {
-      busy.textContent = "napaka pri povezavi";
+      reply = d.reply ?? (d.error ?? "napaka");
+    } catch (e) {}
+    if (TASK_RE.test(text)) {
+      try {
+        const kind = detectKind(text);
+        await fetch("/api/agenda", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ goal: text, kind })
+        });
+        reply += `
+
+➕ Dodano v agendo (kind=` + kind + ") — worker bo zgradil.";
+      } catch (e) {
+        reply += `
+
+⚠️ Napaka pri dodajanju v agendo.`;
+      }
     }
+    busy.textContent = reply;
     box.scrollTop = box.scrollHeight;
   };
   send.addEventListener("click", ask);
