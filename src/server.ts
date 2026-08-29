@@ -29,7 +29,8 @@ import { LLMCache } from './bridges/cache.ts';
 import { resolveProvider } from './bridges/provider.ts';
 import { SqliteMemoryStore } from './memory/sqlite-store.ts';
 import { BunExec } from './bridges/exec.ts';
-import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, unlinkSync, readdirSync, statSync } from 'node:fs';
+import { resolve, sep } from 'node:path';
 
 // Pretvorba in prikaz artefaktov (Word / PDF / Markdown-ogled)
 import {
@@ -567,27 +568,50 @@ function cityCoords(msg: string): { lat: number; lon: number; label: string } {
 async function geminiTts(text: string, voice: string): Promise<{ mime: string; base64: string } | null> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
-  const models = ['gemini-2.5-pro-preview-tts', 'gemini-3.1-flash-tts-preview'];
+  // Delovni model NAJprej (2.5-pro je bil preskočen na 429 pri tem računu).
+  const models = ['gemini-3.1-flash-tts-preview', 'gemini-2.5-pro-preview-tts'];
   for (const model of models) {
     try {
-      const body = {
+      const body = JSON.stringify({
         contents: [{ parts: [{ text }] }],
         generationConfig: {
           responseModalities: ['AUDIO'],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
         },
-      };
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(30000),
       });
-      if (!r.ok) continue;
-      const j = await r.json() as Record<string, any>;
+      // Bun-ov fetch ob tej napravi NE doseže Google hostov (časovno izteče),
+      // curl.exe pa jih doseže zanesljivo → TTS gre skozi curl (kot python
+      // za core ukaze). `-m 25` = 25 s timeout na model.
+      const proc = Bun.spawn({
+        cmd: ['curl', '-sS', '-m', '25', '-X', 'POST',
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          '-H', 'Content-Type: application/json',
+          '-H', `x-goog-api-key: ${key}`,
+          '--data-binary', body],
+        cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      const out = await new Response(proc.stdout).text();
+      await proc.exited;
+      if (proc.exitCode !== 0) continue;
+      const j = JSON.parse(out) as Record<string, any>;
       const part = (j.candidates?.[0]?.content?.parts ?? []).find((p: any) => p?.inlineData?.data);
       if (!part?.inlineData?.data) continue;
-      return { mime: part.inlineData.mimeType || 'audio/wav', base64: part.inlineData.data };
+      const mime = String(part.inlineData.mimeType || 'audio/wav');
+      const data = String(part.inlineData.data);
+      // Gemini vrača surov PCM (audio/l16; rate=24000) — browser tega ne zna
+      // predvajati → zavij v WAV (enostaven 44 B header + vzorci).
+      if (mime.startsWith('audio/l16') || mime.startsWith('audio/pcm')) {
+        const rate = Number((mime.match(/rate=(\d+)/)?.[1]) || 24000);
+        const pcm = Buffer.from(data, 'base64');
+        const h = Buffer.alloc(44);
+        h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVE', 8);
+        h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20);
+        h.writeUInt16LE(1, 22); h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28);
+        h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34);
+        h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
+        return { mime: 'audio/wav', base64: Buffer.concat([h, pcm]).toString('base64') };
+      }
+      return { mime, base64: data };
     } catch { /* poskusi naslednji model */ }
   }
   return null;
@@ -1108,6 +1132,121 @@ function json(data: unknown, status = 200): Response {
       // pretočnega kanala za cross-origin).
     },
   });
+}
+
+// =====================================================================
+// Agenda → izhodne datoteke naloge (actions/<target>/) — seznam + prenos.
+// =====================================================================
+
+/** Najde agenda item po id (iz .rob_ai/agenda.json). */
+async function agendaItemById(id: string): Promise<Record<string, unknown> | null> {
+  if (!id) return null;
+  const f = Bun.file(`${OUT_ROOT}/.rob_ai/agenda.json`);
+  if (!(await f.exists())) return null;
+  try {
+    const items = JSON.parse(await f.text()) as Record<string, unknown>[];
+    return items.find((it) => String(it.id) === id) ?? null;
+  } catch { /* poškodovan JSON */ }
+  return null;
+}
+
+/** Izhodni koren naloge → actions/<target>/ (samo varni znaki v imenu). */
+function agendaRoot(item: Record<string, unknown>): string {
+  const target = String(item.target || item.id || 'item').replace(/[^A-Za-z0-9_.\-]/g, '_');
+  return `${OUT_ROOT}/actions/${target}`;
+}
+
+/** Rekurzivno našteje datoteke/mape pod korenom (relativne poti). */
+function walkTree(root: string): Array<{ path: string; dir: boolean; size: number; mtime: number }> {
+  const out: Array<{ path: string; dir: boolean; size: number; mtime: number }> = [];
+  const walk = (rel: string): void => {
+    const full = resolve(root, rel);
+    let names: string[];
+    try { names = readdirSync(full); } catch { return; }   // mapa ne obstaja → konec
+    names.sort((a, b) => a.localeCompare(b));
+    for (const name of names) {
+      const p = resolve(full, name);
+      const r = rel ? `${rel}/${name}` : name;
+      let st;
+      try { st = statSync(p); } catch { continue; }
+      if (st.isDirectory()) {
+        out.push({ path: r, dir: true, size: 0, mtime: Math.floor(st.mtimeMs / 1000) });
+        walk(r);
+      } else {
+        out.push({ path: r, dir: false, size: st.size, mtime: Math.floor(st.mtimeMs / 1000) });
+      }
+    }
+  };
+  walk('');
+  return out;
+}
+
+// Minimalni ZIP (store, brez stiskanja) — za "Prenesi vse (.zip)".
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[i] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf: Uint8Array): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+function zipStore(files: Array<{ name: string; data: Uint8Array }>): Uint8Array {
+  const chunks: Uint8Array[] = [];
+  const central: Uint8Array[] = [];
+  let offset = 0;
+  const enc = new TextEncoder();
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const crc = crc32(f.data);
+    const header = new Uint8Array(30 + name.length + f.data.length);
+    const dv = new DataView(header.buffer);
+    dv.setUint32(0, 0x04034b50, true);        // local file header
+    dv.setUint16(4, 20, true); dv.setUint16(6, 0, true);
+    dv.setUint16(8, 0, true);                 // method: store
+    dv.setUint16(10, 0, true); dv.setUint16(12, 0, true);
+    dv.setUint32(14, crc, true);
+    dv.setUint32(18, f.data.length, true);    // compressed size (= raw, store)
+    dv.setUint32(22, f.data.length, true);    // uncompressed size
+    dv.setUint16(26, name.length, true);
+    dv.setUint16(28, 0, true);
+    header.set(name, 30);
+    header.set(f.data, 30 + name.length);
+    chunks.push(header);
+    const c = new Uint8Array(46 + name.length);   // central directory entry
+    const cdv = new DataView(c.buffer);
+    cdv.setUint32(0, 0x02014b50, true);
+    cdv.setUint16(4, 20, true); cdv.setUint16(6, 20, true);
+    cdv.setUint16(8, 0, true); cdv.setUint16(10, 0, true);
+    cdv.setUint16(12, 0, true); cdv.setUint16(14, 0, true);
+    cdv.setUint32(16, crc, true);
+    cdv.setUint32(20, f.data.length, true);
+    cdv.setUint32(24, f.data.length, true);
+    cdv.setUint16(28, name.length, true);
+    cdv.setUint32(42, offset, true);
+    c.set(name, 46);
+    central.push(c);
+    offset += header.length;
+  }
+  const cdSize = central.reduce((s, c) => s + c.length, 0);
+  const eocd = new Uint8Array(22);            // end of central directory
+  const edv = new DataView(eocd.buffer);
+  edv.setUint32(0, 0x06054b50, true);
+  edv.setUint16(8, files.length, true);
+  edv.setUint16(10, files.length, true);
+  edv.setUint32(12, cdSize, true);
+  edv.setUint32(16, offset, true);
+  const all = new Uint8Array(offset + cdSize + 22);
+  let p = 0;
+  for (const c of chunks) { all.set(c, p); p += c.length; }
+  for (const c of central) { all.set(c, p); p += c.length; }
+  all.set(eocd, p);
+  return all;
 }
 
 /** Content-Type glede na koncnico datoteke (za renderiran ogled artefakta). */
@@ -1961,6 +2100,57 @@ const server = Bun.serve({
       let removed = false;
       try { removed = JSON.parse(out.trim() || 'false'); } catch { /* */ }
       return json({ ok: true, removed });
+    }
+    // Agenda — izhodne datoteke naloge (actions/<target>/): seznam + prenos.
+    if (req.method === 'GET' && url.pathname === '/api/agenda/files') {
+      const it = await agendaItemById(url.searchParams.get('id') || '');
+      if (!it) return json({ ok: false, error: 'naloga ni najdena' }, 404);
+      const root = agendaRoot(it);
+      const files = walkTree(root);
+      return json({
+        ok: true, id: it.id, target: it.target, goal: it.goal, status: it.status,
+        root: root.replace(/\\/g, '/'), files,
+      });
+    }
+    // Agenda — prenos ENO datoteke (varno: resolve + preveri znotraj targeta).
+    if (req.method === 'GET' && url.pathname === '/api/agenda/download') {
+      const id = url.searchParams.get('id') || '';
+      const file = url.searchParams.get('file') || '';
+      const it = await agendaItemById(id);
+      if (!it) return json({ ok: false, error: 'naloga ni najdena' }, 404);
+      const root = agendaRoot(it);
+      const full = resolve(root, file);
+      if (!full.startsWith(resolve(root) + sep)) return json({ ok: false, error: 'pot izven targeta' }, 400);
+      const buf = await Bun.file(full).arrayBuffer().catch(() => null);
+      if (!buf) return json({ ok: false, error: 'datoteka ni najdena' }, 404);
+      const name = (file.split('/').pop() || 'file').replace(/["\\]/g, '_');
+      return new Response(buf, {
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${name}"`,
+        },
+      });
+    }
+    // Agenda — prenos VSEGA kot .zip (store, brez stiskanja).
+    if (req.method === 'GET' && url.pathname === '/api/agenda/download-all') {
+      const it = await agendaItemById(url.searchParams.get('id') || '');
+      if (!it) return json({ ok: false, error: 'naloga ni najdena' }, 404);
+      const root = agendaRoot(it);
+      const files = walkTree(root).filter((f) => !f.dir);
+      const zipFiles: Array<{ name: string; data: Uint8Array }> = [];
+      for (const f of files) {
+        const buf = await Bun.file(resolve(root, f.path)).arrayBuffer().catch(() => null);
+        if (buf) zipFiles.push({ name: `${String(it.target || it.id || 'task')}/${f.path}`, data: new Uint8Array(buf) });
+      }
+      if (!zipFiles.length) return json({ ok: false, error: 'ni shranjenih datotek' }, 404);
+      const zip = zipStore(zipFiles);
+      const zname = `${String(it.target || it.id || 'task')}.zip`;
+      return new Response(zip, {
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': `attachment; filename="${zname}"`,
+        },
+      });
     }
 
     // Faza 6: poslovna knjiga (glavna knjiga podjetja) — branje in nov delovnik.

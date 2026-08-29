@@ -205,6 +205,66 @@ function setPanelState(el, state, msg, onRetry) {
   }
 }
 
+// src/web/components/avatar.ts
+function initAvatar() {
+  const svg = document.querySelector(".avatar-svg");
+  const mouth = document.querySelector(".avatar-mouth");
+  const eyeL = document.querySelector(".eye-l");
+  const eyeR = document.querySelector(".eye-r");
+  const status = document.getElementById("avatar-status");
+  if (!svg || !mouth || !eyeL || !eyeR)
+    return null;
+  let blinkTimer = 0;
+  const scheduleBlink = () => {
+    blinkTimer = window.setTimeout(blink, 2400 + Math.random() * 1800);
+  };
+  function blink() {
+    eyeL.setAttribute("ry", "1.2");
+    eyeR.setAttribute("ry", "1.2");
+    window.setTimeout(() => {
+      eyeL.setAttribute("ry", "8");
+      eyeR.setAttribute("ry", "8");
+    }, 140);
+    scheduleBlink();
+  }
+  scheduleBlink();
+  let raf = 0;
+  function lips() {
+    const t0 = performance.now();
+    const step = (now) => {
+      if (!svg.classList.contains("speaking")) {
+        mouth.setAttribute("ry", "3");
+        return;
+      }
+      const t = (now - t0) / 1000;
+      const a = 0.5 + 0.5 * Math.sin(t * 6.2) + 0.25 * Math.sin(t * 17.3 + 1.2);
+      const open = Math.max(0.4, Math.min(1, a));
+      mouth.setAttribute("ry", String(2 + open * 9));
+      mouth.setAttribute("rx", String(13 - open * 3));
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+  }
+  return {
+    setSpeaking(on) {
+      svg.classList.toggle("speaking", on);
+      if (on)
+        lips();
+      else {
+        cancelAnimationFrame(raf);
+        mouth.setAttribute("ry", "3");
+      }
+    },
+    setListening(on) {
+      svg.classList.toggle("listening", on);
+    },
+    setStatus(text) {
+      if (status)
+        status.textContent = text;
+    }
+  };
+}
+
 // src/web/components/chat.ts
 var TASK_RE = /(?:naredi|izdelaj|zgradi|napiši|ustvari|build|razvij|implement|create|make|modul|module)\b/i;
 var MD_RE = /(?:markdown|poročilo|dokument|analiza|predlog|specifikacija|\bspec\b|readme|primerjava|sintetiziraj|opis\b|povzetek)/i;
@@ -222,47 +282,106 @@ function initChat() {
   const input = document.getElementById("chat-input");
   const send = document.getElementById("chat-send");
   const voiceBtn = document.getElementById("voice-btn");
-  const voiceStatus = document.getElementById("voice-status");
   if (!box || !input || !send)
     return;
+  const avatar = initAvatar();
+  let voiceMode = SpeechRec !== undefined;
+  let busy = false;
+  let rearmTimer = 0;
+  const setStatus = (text) => {
+    avatar?.setStatus(text);
+  };
   const setRecording = (on) => {
     voiceBtn?.classList.toggle("recording", on);
-    if (voiceStatus) {
-      voiceStatus.classList.toggle("hidden", !on);
-      voiceStatus.textContent = on ? "\uD83C\uDFA4 poslušam … govori." : "";
-    }
+    avatar?.setListening(on);
+    if (on)
+      setStatus("\uD83C\uDFA4 poslušam — govori …");
+    else if (voiceMode)
+      setStatus("pripravljen — govori ali piši");
+  };
+  const chatVisible = () => {
+    const panel = document.querySelector('[data-view-panel="chat"]');
+    return !!panel && panel.getBoundingClientRect().height > 0;
   };
   let rec = null;
-  if (voiceBtn && SpeechRec) {
+  if (SpeechRec) {
     rec = new SpeechRec;
     rec.lang = "sl-SI";
     rec.interimResults = false;
     rec.continuous = false;
     rec.onresult = (e) => {
       const t = e.results?.[0]?.[0]?.transcript ?? "";
+      setRecording(false);
       if (t) {
         input.value = t;
-        input.focus();
+        if (voiceMode && !busy)
+          ask();
+      }
+    };
+    rec.onerror = (e) => {
+      const err = e?.error || "";
+      if (err === "not-allowed" || err === "service-not-allowed") {
+        voiceMode = false;
+        voiceBtn?.classList.remove("recording");
+        setStatus("\uD83D\uDEAB mikrofon blokiran — dovoli dostop v brskalniku, pa govori");
+        return;
       }
       setRecording(false);
+      rearm();
     };
-    rec.onerror = () => setRecording(false);
-    rec.onend = () => setRecording(false);
+    rec.onend = () => {
+      setRecording(false);
+      rearm();
+    };
+  } else {
+    setStatus("\uD83D\uDDA5️ govorni vnos ni na voljo v tem brskalniku — piši sporočilo");
+    if (voiceBtn)
+      voiceBtn.style.display = "none";
+  }
+  const startRec = () => {
+    if (!rec || !voiceMode || busy || !chatVisible())
+      return;
+    try {
+      rec.start();
+      setRecording(true);
+    } catch {}
+  };
+  const rearm = () => {
+    window.clearTimeout(rearmTimer);
+    if (!voiceMode || busy)
+      return;
+    rearmTimer = window.setTimeout(() => {
+      if (voiceMode && !busy)
+        startRec();
+    }, 450);
+  };
+  const stopRec = () => {
+    window.clearTimeout(rearmTimer);
+    try {
+      rec?.stop?.();
+    } catch {}
+    setRecording(false);
+  };
+  if (voiceBtn)
     voiceBtn.addEventListener("click", () => {
-      if (voiceBtn.classList.contains("recording")) {
-        rec.stop();
-        setRecording(false);
-      } else {
-        try {
-          rec.start();
-          setRecording(true);
-        } catch {}
+      voiceMode = !voiceMode;
+      if (voiceMode)
+        startRec();
+      else {
+        stopRec();
+        setStatus("\uD83D\uDED1 tihi način — piši ročno");
       }
     });
-  } else if (voiceBtn) {
-    voiceBtn.style.display = "none";
-  }
+  document.querySelectorAll(".nav-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.view === "chat")
+        startRec();
+      else
+        stopRec();
+    });
+  });
   const speak = async (text) => {
+    setStatus("\uD83D\uDD0A govorim …");
     try {
       const r = await fetch("/api/tts", {
         method: "POST",
@@ -271,9 +390,20 @@ function initChat() {
       });
       const d = await r.json();
       if (d?.ok && d.base64) {
-        new Audio(`data:${d.mime};base64,${d.base64}`).play().catch(() => {});
+        const audio = new Audio(`data:${d.mime};base64,${d.base64}`);
+        avatar?.setSpeaking(true);
+        await new Promise((res) => {
+          audio.onended = () => res();
+          audio.onerror = () => res();
+          audio.play().catch(() => res());
+        });
+        avatar?.setSpeaking(false);
+        setStatus("pripravljen — govori ali piši");
+        return;
       }
     } catch {}
+    avatar?.setSpeaking(false);
+    setStatus("pripravljen — govori ali piši");
   };
   const addMsg = (role, text) => {
     const d = document.createElement("div");
@@ -282,16 +412,18 @@ function initChat() {
     box.appendChild(d);
     box.scrollTop = box.scrollHeight;
   };
-  const ask = async () => {
+  async function ask() {
     const text = input.value.trim();
     if (!text)
       return;
+    busy = true;
+    stopRec();
     addMsg("user", text);
     input.value = "";
-    const busy = document.createElement("div");
-    busy.className = "chat-msg ai chat-typing";
-    busy.textContent = "…";
-    box.appendChild(busy);
+    const busyEl = document.createElement("div");
+    busyEl.className = "chat-msg ai chat-typing";
+    busyEl.textContent = "…";
+    box.appendChild(busyEl);
     box.scrollTop = box.scrollHeight;
     let reply = "napaka pri povezavi";
     try {
@@ -302,7 +434,7 @@ function initChat() {
       });
       const d = await r.json();
       reply = d.reply ?? (d.error ?? "napaka");
-    } catch (e) {}
+    } catch {}
     if (TASK_RE.test(text)) {
       try {
         const kind = detectKind(text);
@@ -314,17 +446,21 @@ function initChat() {
         reply += `
 
 ➕ Dodano v agendo (kind=` + kind + ") — worker bo zgradil.";
-      } catch (e) {
+      } catch {
         reply += `
 
 ⚠️ Napaka pri dodajanju v agendo.`;
       }
     }
-    busy.textContent = reply;
+    busyEl.textContent = reply;
     box.scrollTop = box.scrollHeight;
-    speak(reply);
-  };
-  send.addEventListener("click", ask);
+    busy = false;
+    if (voiceMode) {
+      await speak(reply);
+      rearm();
+    }
+  }
+  send.addEventListener("click", () => void ask());
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter")
       ask();
@@ -350,12 +486,84 @@ function fmtDur(s) {
   const m = Math.floor(s / 60), r = Math.round(s % 60);
   return `${m}m ${r}s`;
 }
+function fmtBytes(n) {
+  if (!n)
+    return "0 B";
+  if (n < 1024)
+    return `${n} B`;
+  if (n < 1048576)
+    return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 function initAgenda() {
   const list = document.getElementById("agenda-list");
   const input = document.getElementById("agenda-input");
   const addBtn = document.getElementById("agenda-add");
   if (!list)
     return;
+  const modal = document.getElementById("agenda-modal");
+  const closeCard = () => {
+    modal?.classList.add("hidden");
+  };
+  document.getElementById("am-close")?.addEventListener("click", closeCard);
+  modal?.addEventListener("click", (e) => {
+    if (e.target === modal)
+      closeCard();
+  });
+  const renderFiles = (res, it) => {
+    const files = document.getElementById("am-files");
+    const rootEl = document.getElementById("am-root");
+    if (!files)
+      return;
+    if (rootEl)
+      rootEl.textContent = res.root ? `\uD83D\uDCC1 ${res.root}` : "";
+    const items = res.files || [];
+    if (!items.length) {
+      files.innerHTML = `<div class="am-empty">Ni shranjenih datotek — mapa <b>actions/${escapeHtml(it.target || "")}</b> je prazna ali ne obstaja.</div>`;
+      return;
+    }
+    const dlAll = document.getElementById("am-dl-all");
+    if (dlAll)
+      dlAll.style.display = "";
+    files.innerHTML = items.map((f) => {
+      const depth = f.path.split("/").length - 1;
+      const indent = `style="padding-left:${depth * 16}px"`;
+      if (f.dir)
+        return `<div class="am-dir" ${indent}>\uD83D\uDCC1 ${escapeHtml(f.path)}</div>`;
+      const href = `/api/agenda/download?id=${encodeURIComponent(it.id)}&file=${encodeURIComponent(f.path)}`;
+      return `<a class="am-file" ${indent} href="${href}" download title="${escapeHtml(f.path)}">
+        <span>\uD83D\uDCC4 ${escapeHtml(f.path)}</span><span class="am-size">${fmtBytes(f.size)}</span></a>`;
+    }).join("");
+  };
+  const openCard = (it) => {
+    const title = document.getElementById("am-title");
+    const meta = document.getElementById("am-meta");
+    const files = document.getElementById("am-files");
+    const rootEl = document.getElementById("am-root");
+    const dlAll = document.getElementById("am-dl-all");
+    if (!modal)
+      return;
+    if (title)
+      title.textContent = `Naloga · ${it.status}`;
+    if (meta)
+      meta.innerHTML = `<span><b>cilj:</b> ${escapeHtml(it.target || "—")}</span>` + `<span><b>izvedba:</b> ${fmtDur(it.duration_s) || "—"}</span>` + `<span><b>sprememba:</b> ${fmtTime(it.updated_at)}</span>`;
+    if (rootEl)
+      rootEl.textContent = "";
+    if (files)
+      files.innerHTML = '<span class="muted">nalaganje …</span>';
+    if (dlAll) {
+      dlAll.style.display = "none";
+      dlAll.href = `/api/agenda/download-all?id=${encodeURIComponent(it.id)}`;
+    }
+    modal.classList.remove("hidden");
+    getJSON(`/api/agenda/files?id=${encodeURIComponent(it.id)}`).then((res) => renderFiles(res, it)).catch(() => {
+      if (files)
+        files.innerHTML = '<div class="am-empty">Datoteke niso na voljo.</div>';
+    });
+  };
   const statusClass = (s) => s === "done" ? "s-ok" : s === "failed" ? "s-crit" : s === "running" ? "s-run" : "s-warn";
   const render = (items) => {
     if (!items.length) {
@@ -372,7 +580,7 @@ function initAgenda() {
       const worker = it.result_worker ? ` · → ${it.result_worker}` : "";
       const when = fmtTime(it.updated_at);
       const dur = it.duration_s ? ` · ${fmtDur(it.duration_s)}` : "";
-      return `<div class="agenda-item" data-id="${it.id}">
+      return `<div class="agenda-item" data-id="${it.id}" title="Klikni za shranjene datoteke">
         <div class="agenda-top"><span class="s ${statusClass(it.status)}">${it.status}</span>
           <span class="agenda-target">${it.target || ""}${claimed}${worker}</span>
           <span class="agenda-time">${when}${dur}</span>
@@ -382,12 +590,20 @@ function initAgenda() {
       </div>`;
     }).join("");
     list.querySelectorAll("[data-del]").forEach((b) => {
-      b.addEventListener("click", () => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
         fetch("/api/agenda/delete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: b.dataset.del })
         }).then(load);
+      });
+    });
+    list.querySelectorAll(".agenda-item").forEach((el) => {
+      el.addEventListener("click", () => {
+        const it = sorted.find((x) => x.id === el.dataset.id);
+        if (it)
+          openCard(it);
       });
     });
   };

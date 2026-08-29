@@ -60,6 +60,20 @@
       <section class="view hidden" data-view-panel="chat">
         <div class="view-head"><h1>Pogovor</h1><span class="meta">claude · terminal</span></div>
         <div class="panel chat-panel">
+          <div class="chat-avatar-bar">
+            <svg class="avatar-svg" viewBox="0 0 120 100" aria-label="ROB avatar">
+              <rect class="avatar-head" x="14" y="10" width="92" height="80" rx="20"/>
+              <g class="avatar-eyes">
+                <ellipse class="eye eye-l" cx="46" cy="42" rx="7" ry="8"/>
+                <ellipse class="eye eye-r" cx="74" cy="42" rx="7" ry="8"/>
+              </g>
+              <ellipse class="avatar-mouth" cx="60" cy="70" rx="13" ry="3"/>
+            </svg>
+            <div class="chat-avatar-meta">
+              <div class="chat-avatar-name">ROB</div>
+              <div class="chat-avatar-status" id="avatar-status">pripravljen — govori ali piši</div>
+            </div>
+          </div>
           <div class="pbody chat-box" id="chat-box">
             <div class="chat-msg ai">Pozdravljen. Kako ti lahko pomagam? (vprašaj ali naroči nalogo)</div>
           </div>
@@ -103,6 +117,23 @@
 
     <footer class="foot">ROB SYSTEM <span>· by Robert Slavec</span></footer>
   </div>
+
+  <!-- AGENDA KARTICA — podrobnosti naloge + prenos shranjenih datotek -->
+  <div id="agenda-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="am-title">Naloga</h3>
+        <button id="am-close" class="btn modal-close" title="Zapri">✕</button>
+      </div>
+      <div class="am-meta" id="am-meta"></div>
+      <div class="am-root" id="am-root"></div>
+      <div class="am-files" id="am-files"><span class="muted">nalaganje …</span></div>
+      <div class="am-actions">
+        <a id="am-dl-all" class="btn am-btn" href="#" download>⬇ Prenesi vse (.zip)</a>
+      </div>
+    </div>
+  </div>
+
   <!-- LOGIN OVERLAY — ko ni veljavne seje -->
   <div id="login-overlay" class="login-overlay hidden">
     <div class="login-card">
