@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="sl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Command Center v2</title>
+<link rel="stylesheet" href="/assets/style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">◆</span>
+        <div><h1>ROB SYSTEM</h1><div class="sub">COMMAND CENTER v2 · modular</div></div>
+      </div>
+      <div class="sys">
+        <span>LLM <b id="llm-label">DeepSeek</b></span>
+        <span>Fleet <b id="fleet-role">master</b></span>
+      </div>
+    </header>
+
+    <main class="stage">
+      <section class="view">
+        <div class="view-head"><h1>Pregled sistema</h1><span class="meta">živo · SSE</span></div>
+
+        <div class="kpis">
+          <div class="kpi"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">—</div></div>
+          <div class="kpi"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">—</div></div>
+          <div class="kpi"><div class="k">AST vozlišča</div><div class="v" id="kpi-nodes">—</div></div>
+        </div>
+
+        <div class="panels">
+          <div class="panel">
+            <div class="phead"><span class="ptitle">🛰️ Fleet · drugi stroji</span><span class="ptag">P9 · ŽIVO</span></div>
+            <div class="pbody fleet-body" id="fleet-body"><span class="muted">nalaganje …</span></div>
+          </div>
+          <div class="panel">
+            <div class="phead"><span class="ptitle">Živi dogodki</span><span class="ptag"><span class="sse-dot" id="sse-dot"></span>SSE</span></div>
+            <div class="pbody feed" id="feed"><div class="feed-empty">nalaganje …</div></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/assets/bundle.js"></script>
+</body>
+</html>

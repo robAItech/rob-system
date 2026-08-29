@@ -1424,8 +1424,22 @@ const server = Bun.serve({
       return new Response(null, { status: 302, headers: { 'Location': '/command' } });
     }
 
-    // Novi Command Center (futuristični) — servira command-center-mockup.html.
+    // Command Center v2 (modularna frontend, src/web/) — z Bun build-om.
     if (req.method === 'GET' && url.pathname === '/command') {
+      const html = await Bun.file(`${OUT_ROOT}/src/web/index.html`).text()
+        .catch(() => '<html><body><h2>src/web/index.html manjka (poženi: bun build src/web/main.ts)</h2></body></html>');
+      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
+    if (req.method === 'GET' && url.pathname === '/assets/bundle.js') {
+      const js = await Bun.file(`${OUT_ROOT}/src/web/dist/bundle.js`).text().catch(() => '');
+      return new Response(js, { headers: { 'Content-Type': 'application/javascript; charset=utf-8' } });
+    }
+    if (req.method === 'GET' && url.pathname === '/assets/style.css') {
+      const css = await Bun.file(`${OUT_ROOT}/src/web/style.css`).text().catch(() => '');
+      return new Response(css, { headers: { 'Content-Type': 'text/css; charset=utf-8' } });
+    }
+    // Stari mockup (za primerjavo / rollback).
+    if (req.method === 'GET' && url.pathname === '/mockup') {
       const html = await Bun.file(`${OUT_ROOT}/command-center-mockup.html`).text().catch(() => null)
         ?? await Bun.file('command-center-mockup.html').text();
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
