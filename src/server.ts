@@ -1493,6 +1493,52 @@ const server = Bun.serve({
       } catch { /* audit morda ne obstaja */ }
       return json({ ok: true, events });
     }
+    // SSE — živi tok dogodkov iz audit.jsonl (live dashboard, brez pollinga).
+    if (req.method === 'GET' && url.pathname === '/api/stream') {
+      const encoder = new TextEncoder();
+      let offset = 0;
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const send = (obj: Record<string, unknown>) => {
+            try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`)); } catch { /* */ }
+          };
+          send({ type: 'connected', ts: Date.now() });
+          const f = Bun.file(`${OUT_ROOT}/.rob_ai/audit.jsonl`);
+          try { const st = await f.stat(); offset = st.size; } catch { /* */ }
+          const tick = async () => {
+            try {
+              const st = await f.stat();
+              if (st.size > offset) {
+                const buf = await f.slice(offset, st.size).arrayBuffer();
+                offset = st.size;
+                const lines = new TextDecoder().decode(buf).split('\n');
+                for (const line of lines) {
+                  if (!line.trim()) continue;
+                  try {
+                    const d = JSON.parse(line);
+                    const ts = new Date(d.ts * 1000);
+                    const p2 = (n: number) => String(n).padStart(2, '0');
+                    const t = `${p2(ts.getHours())}:${p2(ts.getMinutes())}:${p2(ts.getSeconds())}`;
+                    const ev = String(d.event || '');
+                    const s = (ev === 'daemon-task' ? 'TASK' : ev === 'rsi-run' ? 'RSI' : ev === 'build' ? 'BUILD' : ev === 'agent' ? 'AGENT' : ev.toUpperCase().slice(0, 6));
+                    let c = 's-run';
+                    const stt = String(d.status || '');
+                    if (stt === 'ok' || stt === 'done' || stt === 'success' || stt === 'VERIFIED GREEN') c = 's-ok';
+                    if (stt === 'failed' || stt === 'FAILED') c = 's-crit';
+                    const m = `${d.project || ''} ${String(d.detail || '').slice(0, 60)}`.trim();
+                    send({ type: 'event', event: { t, s, c, m } });
+                  } catch { /* neveljavna vrstica JSON */ }
+                }
+              }
+            } catch { /* */ }
+          };
+          const evTimer = setInterval(tick, 3000);
+          const hbTimer = setInterval(() => send({ type: 'heartbeat', ts: Date.now() }), 5000);
+          req.signal.addEventListener('abort', () => { clearInterval(evTimer); clearInterval(hbTimer); });
+        },
+      });
+      return new Response(stream, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' } });
+    }
     // Agenti + bridge-i (iz src/agents/ in core/).
     if (req.method === 'GET' && url.pathname === '/api/agents') {
       return json({ agents: await listAgents() });

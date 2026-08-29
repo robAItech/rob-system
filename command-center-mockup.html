@@ -130,6 +130,9 @@
   .feed .t{color:var(--faint);font-variant-numeric:tabular-nums;}
   .feed .s{font-family:var(--font-display);font-weight:600;letter-spacing:.04em;}
   .feed .m{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sse-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--faint);margin-right:5px;vertical-align:middle;}
+  .sse-dot.live{background:var(--neon-green);box-shadow:0 0 8px var(--neon-green);animation:ssePulse 2s ease-in-out infinite;}
+  @keyframes ssePulse{0%,100%{opacity:1}50%{opacity:.4}}
   .s-ok{color:var(--good);} .s-warn{color:var(--warn);} .s-crit{color:var(--crit);} .s-run{color:var(--accent);}
 
   .convo-wrap{display:grid;grid-template-columns:1fr 250px;gap:14px;align-items:start;}
@@ -467,9 +470,9 @@
 
       <div class="kpis">
         <div class="kpi" onclick="show('agents')" title="Odpri Agenti"><div class="k">Aktivni agenti</div><div class="v" id="kpi-agents">—</div><div class="d">iz /api/agents</div></div>
-        <div class="kpi" onclick="show('agenda')" title="Odpri Agenda"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">17</div><div class="d">GBRAIN task_history</div></div>
-        <div class="kpi warn" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">259</div><div class="d">blacklist vzorcev</div></div>
-        <div class="kpi" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">AST vozlišča</div><div class="v" id="kpi-nodes">158</div><div class="d">GRAPHIFY graf</div></div>
+        <div class="kpi" onclick="show('agenda')" title="Odpri Agenda"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">—</div><div class="d">GBRAIN task_history</div></div>
+        <div class="kpi warn" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">—</div><div class="d">blacklist vzorcev</div></div>
+        <div class="kpi" onclick="show('gbrain')" title="Odpri GBRAIN"><div class="k">AST vozlišča</div><div class="v" id="kpi-nodes">—</div><div class="d">GRAPHIFY graf</div></div>
       </div>
 
       <!-- P9 fleet status — živi pregled drugih strojev (poll 5 s) -->
@@ -502,7 +505,7 @@
       </div>
 
       <div class="panel">
-        <div class="phead"><span class="ptitle">Živi dogodki</span><span class="ptag">STREAM</span></div>
+        <div class="phead"><span class="ptitle">Živi dogodki</span><span class="ptag"><span class="sse-dot" id="sse-dot"></span>SSE</span></div>
         <div class="pbody feed" id="feed"></div>
       </div>
     </section>
@@ -1066,12 +1069,7 @@
     document.getElementById('last-sync').textContent=now();
   }
   function refresh(){
-    if(live){ render(); return; }
-    if(Math.random()<0.45) state.tasks++;
-    if(Math.random()<0.15) state.errors++;
-    if(Math.random()<0.2)  state.nodes+=Math.floor(Math.random()*3);
-    state.events.unshift(Object.assign({t:now()},EVENT_POOL[Math.floor(Math.random()*EVENT_POOL.length)]));
-    state.events=state.events.slice(0,10);
+    // Brez fake dogodkov — feed je realen (SSE /api/stream ali /api/events).
     render();
   }
 
@@ -1542,5 +1540,24 @@
   restoreConvo();           // pogovor preživi refresh (localStorage)
   loadLive(); setInterval(loadLive,10000);
   loadFleet(); setInterval(loadFleet,30000);  // P9 — fleet status (30 s, ne 5 s)
+
+  // SSE — živi tok dogodkov (brez pollinga). Dogodki tečejo v feed + ticker.
+  function connectEvents(){
+    let es = null;
+    try { es = new EventSource('/api/stream'); } catch (e) { return; }
+    es.onopen = () => { const d = document.getElementById('sse-dot'); if (d) d.classList.add('live'); };
+    es.onmessage = (ev) => {
+      try {
+        const d = JSON.parse(ev.data);
+        if (d.type === 'event' && d.event) {
+          state.events.unshift(d.event);
+          state.events = state.events.slice(0, 12);
+          render();
+        }
+      } catch (e) { /* */ }
+    };
+    es.onerror = () => { /* EventSource sam reconnect-a */ };
+  }
+  connectEvents();
   loadGraph(); loadResearch();
 </script>
