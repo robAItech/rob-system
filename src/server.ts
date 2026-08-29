@@ -1811,7 +1811,42 @@ const server = Bun.serve({
         await mp.exited;
         memory = JSON.parse(mo.trim() || '{}');
       } catch { /* brez pythona → spomin ni na voljo */ }
-      return json({ ok: true, workers, agenda: ag, memory, daemon: {
+      // Backup status (zadnji `rob fleet backup` v git).
+      let backup: Record<string, unknown> = {};
+      try {
+        const bf = Bun.file(`${OUT_ROOT}/fleet/backup.json`);
+        if (await bf.exists()) {
+          const b = JSON.parse(await bf.text());
+          backup = { backed_up_at: b.backed_up_at || null };
+        }
+      } catch { /* */ }
+      // Zadnja fleet aktivnost iz audit.jsonl (task/tick, tudi fleet).
+      let activity: { t: string; s: string; c: string; m: string }[] = [];
+      try {
+        const ef = Bun.file(`${OUT_ROOT}/.rob_ai/audit.jsonl`);
+        if (await ef.exists()) {
+          const text = await ef.text();
+          const lines = text.trim().split('\n').slice(-80);
+          for (const line of lines) {
+            try {
+              const d = JSON.parse(line);
+              const ev = String(d.event || '');
+              const proj = String(d.project || '');
+              if (ev !== 'daemon-task' && ev !== 'daemon-tick' && !String(d.detail || '').includes('fleet')) continue;
+              const ts = new Date(d.ts * 1000);
+              const p3 = (n: number) => String(n).padStart(2, '0');
+              const t = `${p3(ts.getHours())}:${p3(ts.getMinutes())}:${p3(ts.getSeconds())}`;
+              const st = String(d.status || '');
+              const c = (st === 'ok' || st === 'done' || st === 'success') ? 's-ok' : st === 'failed' || st === 'FAILED' ? 's-crit' : 's-run';
+              const s = ev === 'daemon-task' ? 'TASK' : ev === 'daemon-tick' ? 'TICK' : 'FLEET';
+              const m = `${proj || ''} ${String(d.detail || '').slice(0, 45)}`.trim();
+              activity.push({ t, s, c, m });
+            } catch { /* */ }
+          }
+          activity = activity.slice(-8);
+        }
+      } catch { /* */ }
+      return json({ ok: true, workers, agenda: ag, memory, backup, activity, daemon: {
         state: daemon.state || null, heartbeat_ts: daemon.heartbeat_ts || null,
         current_tasks: daemon.current_tasks || null,
       } });

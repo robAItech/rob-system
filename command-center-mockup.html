@@ -1229,17 +1229,25 @@
   }
   function renderFleet(d){
     const el=document.getElementById('fleet-body'); if(!el) return;
-    const workers=d.workers||{}, agenda=d.agenda||{}, memory=d.memory||{};
+    const workers=d.workers||{}, agenda=d.agenda||{}, memory=d.memory||{}, backup=d.backup||{};
     const mem=Object.entries(memory).map(([k,v])=>`${k.replace(/_/g,' ')} ${v}`).join(' · ');
     const state=(d.daemon&&d.daemon.state)?d.daemon.state:'—';
+    const backupAge=(backup.backed_up_at)?fleetAge(backup.backed_up_at):'—';
     let html=`<div class="fleet-row"><span>agenda</span><b>${agenda.pending||0} čaka · ${agenda.running||0} teče</b></div>`;
     if(mem) html+=`<div class="fleet-row"><span>spomin</span><span>${mem}</span></div>`;
     html+=`<div class="fleet-row"><span>daemon</span><span>${state}</span></div>`;
+    html+=`<div class="fleet-row"><span>backup git</span><span>${backupAge}</span></div>`;
     const wnames=Object.keys(workers);
     if(wnames.length){
       wnames.forEach(w=>{const wd=workers[w]||{};html+=`<div class="fleet-row"><span>● ${w}</span><span>${fleetAge(wd.last_seen)} · ${(wd.tasks||[]).length} nalog</span></div>`;});
     } else {
       html+=`<div class="fleet-row" style="color:var(--faint)">— ni aktivnih workerjev (master / standalone)</div>`;
+    }
+    // Zadnja fleet aktivnost (TASK/TICK iz audit.jsonl).
+    const act=(d.activity||[]);
+    if(act.length){
+      html+=`<div style="margin-top:6px;color:var(--faint);font:10px var(--font-display);letter-spacing:.14em;text-transform:uppercase">Zadnja aktivnost</div>`+
+        act.map(a=>`<div class="fleet-row" style="padding:3px 8px"><span class="s ${a.c}">${a.s}</span><span class="m" style="color:var(--muted)">${a.t} ${a.m}</span></div>`).join('');
     }
     el.innerHTML=html;
   }
