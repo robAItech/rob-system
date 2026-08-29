@@ -6078,7 +6078,7 @@
         }
       ]
     },
-    "exported_at": 1787989512
+    "exported_at": 1787993117
   },
   "agenda": [
     {
@@ -6132,22 +6132,7 @@
       "repeat": null,
       "created_at": 1787688510,
       "updated_at": 1787689168
-    },
-    {
-      "id": "e0611bc65ccb",
-      "goal": "Izdelaj Python modul governance_policy_enforcer v actions/governance_policy_enforcer/. Centralizirano izvajanje avtorizacijskih politik (RBAC/ABAC): razredi za definiranje vlog in pravil, evaluate(role, action, resource, context) vrne bool, podpora kontekstualnim pravilom (IP, časovno okno), Pydantic sheme za politiko in odločitev, FastAPI endpoint. Vsebuj pytest test, vsi testi 100% zeleni.",
-      "kind": "python",
-      "target": "governance_policy_enforcer",
-      "status": "done",
-      "repeat": null,
-      "created_at": 1787984329,
-      "updated_at": 1787984657,
-      "claimed_by": "DESKTOP-A6HVO7U",
-      "claimed_at": 1787984331,
-      "result_worker": "DESKTOP-A6HVO7U",
-      "duration_s": 326.8,
-      "result_detail": "rc=0"
     }
   ],
-  "backed_up_at": 1787989512
+  "backed_up_at": 1787993117
 }
