@@ -44,7 +44,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from core import agenda, memory_sync
+from core import agenda, audit, memory_sync
 from core.config import settings
 
 FLEET_PORT = 8789
@@ -136,6 +136,13 @@ def create_app(token: Optional[str] = None) -> FastAPI:
         (lease), nato atomično rezervira en pending item za tega workerja."""
         released = agenda.release_expired_claims(settings.fleet_claim_ttl_seconds)
         items = agenda.claim_fleet(limit=1, worker=req.worker)
+        # Audit samo za dejanski claim (ne za prazne request-e).
+        if items:
+            try:
+                audit.record(event="fleet-claim", project=items[0].get("target", ""),
+                              status="started", detail=f"worker={req.worker}")
+            except Exception:
+                pass
         return {"items": items, "released": released}
 
     @app.post("/fleet/result", dependencies=[Depends(auth)])
@@ -144,6 +151,12 @@ def create_app(token: Optional[str] = None) -> FastAPI:
         status = "done" if req.ok else "failed"
         agenda.record_fleet_result(req.item_id, status, worker=req.worker or None,
                                    detail=req.detail, duration_s=req.duration_s)
+        try:
+            audit.record(event="fleet-result", project=req.target or "",
+                          status=status, detail=f"worker={req.worker or '?'} "
+                                                f"duration_s={req.duration_s}")
+        except Exception:
+            pass
         return {"ok": True, "item_id": req.item_id, "status": status}
 
     @app.post("/fleet/heartbeat", dependencies=[Depends(auth)])

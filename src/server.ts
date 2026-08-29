@@ -1480,7 +1480,7 @@ const server = Bun.serve({
               const p = (n: number) => String(n).padStart(2, '0');
               const t = `${p(ts.getHours())}:${p(ts.getMinutes())}:${p(ts.getSeconds())}`;
               const ev = String(d.event || '');
-              let s = (ev === 'daemon-task' ? 'TASK' : ev === 'rsi-run' ? 'RSI' : ev === 'build' ? 'BUILD' : ev === 'agent' ? 'AGENT' : ev.toUpperCase().slice(0, 6));
+              let s = (ev === 'fleet-claim' ? 'CLAIM' : ev === 'fleet-result' ? 'RESULT' : ev === 'daemon-task' ? 'TASK' : ev === 'rsi-run' ? 'RSI' : ev === 'build' ? 'BUILD' : ev === 'agent' ? 'AGENT' : ev.toUpperCase().slice(0, 6));
               let c = 's-run';
               const st = String(d.status || '');
               if (st === 'ok' || st === 'done' || st === 'success' || st === 'VERIFIED GREEN') c = 's-ok';
@@ -1520,7 +1520,7 @@ const server = Bun.serve({
                     const p2 = (n: number) => String(n).padStart(2, '0');
                     const t = `${p2(ts.getHours())}:${p2(ts.getMinutes())}:${p2(ts.getSeconds())}`;
                     const ev = String(d.event || '');
-                    const s = (ev === 'daemon-task' ? 'TASK' : ev === 'rsi-run' ? 'RSI' : ev === 'build' ? 'BUILD' : ev === 'agent' ? 'AGENT' : ev.toUpperCase().slice(0, 6));
+                    const s = (ev === 'fleet-claim' ? 'CLAIM' : ev === 'fleet-result' ? 'RESULT' : ev === 'daemon-task' ? 'TASK' : ev === 'rsi-run' ? 'RSI' : ev === 'build' ? 'BUILD' : ev === 'agent' ? 'AGENT' : ev.toUpperCase().slice(0, 6));
                     let c = 's-run';
                     const stt = String(d.status || '');
                     if (stt === 'ok' || stt === 'done' || stt === 'success' || stt === 'VERIFIED GREEN') c = 's-ok';
@@ -1832,13 +1832,13 @@ const server = Bun.serve({
               const d = JSON.parse(line);
               const ev = String(d.event || '');
               const proj = String(d.project || '');
-              if (ev !== 'daemon-task' && ev !== 'daemon-tick' && !String(d.detail || '').includes('fleet')) continue;
+              if (ev !== 'daemon-task' && ev !== 'daemon-tick' && ev !== 'fleet-claim' && ev !== 'fleet-result') continue;
               const ts = new Date(d.ts * 1000);
               const p3 = (n: number) => String(n).padStart(2, '0');
               const t = `${p3(ts.getHours())}:${p3(ts.getMinutes())}:${p3(ts.getSeconds())}`;
               const st = String(d.status || '');
               const c = (st === 'ok' || st === 'done' || st === 'success') ? 's-ok' : st === 'failed' || st === 'FAILED' ? 's-crit' : 's-run';
-              const s = ev === 'daemon-task' ? 'TASK' : ev === 'daemon-tick' ? 'TICK' : 'FLEET';
+              const s = ev === 'fleet-claim' ? 'CLAIM' : ev === 'fleet-result' ? 'RESULT' : ev === 'daemon-task' ? 'TASK' : 'TICK';
               const m = `${proj || ''} ${String(d.detail || '').slice(0, 45)}`.trim();
               activity.push({ t, s, c, m });
             } catch { /* */ }
