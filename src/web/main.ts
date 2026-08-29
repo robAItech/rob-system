@@ -3,9 +3,10 @@
 import { fetchFleet, fetchMetrics, getJSON } from './api';
 import { renderFleet } from './components/fleet';
 import { connectFeed } from './components/feed';
-import { renderKpis } from './components/kpis';
+import { renderKpis, recordSample } from './components/kpis';
 import { initChat } from './components/chat';
 import { initAgenda } from './components/agenda';
+import { initGraph } from './components/graph';
 import type { EventLine } from '../shared/types';
 
 function ready(fn: () => void): void {
@@ -18,8 +19,10 @@ ready(() => {
   const feedEl = document.getElementById('feed');
   const dotEl = document.getElementById('sse-dot');
 
-  // KPI — realni podatki iz /api/metrics (brez hardcoded).
-  const loadKpis = () => fetchMetrics().then(renderKpis).catch(() => { /* */ });
+  // KPI — realni podatki iz /api/metrics + trend (delta, sparkline).
+  const loadKpis = () => fetchMetrics()
+    .then(m => { recordSample(m); renderKpis(m); })
+    .catch(() => { /* */ });
   loadKpis();
   setInterval(loadKpis, 15000);
 
@@ -35,9 +38,10 @@ ready(() => {
       .catch(() => connectFeed(feedEl, dotEl, () => { /* */ }));
   }
 
-  // Pogovor + Agenda (komponente).
+  // Pogovor + Agenda + Graf (komponente).
   initChat();
   initAgenda();
+  initGraph();
 
   // Navigacija med pogledi.
   document.querySelectorAll<HTMLButtonElement>('.nav-btn').forEach(btn => {

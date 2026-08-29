@@ -1558,8 +1558,49 @@ const server = Bun.serve({
       return json({ agents: await listAgents() });
     }
     // Sistemski graf (vozlišča + povezave).
+    // Realen arhitekturni graf iz graph.json (redukcija na modulno raven).
     if (req.method === 'GET' && url.pathname === '/api/graph') {
-      return json(await systemGraph());
+      const gf = Bun.file(`${OUT_ROOT}/.rob_ai/graph.json`);
+      let g: { nodes?: Record<string, unknown>; edges?: Array<Record<string, string>> } = {};
+      try { if (await gf.exists()) g = JSON.parse(await gf.text()); } catch { /* */ }
+      const exclude = /\.claude|repos\/|node_modules|__pycache__|out\/|^src\//;
+      const paths = Object.keys(g.nodes || {}).filter(p => !exclude.test(p));
+      const norm = (p: string): string => p.replace(/\\/g, '/');   // Windows backslash → /
+      const moduleOf = (p: string): string => {
+        const n = norm(p);
+        const a = n.match(/^actions\/([^/]+)\//);
+        if (a) return a[1];
+        const c = n.match(/^core\/([^/]+)\.py$/);
+        if (c) return 'core:' + c[1];
+        const r = n.match(/^([^/]+)\.py$/);
+        if (r) return r[1];
+        return n.split('/').pop()?.replace(/\.py$/, '') || p;
+      };
+      const mods = new Map<string, { label: string; group: string }>();
+      for (const p of paths) {
+        const m = moduleOf(p);
+        const n = norm(p);
+        if (!mods.has(m)) {
+          const group = n.startsWith('core/') ? 'core' : n.startsWith('actions/') ? 'action' : 'root';
+          mods.set(m, { label: m, group });
+        }
+      }
+      const links: Array<{ source: string; target: string }> = [];
+      const seen = new Set<string>();
+      for (const e of g.edges || []) {
+        if (e.relation !== 'IMPORTS') continue;
+        const s = moduleOf(e.source), t = moduleOf(e.target);
+        if (s === t || !mods.has(s) || !mods.has(t)) continue;
+        const key = s + '|' + t;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        links.push({ source: s, target: t });
+      }
+      return json({
+        ok: true,
+        nodes: [...mods.entries()].map(([id, n]) => ({ id, label: n.label, group: n.group })),
+        links: links.slice(0, 400),
+      });
     }
     // Združeni artefakti (moduli + izdelki) s potmi za prenos.
     if (req.method === 'GET' && url.pathname === '/api/artifacts') {
@@ -1865,6 +1906,7 @@ const server = Bun.serve({
         current_tasks: daemon.current_tasks || null,
       } });
     }
+    // Realen arhitekturni graf iz graph.json (redukcija na modulno raven).
     if (req.method === 'POST' && url.pathname === '/api/agenda') {
       const raw = await req.text().catch(() => '');
       let body: { goal?: unknown; kind?: unknown; repeat?: unknown } = {};

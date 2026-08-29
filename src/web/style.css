@@ -67,3 +67,11 @@ body{background:radial-gradient(120% 90% at 50% 10%,#0a1c34,#04070d);color:var(-
 .agenda-del:hover{color:var(--bad)}
 .agenda-empty{color:var(--faint);font-size:12px;padding:12px}
 .agenda-input-row{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line)}
+.graph-panel{position:relative}
+.graph-svg{width:100%;height:64vh;background:radial-gradient(120% 90% at 50% 10%,#0a1c34,#04070d);cursor:grab;display:block}
+.graph-svg circle{cursor:pointer}
+.graph-svg line{opacity:.6}
+.graph-tip{position:fixed;display:none;pointer-events:none;background:rgba(10,17,28,.95);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--muted);z-index:60}
+.graph-tip.show{display:block}
+.kpi-delta{font-size:11px;color:var(--good);margin-left:6px;vertical-align:middle}
+.kpi-spark{margin-top:4px;height:18px;opacity:.7}

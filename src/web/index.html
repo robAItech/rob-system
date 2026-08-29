@@ -17,6 +17,7 @@
         <button class="nav-btn active" data-view="overview">Pregled</button>
         <button class="nav-btn" data-view="chat">Pogovor</button>
         <button class="nav-btn" data-view="agenda">Agenda</button>
+        <button class="nav-btn" data-view="graph">Graf</button>
       </nav>
       <div class="sys">
         <span>LLM <b id="llm-label">DeepSeek</b></span>
@@ -29,9 +30,9 @@
       <section class="view" data-view-panel="overview">
         <div class="view-head"><h1>Pregled sistema</h1><span class="meta">živo · SSE</span></div>
         <div class="kpis">
-          <div class="kpi"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">—</div></div>
-          <div class="kpi"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">—</div></div>
-          <div class="kpi"><div class="k">AST vozlišča</div><div class="v" id="kpi-nodes">—</div></div>
+          <div class="kpi"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">—</div><div class="kpi-spark" id="kpi-tasks-spark"></div></div>
+          <div class="kpi"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">—</div><div class="kpi-spark" id="kpi-errors-spark"></div></div>
+          <div class="kpi"><div class="k">AST vozlišča</div><div class="v" id="kpi-nodes">—</div><div class="kpi-spark" id="kpi-nodes-spark"></div></div>
         </div>
         <div class="panels">
           <div class="panel">
@@ -69,6 +70,15 @@
             <input id="agenda-input" class="chat-input" placeholder="Nova naloga (npr. Izdelaj modul x …)" autocomplete="off" />
             <button id="agenda-add" class="btn">Dodaj</button>
           </div>
+        </div>
+      </section>
+
+      <!-- GRAF -->
+      <section class="view hidden" data-view-panel="graph">
+        <div class="view-head"><h1>Arhitekturni graf</h1><span class="meta">graph.json · realen · pan/zoom</span></div>
+        <div class="panel graph-panel">
+          <svg id="graph-svg" class="graph-svg" role="img" aria-label="Arhitekturni graf"></svg>
+          <div id="graph-tip" class="graph-tip"></div>
         </div>
       </section>
     </main>
