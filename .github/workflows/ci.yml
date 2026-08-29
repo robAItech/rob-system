@@ -41,6 +41,8 @@ jobs:
         run: |
           python -m playwright install --with-deps chromium
           python scripts/ui_test.py
+      - name: SSE stream test
+        run: python scripts/sse_test.py
 
   eval-nightly:
     name: P5 eval nightly (full scale, real LLM + Docker)
