@@ -428,3 +428,76 @@ class TestFleetBackupRestore:
         self._patch_root(monkeypatch, tmp_path)
         monkeypatch.setattr(fleet.subprocess, "call", lambda *a, **k: 0)
         assert fleet._cmd_restore() == 1
+
+
+class TestFleetLease:
+    """Lease (TTL) — mrtvi workerji sprostijo naloge, sveži ne."""
+
+    def _add_and_claim(self, worker, target):
+        agenda.add(f"naloga {target}", target=target)
+        return agenda.claim_fleet(limit=1, worker=worker)[0]
+
+    def _age_claim(self, item_id, age=99999):
+        items = agenda.all_()
+        for it in items:
+            if it["id"] == item_id:
+                it["claimed_at"] = int(time.time()) - age
+        agenda._save(items)
+
+    def test_lease_sveze_claim_ne_sprosti(self, tmp_state):
+        item = self._add_and_claim("w1", "m1")
+        assert agenda.release_expired_claims(3600) == 0
+        assert agenda.get(item["id"])["status"] == "running"
+
+    def test_lease_sprosti_po_ttl(self, tmp_state):
+        item = self._add_and_claim("w1", "m1")
+        self._age_claim(item["id"])
+        assert agenda.release_expired_claims(30) == 1
+        assert agenda.get(item["id"])["status"] == "pending"
+
+    def test_lease_na_meji_ttl(self, tmp_state):
+        item = self._add_and_claim("w1", "m1")
+        self._age_claim(item["id"], age=30)   # 30 <= 30 → NE sprosti
+        assert agenda.release_expired_claims(30) == 0
+        self._age_claim(item["id"], age=31)   # 31 > 30 → sprosti
+        assert agenda.release_expired_claims(30) == 1
+
+    def test_lease_ne_sprosti_done(self, tmp_state):
+        item = self._add_and_claim("w1", "m1")
+        agenda.mark(item["id"], "done")
+        self._age_claim(item["id"])
+        assert agenda.release_expired_claims(30) == 0
+        assert agenda.get(item["id"])["status"] == "done"
+
+    def test_lease_ne_sprosti_failed(self, tmp_state):
+        item = self._add_and_claim("w1", "m1")
+        agenda.mark(item["id"], "failed")
+        self._age_claim(item["id"])
+        assert agenda.release_expired_claims(30) == 0
+        assert agenda.get(item["id"])["status"] == "failed"
+
+    def test_lease_dva_workerja_eden_umre(self, tmp_state):
+        a = self._add_and_claim("w1", "ma")
+        b = self._add_and_claim("w2", "mb")
+        self._age_claim(a["id"])                # w1 umre sredi naloge
+        released = agenda.release_expired_claims(30)
+        assert released == 1                    # samo a je sproščena
+        assert agenda.get(b["id"])["status"] == "running"
+        got = agenda.claim_fleet(limit=1, worker="w3")
+        assert len(got) == 1 and got[0]["id"] == a["id"]
+        assert got[0]["claimed_by"] == "w3"
+
+    def test_lease_stevec_vrne_vse(self, tmp_state):
+        agenda.add("naloga c1", target="mc1")
+        agenda.add("naloga c2", target="mc2")
+        items = agenda.claim_fleet(limit=2, worker="w1")
+        assert len(items) == 2
+        for it in items:
+            self._age_claim(it["id"])
+        assert agenda.release_expired_claims(30) == 2
+
+    def test_lease_running_brez_claimed_at_ne_sprosti(self, tmp_state):
+        item = agenda.add("lokalna naloga", target="lok1")
+        agenda.mark(item["id"], "running")      # lokalna running, brez claimed_at
+        assert agenda.release_expired_claims(30) == 0
+        assert agenda.get(item["id"])["status"] == "running"
