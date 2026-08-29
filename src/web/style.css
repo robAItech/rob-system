@@ -19,6 +19,8 @@
   --t:150ms;              /* trajanje animacij */
 }
 *{box-sizing:border-box;margin:0;padding:0}
+/* Utility: skrij element (nav preklaplja poglede s to classo). */
+.hidden{display:none!important}
 html,body{height:100%}
 body{
   background:
@@ -41,6 +43,10 @@ body{
 .nav-btn{background:transparent;border:none;color:var(--ink-2);border-radius:7px;padding:7px 14px;font-size:12px;font-family:var(--font-display);cursor:pointer;transition:background var(--t),color var(--t)}
 .nav-btn:hover{color:var(--ink);background:rgba(79,195,255,.08)}
 .nav-btn.active{background:rgba(79,195,255,.14);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(79,195,255,.25)}
+
+/* Noga — avtorstvo. */
+.foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--edge);display:flex;align-items:center;justify-content:center;gap:6px;font:11px/1.4 var(--font-mono);letter-spacing:.14em;color:var(--faint)}
+.foot b{color:var(--ink-2);font-weight:600}
 .sys{display:flex;gap:16px;font-size:11px;color:var(--faint)}
 .sys b{color:var(--ink-2);font-weight:600}
 .sys b::before{content:'';display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--good);box-shadow:0 0 6px var(--good);margin-right:5px;animation:pulse 2s infinite}

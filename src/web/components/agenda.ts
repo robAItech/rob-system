@@ -32,7 +32,13 @@ export function initAgenda(): void {
 
   const render = (items: AgendaItem[]): void => {
     if (!items.length) { list.innerHTML = '<div class="agenda-empty">Agenda je prazna — dodaj nalogo.</div>'; return; }
-    list.innerHTML = items.map(it => {
+    // Zadnje naročilo na vrhu: sortiraj po času nastanka (padajoče).
+    const sorted = [...items].sort((a, b) => {
+      const at = a.created_at ?? a.updated_at ?? 0;
+      const bt = b.created_at ?? b.updated_at ?? 0;
+      return bt - at;
+    });
+    list.innerHTML = sorted.map(it => {
       const claimed = it.claimed_by ? ` · ${it.claimed_by}` : '';
       const worker = it.result_worker ? ` · → ${it.result_worker}` : '';
       // Čas zadnje spremembe + trajanje izvedbe (worker zapiše ob končanju).

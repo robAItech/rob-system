@@ -362,7 +362,12 @@ function initAgenda() {
       list.innerHTML = '<div class="agenda-empty">Agenda je prazna — dodaj nalogo.</div>';
       return;
     }
-    list.innerHTML = items.map((it) => {
+    const sorted = [...items].sort((a, b) => {
+      const at = a.created_at ?? a.updated_at ?? 0;
+      const bt = b.created_at ?? b.updated_at ?? 0;
+      return bt - at;
+    });
+    list.innerHTML = sorted.map((it) => {
       const claimed = it.claimed_by ? ` · ${it.claimed_by}` : "";
       const worker = it.result_worker ? ` · → ${it.result_worker}` : "";
       const when = fmtTime(it.updated_at);
