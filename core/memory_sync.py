@@ -12,7 +12,7 @@ Smer (fleet):
   ulica), `rob fleet restore` jih združi nazaj.
 
 Dedup identitete (brez lokalnega id-ja):
-- semantic_memories : (theme, content)
+- semantic_memories : (theme, project)   # == UNIQUE idx_semantic_theme v DB
 - run_reviews       : SHA256(directive|outcome|root_cause|lesson|next_step)
 - blacklist_patterns: (project, error_pattern)
 - agent_memory_nodes: key (UNIQUE v shemi)
@@ -65,7 +65,10 @@ def _resolve(db_path) -> Path:
 
 def _row_identity(table: str, row: dict) -> tuple:
     if table == "semantic_memories":
-        return ("sm", str(row.get("theme", "")), str(row.get("content", "")))
+        # Dejanski DB ima UNIQUE index idx_semantic_theme ON (theme, project) —
+        # identiteta za dedup MORA sovpadati z njim, sicer merge pade na
+        # "UNIQUE constraint failed: semantic_memories.theme, project".
+        return ("sm", str(row.get("theme", "")), str(row.get("project", "")))
     if table == "run_reviews":
         h = hashlib.sha256("|".join(str(row.get(k, "")) for k in
                             ("directive", "outcome", "root_cause", "lesson", "next_step"))
@@ -193,7 +196,7 @@ def merge_memory(payload: dict, db_path=None) -> dict:
                         continue
                     ph = ",".join("?" * len(insert_cols))
                     conn.execute(
-                        f"INSERT INTO {table} ({','.join(insert_cols)}) VALUES ({ph})",
+                        f"INSERT OR IGNORE INTO {table} ({','.join(insert_cols)}) VALUES ({ph})",
                         [row.get(c) for c in insert_cols])
                     existing.add(identity)
                     n += 1

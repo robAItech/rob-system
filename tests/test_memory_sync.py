@@ -45,6 +45,26 @@ class TestMemorySync:
         assert memory_sync.merge_memory(payload, dst)["semantic_memories"] == 1
         assert memory_sync.merge_memory(payload, dst)["semantic_memories"] == 0
 
+    def test_merge_semantic_iste_theme_project_ne_pade(self, mem_db, tmp_path):
+        """Regresija: produkcijska DB ima UNIQUE index (theme, project) — merge
+        dveh vrstic z istim (theme, project) NE sme pasti na constraint (prej
+        "UNIQUE constraint failed: semantic_memories.theme, project")."""
+        dst = tmp_path / "dst.db"
+        GBrainBridge(dst)
+        # Simuliraj produkcijsko DB: UNIQUE index, ki ga svež GBrainBridge ne ustvari.
+        with sqlite3.connect(dst) as c:
+            memory_sync._ensure_schema(c)
+            c.execute("CREATE UNIQUE INDEX idx_semantic_theme ON semantic_memories (theme, project)")
+        # Dve vrstici: ista (theme, project), različen content.
+        _insert(mem_db, "semantic_memories", theme="tema", project="p1", content="v1", kind="principle")
+        _insert(mem_db, "semantic_memories", theme="tema", project="p1", content="v2", kind="principle")
+        payload = memory_sync.export_memory(mem_db)
+        stats = memory_sync.merge_memory(payload, dst)   # prej: UNIQUE constraint failed
+        with sqlite3.connect(dst) as c:
+            n = c.execute("SELECT COUNT(*) FROM semantic_memories").fetchone()[0]
+        assert n == 1
+        assert stats["semantic_memories"] == 1
+
     def test_merge_run_reviews_dedup(self, mem_db, tmp_path):
         dst = tmp_path / "dst.db"
         GBrainBridge(dst)
