@@ -137,6 +137,17 @@ class TestFleetMemoryEndpoints:
         assert client.get("/fleet/memory").status_code == 401
         assert client.post("/fleet/memory", json={}).status_code == 401
 
+    def test_post_memory_pise_audit_delta(self, client, tmp_path):
+        """Novi lekciji ob push-u → audit fleet-memory z delto."""
+        payload = {"tables": {"semantic_memories": [
+            {"theme": "t-audit", "project": "p", "content": "x", "kind": "principle"}]}}
+        r = client.post("/fleet/memory", json=payload,
+                        headers={"Authorization": "Bearer test-token"})
+        assert r.json()["semantic_memories"] == 1
+        txt = (tmp_path / "audit.jsonl").read_text(encoding="utf-8")
+        assert "fleet-memory" in txt
+        assert "+1" in txt
+
 
 class TestRestorePending:
     def test_restore_importa_pending_skips_obstojecih(self, tmp_path, monkeypatch):

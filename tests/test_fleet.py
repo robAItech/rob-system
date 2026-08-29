@@ -117,6 +117,22 @@ class TestFleetServer:
         assert r.status_code == 200
         assert r.json()["agenda"]["pending"] == 2
 
+    def test_claim_pise_audit(self, client, tmp_state):
+        _add_pending(1)
+        client.post("/fleet/claim", json={"worker": "w1"}, headers=H)
+        txt = (tmp_state / "audit.jsonl").read_text(encoding="utf-8")
+        assert "fleet-claim" in txt
+        assert "w1" in txt
+
+    def test_result_pise_audit(self, client, tmp_state):
+        item = _add_pending(1)[0]
+        client.post("/fleet/claim", json={"worker": "w1"}, headers=H)
+        client.post("/fleet/result",
+                    json={"item_id": item["id"], "ok": True, "target": item["target"]},
+                    headers=H)
+        txt = (tmp_state / "audit.jsonl").read_text(encoding="utf-8")
+        assert "fleet-result" in txt
+
 
 class TestFleetAgenda:
     def test_claim_fleet_razlicni_targeti(self, tmp_state):
@@ -239,6 +255,63 @@ class TestFleetDaemonTicks:
         assert daemon._fleet_offline() is True
         daemon._fleet_mark_online()
         assert daemon._fleet_offline() is False
+
+    def test_fleet_claim_remote_online_zapise_sencno(self, tmp_state, monkeypatch):
+        """Worker claim-a nalogo od masterja → zapiše v lokalno senčno agendo."""
+        from core import daemon
+
+        class FakeClient:
+            def __init__(self, *a, **k):
+                pass
+            def claim(self, worker=None):
+                return {"id": "abc", "target": "mod1", "goal": "g", "status": "pending"}
+
+        monkeypatch.setattr(daemon, "_fleet_offline_until", 0.0)
+        monkeypatch.setattr(fleet, "FleetClient", FakeClient)
+
+        class S:
+            fleet_master_url = "http://x"
+            fleet_token = "t"
+            fleet_backoff_seconds = 60
+        res = daemon._fleet_claim_remote(S())
+        assert len(res) == 1
+        assert res[0]["fleet_claimed"] is True
+        assert res[0]["status"] == "running"
+        assert any(i.get("target") == "mod1" for i in agenda.all_())   # senčna agenda
+
+    def test_fleet_claim_remote_offline_brez_omrezja(self, monkeypatch):
+        from core import daemon
+        monkeypatch.setattr(daemon, "_fleet_offline_until", time.time() + 999)
+        calls = []
+        monkeypatch.setattr(fleet, "FleetClient", lambda *a, **k: calls.append(1) or None)
+
+        class S:
+            pass
+        assert daemon._fleet_claim_remote(S()) == []
+        assert calls == []
+
+    def test_fleet_push_actions_poslje_modul(self, monkeypatch):
+        """Worker po build-u pošlje modul masterju prek HTTP."""
+        from core import daemon
+        pushed = {}
+
+        class FakeClient:
+            def __init__(self, *a, **k):
+                pass
+            def push_actions(self, module, files):
+                pushed["module"] = module
+                pushed["files"] = files
+
+        monkeypatch.setattr(daemon, "_fleet_offline_until", 0.0)
+        monkeypatch.setattr(fleet, "FleetClient", FakeClient)
+        monkeypatch.setattr(fleet, "export_module_files", lambda m: {"main.py": "x=1"})
+
+        class S:
+            fleet_master_url = "http://x"
+            fleet_token = "t"
+            fleet_backoff_seconds = 60
+        daemon._fleet_push_actions(S(), "mod1")
+        assert pushed == {"module": "mod1", "files": {"main.py": "x=1"}}
 
 
 class TestFleetActions:
