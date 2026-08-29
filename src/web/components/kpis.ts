@@ -27,6 +27,23 @@ function sparkline(vals: number[], color: string): string {
   return `<svg width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
 }
 
+// Count-up: prikaži zadnjo izrisano vrednost → nova vrednost (eased, ~650 ms).
+const shown = new Map<string, number>();
+function countUp(el: HTMLElement, key: string, target: number, deltaHtml: string): void {
+  const from = shown.get(key) ?? 0;
+  const dur = 650;
+  const t0 = performance.now();
+  const step = (now: number): void => {
+    const p = Math.min(1, (now - t0) / dur);
+    const ease = 1 - Math.pow(1 - p, 3);
+    const val = Math.round(from + (target - from) * ease);
+    el.innerHTML = String(val) + deltaHtml;
+    if (p < 1) requestAnimationFrame(step);
+    else shown.set(key, target);
+  };
+  requestAnimationFrame(step);
+}
+
 export function renderKpis(m: SystemMetrics): void {
   const prev = kpiHistory[kpiHistory.length - 2];
   const fields = [
@@ -38,9 +55,13 @@ export function renderKpis(m: SystemMetrics): void {
     const el = document.getElementById(id);
     if (!el) continue;
     const val = m[key];
-    el.innerHTML = (val === undefined || val === null)
-      ? '—'
-      : String(val) + `<span class="kpi-delta">${deltaStr(prev?.[key], val)}</span>`;
+    const deltaHtml = `<span class="kpi-delta">${deltaStr(prev?.[key], val)}</span>`;
+    if (val === undefined || val === null) {
+      shown.set(key, 0);
+      el.innerHTML = '—';
+    } else {
+      countUp(el, key, val, deltaHtml);
+    }
     const sp = document.getElementById(id + '-spark');
     if (sp) {
       sp.innerHTML = sparkline(

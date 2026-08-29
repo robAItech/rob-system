@@ -144,6 +144,23 @@ function sparkline(vals, color) {
   const pts = vals.map((v, i) => `${(i / (vals.length - 1) * w).toFixed(1)},${(h - (v - min) / range * (h - 2) - 1).toFixed(1)}`).join(" ");
   return `<svg width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"/></svg>`;
 }
+var shown = new Map;
+function countUp(el, key, target, deltaHtml) {
+  const from = shown.get(key) ?? 0;
+  const dur = 650;
+  const t0 = performance.now();
+  const step = (now) => {
+    const p = Math.min(1, (now - t0) / dur);
+    const ease = 1 - Math.pow(1 - p, 3);
+    const val = Math.round(from + (target - from) * ease);
+    el.innerHTML = String(val) + deltaHtml;
+    if (p < 1)
+      requestAnimationFrame(step);
+    else
+      shown.set(key, target);
+  };
+  requestAnimationFrame(step);
+}
 function renderKpis(m) {
   const prev = kpiHistory[kpiHistory.length - 2];
   const fields = [
@@ -156,7 +173,13 @@ function renderKpis(m) {
     if (!el)
       continue;
     const val = m[key];
-    el.innerHTML = val === undefined || val === null ? "—" : String(val) + `<span class="kpi-delta">${deltaStr(prev?.[key], val)}</span>`;
+    const deltaHtml = `<span class="kpi-delta">${deltaStr(prev?.[key], val)}</span>`;
+    if (val === undefined || val === null) {
+      shown.set(key, 0);
+      el.innerHTML = "—";
+    } else {
+      countUp(el, key, val, deltaHtml);
+    }
     const sp = document.getElementById(id + "-spark");
     if (sp) {
       sp.innerHTML = sparkline(kpiHistory.filter((s) => s[key] !== undefined).map((s) => s[key]), color);
@@ -193,12 +216,65 @@ function detectKind(text) {
     return "html";
   return "python";
 }
+var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 function initChat() {
   const box = document.getElementById("chat-box");
   const input = document.getElementById("chat-input");
   const send = document.getElementById("chat-send");
+  const voiceBtn = document.getElementById("voice-btn");
+  const voiceStatus = document.getElementById("voice-status");
   if (!box || !input || !send)
     return;
+  const setRecording = (on) => {
+    voiceBtn?.classList.toggle("recording", on);
+    if (voiceStatus) {
+      voiceStatus.classList.toggle("hidden", !on);
+      voiceStatus.textContent = on ? "\uD83C\uDFA4 poslušam … govori." : "";
+    }
+  };
+  let rec = null;
+  if (voiceBtn && SpeechRec) {
+    rec = new SpeechRec;
+    rec.lang = "sl-SI";
+    rec.interimResults = false;
+    rec.continuous = false;
+    rec.onresult = (e) => {
+      const t = e.results?.[0]?.[0]?.transcript ?? "";
+      if (t) {
+        input.value = t;
+        input.focus();
+      }
+      setRecording(false);
+    };
+    rec.onerror = () => setRecording(false);
+    rec.onend = () => setRecording(false);
+    voiceBtn.addEventListener("click", () => {
+      if (voiceBtn.classList.contains("recording")) {
+        rec.stop();
+        setRecording(false);
+      } else {
+        try {
+          rec.start();
+          setRecording(true);
+        } catch {}
+      }
+    });
+  } else if (voiceBtn) {
+    voiceBtn.style.display = "none";
+  }
+  const speak = async (text) => {
+    try {
+      const r = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice: "Charon" })
+      });
+      const d = await r.json();
+      if (d?.ok && d.base64) {
+        new Audio(`data:${d.mime};base64,${d.base64}`).play().catch(() => {});
+      }
+    } catch {}
+  };
   const addMsg = (role, text) => {
     const d = document.createElement("div");
     d.className = `chat-msg ${role}`;
@@ -246,6 +322,7 @@ function initChat() {
     }
     busy.textContent = reply;
     box.scrollTop = box.scrollHeight;
+    speak(reply);
   };
   send.addEventListener("click", ask);
   input.addEventListener("keydown", (e) => {
@@ -255,6 +332,24 @@ function initChat() {
 }
 
 // src/web/components/agenda.ts
+function fmtTime(ts) {
+  if (!ts)
+    return "";
+  const d = new Date(ts * 1000);
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mi = String(d.getMinutes()).padStart(2, "0");
+  return `${dd}.${mm} ${hh}:${mi}`;
+}
+function fmtDur(s) {
+  if (!s && s !== 0)
+    return "";
+  if (s < 60)
+    return `${Math.round(s)}s`;
+  const m = Math.floor(s / 60), r = Math.round(s % 60);
+  return `${m}m ${r}s`;
+}
 function initAgenda() {
   const list = document.getElementById("agenda-list");
   const input = document.getElementById("agenda-input");
@@ -270,9 +365,12 @@ function initAgenda() {
     list.innerHTML = items.map((it) => {
       const claimed = it.claimed_by ? ` · ${it.claimed_by}` : "";
       const worker = it.result_worker ? ` · → ${it.result_worker}` : "";
+      const when = fmtTime(it.updated_at);
+      const dur = it.duration_s ? ` · ${fmtDur(it.duration_s)}` : "";
       return `<div class="agenda-item" data-id="${it.id}">
         <div class="agenda-top"><span class="s ${statusClass(it.status)}">${it.status}</span>
           <span class="agenda-target">${it.target || ""}${claimed}${worker}</span>
+          <span class="agenda-time">${when}${dur}</span>
           <button class="agenda-del" data-del="${it.id}" title="Odstrani">✕</button>
         </div>
         <div class="agenda-goal">${String(it.goal || "").replace(/</g, "&lt;")}</div>
@@ -320,9 +418,12 @@ function initAgenda() {
 var COLORS = { core: "#ffd166", action: "#4fc3ff", root: "#5e7ba0" };
 var W = 900;
 var H = 640;
+var DRIFT_AMP = 2.5;
+var DRIFT_T = 0.3;
 function initGraph() {
   const svg = document.getElementById("graph-svg");
   const tip = document.getElementById("graph-tip");
+  const stats = document.getElementById("graph-stats");
   if (!svg)
     return;
   fetch("/api/graph").then((r) => r.json()).then((d) => {
@@ -373,16 +474,32 @@ function initGraph() {
         n.y += n.vy;
       }
     }
-    render(svg, tip, nodes, links);
+    render(svg, tip, stats, nodes, links);
   }).catch(() => {});
 }
-function render(svg, tip, nodes, links) {
+function render(svg, tip, stats, nodes, links) {
   svg.setAttribute("viewBox", `${-W / 2} ${-H / 2} ${W} ${H}`);
   const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
   group.setAttribute("id", "graph-main");
-  group.innerHTML = links.map((l) => `<line x1="${l.source.x}" y1="${l.source.y}" x2="${l.target.x}" y2="${l.target.y}" stroke="#243a54" stroke-width="1"/>`).join("") + nodes.map((n) => `<circle cx="${n.x}" cy="${n.y}" r="6" fill="${COLORS[n.group] || "#888"}"
-      data-id="${n.id}" data-label="${n.label}" data-group="${n.group}"/>`).join("");
+  const degree = new Map;
+  for (const l of links) {
+    degree.set(l.source.id, (degree.get(l.source.id) || 0) + 1);
+    degree.set(l.target.id, (degree.get(l.target.id) || 0) + 1);
+  }
+  const maxDeg = Math.max(1, ...degree.values());
+  const rFor = (id) => 3.5 + (degree.get(id) || 0) / maxDeg * 10;
+  const topN = 5;
+  const topIds = new Set([...degree.entries()].sort((a, b) => b[1] - a[1]).slice(0, topN).map(([id]) => id));
+  const lineMarkup = links.map((l) => `<line x1="${l.source.x}" y1="${l.source.y}" x2="${l.target.x}" y2="${l.target.y}"
+       stroke="#243a54" stroke-width="1" data-from="${l.source.id}" data-to="${l.target.id}"/>`).join("");
+  const circleMarkup = nodes.map((n) => `<circle cx="${n.x}" cy="${n.y}" r="${rFor(n.id)}" fill="${COLORS[n.group] || "#888"}"
+       data-id="${n.id}" data-label="${n.label}" data-group="${n.group}" data-degree="${degree.get(n.id) || 0}"/>`).join("");
+  const labelMarkup = nodes.filter((n) => topIds.has(n.id)).map((n) => `<text class="graph-label" x="${n.x}" y="${n.y + 21}" text-anchor="middle"
+       fill="${COLORS[n.group] || "#9aa7b5"}" data-id="${n.id}">${String(n.label).replace(/</g, "&lt;")}</text>`).join("");
+  group.innerHTML = lineMarkup + circleMarkup + labelMarkup;
   svg.appendChild(group);
+  if (stats)
+    stats.textContent = `${nodes.length} vozlišč · ${links.length} povezav · max ${maxDeg}°`;
   const adj = new Map;
   for (const l of links) {
     (adj.get(l.source.id) || adj.set(l.source.id, new Set).get(l.source.id)).add(l.target.id);
@@ -390,26 +507,36 @@ function render(svg, tip, nodes, links) {
   }
   const circles = group.querySelectorAll("circle");
   const lines = group.querySelectorAll("line");
+  const labelEls = new Map;
+  group.querySelectorAll("text.graph-label").forEach((t) => {
+    labelEls.set(t.dataset.id, t);
+  });
   circles.forEach((c) => {
     c.addEventListener("mouseenter", () => {
       const id = c.dataset.id;
       const neigh = adj.get(id) || new Set;
       circles.forEach((x) => {
         const xid = x.dataset.id;
-        x.style.opacity = xid === id || neigh.has(xid) ? "1" : "0.15";
+        x.style.opacity = xid === id || neigh.has(xid) ? "1" : "0.12";
       });
       lines.forEach((l) => {
-        const src = l.getAttribute("x1") === c.getAttribute("cx") && l.getAttribute("y1") === c.getAttribute("cy");
-        l.style.opacity = "0.5";
+        const from = l.dataset.from;
+        const to = l.dataset.to;
+        l.style.opacity = from === id || to === id || neigh.has(from) || neigh.has(to) ? "0.8" : "0.08";
+      });
+      labelEls.forEach((t, lid) => {
+        t.style.opacity = lid === id || neigh.has(lid) ? "1" : "0.15";
       });
       if (tip) {
-        tip.textContent = `${c.dataset.label} (${c.dataset.group}) · ${neigh.size} povezav`;
+        const deg = c.dataset.degree || "0";
+        tip.textContent = `${c.dataset.label} (${c.dataset.group}) · ${deg} povezav`;
         tip.classList.add("show");
       }
     });
     c.addEventListener("mouseleave", () => {
       circles.forEach((x) => x.style.opacity = "1");
       lines.forEach((x) => x.style.opacity = "0.6");
+      labelEls.forEach((t) => t.style.opacity = "1");
       if (tip)
         tip.classList.remove("show");
     });
@@ -439,6 +566,40 @@ function render(svg, tip, nodes, links) {
     scale = Math.min(3, Math.max(0.2, scale * d));
     group.setAttribute("transform", `translate(${tx} ${ty}) scale(${scale})`);
   });
+  const phases = new Map(nodes.map((n, i) => [n.id, i * 2.399963 % (Math.PI * 2)]));
+  const t0 = performance.now();
+  const frame = (now) => {
+    const t = (now - t0) / 1000;
+    const offset = (id) => {
+      const ph = phases.get(id) || 0;
+      return [
+        Math.sin(t * DRIFT_T + ph) * DRIFT_AMP,
+        Math.cos(t * DRIFT_T * 0.77 + ph * 1.7) * DRIFT_AMP
+      ];
+    };
+    nodes.forEach((n, i) => {
+      const [ox, oy] = offset(n.id);
+      const c = circles[i];
+      c.setAttribute("cx", String(n.x + ox));
+      c.setAttribute("cy", String(n.y + oy));
+      const lab = labelEls.get(n.id);
+      if (lab) {
+        lab.setAttribute("x", String(n.x + ox));
+        lab.setAttribute("y", String(n.y + oy + 21));
+      }
+    });
+    links.forEach((l, j) => {
+      const [sx0, sy0] = offset(l.source.id);
+      const [tx0, ty0] = offset(l.target.id);
+      const el = lines[j];
+      el.setAttribute("x1", String(l.source.x + sx0));
+      el.setAttribute("y1", String(l.source.y + sy0));
+      el.setAttribute("x2", String(l.target.x + tx0));
+      el.setAttribute("y2", String(l.target.y + ty0));
+    });
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }
 
 // src/web/main.ts

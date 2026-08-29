@@ -55,6 +55,7 @@ export interface AgendaItem {
   result_worker?: string;
   created_at?: number;
   updated_at?: number;
+  duration_s?: number;   // čas izvedbe (worker zapiše ob končanju)
 }
 
 export interface ChatReply {

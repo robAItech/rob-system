@@ -89,3 +89,6 @@ legacy/testna/
 # Self-signed TLS cert (lokalno generiran — NE commitaj privatnega ključa)
 certs/
 .rob_ai/research/
+
+# Claude Code lokalni state (settings, worktrees) — ne commitaj.
+.claude/
