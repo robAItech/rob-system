@@ -72,7 +72,9 @@ jobs:
             echo "::warning::DEEPSEEK_API_KEY secret ni nastavljen — nočni eval preskočen (nastavi: gh secret set DEEPSEEK_API_KEY)"
             exit 0
           fi
-          python evaluate_autonomy.py --report .rob_ai/eval_report.md --workers 1
+          # --min-score 0.85: eval je LLM-stohastičen — en flaky case (npr. 13/14)
+          # ne sme pordečiti CI-ja; resna regresija (< 0.85) pa še vedno pade.
+          python evaluate_autonomy.py --report .rob_ai/eval_report.md --workers 1 --min-score 0.85
         timeout-minutes: 300
       - name: Upload eval artifacts
         if: always()

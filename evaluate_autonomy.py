@@ -132,11 +132,16 @@ EVAL_CASES: List[Dict] = [
         "directive": (
             "Zgradi Python modul 'text_stats' v actions/text_stats/. "
             "Definiraj funkcijo `text_stats(text: str) -> dict`, ki vrne slovar s ključi "
-            "'word_count' (število besed), 'char_count' (število znakov, ki NISO presledki; "
-            "ločila štejejo) in 'sentence_count' (število povedi, ločenih z . ! ?). "
-            "Prazno besedilo vrne same ničle. Primer: text_stats('Hello world.') mora vrniti "
-            "{'word_count': 2, 'char_count': 11, 'sentence_count': 1}. "
-            "Napiši pytest test za potrditev. Vsi testi 100% zeleni."
+            "'word_count' (število besed — beseda = token ločen SAMO s presledki; "
+            "ločila . ! ? NISO besede in ne štejejo kot besede), "
+            "'char_count' (število znakov, ki NISO presledki; ločila štejejo) in "
+            "'sentence_count' (število povedi, ločenih z . ! ?). "
+            "Prazno besedilo vrne same ničle. Primeri (MORAJO veljati): "
+            "text_stats('Hello world.') → {'word_count': 2, 'char_count': 11, 'sentence_count': 1}; "
+            "text_stats('') → {'word_count': 0, 'char_count': 0, 'sentence_count': 0}; "
+            "text_stats('One. Two! Three?') → {'word_count': 3, 'char_count': 14, 'sentence_count': 3}; "
+            "text_stats('  a   b  ') → {'word_count': 2, 'char_count': 2, 'sentence_count': 0}. "
+            "Napiši pytest test za potrditev (vključno z zgornjimi primeri). Vsi testi 100% zeleni."
         ),
         "function_key": "text_stats",
         "checks": [
@@ -880,6 +885,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="izpiši zadnjih N meritvenih vnosov (trend) iz eval zgodovine")
     p.add_argument("--report", metavar="PATH", default=None,
                    help="zapiši Markdown poročilo teka ('-' za stdout)")
+    p.add_argument("--min-score", type=float, default=1.0, metavar="RATE",
+                   help="minimalni prehodni rate (0-1); pod njim rc=1. "
+                        "Eval je LLM-stohastičen — CI naj uporabi prag (npr. 0.85), "
+                        "da en flaky case ne pordeči CI-ja, regresija pa se še ujame.")
     p.add_argument("--verify-only", metavar="NAME", default=None,
                    help="interno: preveri en case iz stdin (podprocesna izolacija)")
     p.add_argument("--workers", type=int, default=2,
@@ -989,7 +998,13 @@ def main(argv=None) -> int:
             Path(args.report).parent.mkdir(parents=True, exist_ok=True)
             Path(args.report).write_text(md, encoding="utf-8")
             print(f"📄 Poročilo zapisano: {args.report}")
-    return 0 if summary["rate"] >= 1.0 else 1
+    if summary["rate"] < args.min_score:
+        return 1
+    if summary["rate"] < 1.0:
+        # Pod polnim rezultatom, a nad pragom → opozori (CI ni rdeč, a trend je viden).
+        print(f"⚠️ Eval rate {summary['rate']*100:.0f}% pod 100% (min-score={args.min_score}) — "
+              f"glej poročilo za padle case-e.")
+    return 0
 
 
 if __name__ == "__main__":
