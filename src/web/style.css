@@ -42,3 +42,28 @@ body{background:radial-gradient(120% 90% at 50% 10%,#0a1c34,#04070d);color:var(-
 .sse-dot.live{background:var(--good);box-shadow:0 0 8px var(--good);animation:ssePulse 2s ease-in-out infinite}
 @keyframes ssePulse{0%,100%{opacity:1}50%{opacity:.4}}
 .feed-empty,.muted{color:var(--faint);font-size:12px}
+.hidden{display:none}
+.nav{display:flex;gap:6px}
+.nav-btn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer}
+.nav-btn:hover{border-color:var(--accent);color:var(--accent)}
+.nav-btn.active{background:rgba(79,195,255,.12);border-color:var(--accent);color:var(--accent)}
+.btn{background:rgba(79,195,255,.14);border:1px solid var(--accent);color:var(--accent);border-radius:6px;padding:8px 14px;cursor:pointer;font-size:12px}
+.btn:hover{background:rgba(79,195,255,.24)}
+.chat-panel{display:flex;flex-direction:column}
+.chat-box{display:flex;flex-direction:column;gap:8px;min-height:360px;max-height:55vh;overflow-y:auto}
+.chat-msg{padding:8px 12px;border-radius:10px;font-size:13px;line-height:1.5;max-width:85%;white-space:pre-wrap}
+.chat-msg.user{align-self:flex-end;background:rgba(79,195,255,.15);color:var(--muted)}
+.chat-msg.ai{align-self:flex-start;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+.chat-typing{color:var(--faint)}
+.chat-input-row{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line)}
+.chat-input{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:6px;color:var(--muted);padding:9px 12px;font-size:13px}
+.chat-input:focus{outline:none;border-color:var(--accent)}
+.agenda-list{display:flex;flex-direction:column;gap:8px}
+.agenda-item{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:rgba(79,195,255,.03)}
+.agenda-top{display:flex;align-items:center;gap:10px}
+.agenda-target{flex:1;color:var(--faint);font-size:11px;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.agenda-goal{color:var(--muted);font-size:12px;margin-top:4px}
+.agenda-del{background:none;border:none;color:var(--faint);cursor:pointer;font-size:12px}
+.agenda-del:hover{color:var(--bad)}
+.agenda-empty{color:var(--faint);font-size:12px;padding:12px}
+.agenda-input-row{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--line)}

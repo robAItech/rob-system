@@ -13,6 +13,11 @@
         <span class="logo">◆</span>
         <div><h1>ROB SYSTEM</h1><div class="sub">COMMAND CENTER v2 · modular</div></div>
       </div>
+      <nav class="nav">
+        <button class="nav-btn active" data-view="overview">Pregled</button>
+        <button class="nav-btn" data-view="chat">Pogovor</button>
+        <button class="nav-btn" data-view="agenda">Agenda</button>
+      </nav>
       <div class="sys">
         <span>LLM <b id="llm-label">DeepSeek</b></span>
         <span>Fleet <b id="fleet-role">master</b></span>
@@ -20,15 +25,14 @@
     </header>
 
     <main class="stage">
-      <section class="view">
+      <!-- PREGLED -->
+      <section class="view" data-view-panel="overview">
         <div class="view-head"><h1>Pregled sistema</h1><span class="meta">živo · SSE</span></div>
-
         <div class="kpis">
           <div class="kpi"><div class="k">Taski izvedeni</div><div class="v" id="kpi-tasks">—</div></div>
           <div class="kpi"><div class="k">Avto-zdravljene</div><div class="v" id="kpi-errors">—</div></div>
           <div class="kpi"><div class="k">AST vozlišča</div><div class="v" id="kpi-nodes">—</div></div>
         </div>
-
         <div class="panels">
           <div class="panel">
             <div class="phead"><span class="ptitle">🛰️ Fleet · drugi stroji</span><span class="ptag">P9 · ŽIVO</span></div>
@@ -37,6 +41,33 @@
           <div class="panel">
             <div class="phead"><span class="ptitle">Živi dogodki</span><span class="ptag"><span class="sse-dot" id="sse-dot"></span>SSE</span></div>
             <div class="pbody feed" id="feed"><div class="feed-empty">nalaganje …</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- POGOVOR -->
+      <section class="view hidden" data-view-panel="chat">
+        <div class="view-head"><h1>Pogovor</h1><span class="meta">claude · terminal</span></div>
+        <div class="panel chat-panel">
+          <div class="pbody chat-box" id="chat-box">
+            <div class="chat-msg ai">Pozdravljen. Kako ti lahko pomagam? (vprašaj ali naroči nalogo)</div>
+          </div>
+          <div class="chat-input-row">
+            <input id="chat-input" class="chat-input" placeholder="Vpiši sporočilo …  (Enter za pošiljanje)" autocomplete="off" />
+            <button id="chat-send" class="btn">Pošlji</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- AGENDA -->
+      <section class="view hidden" data-view-panel="agenda">
+        <div class="view-head"><h1>Agenda</h1><span class="meta">čakalna vrsta naročil</span></div>
+        <div class="panel">
+          <div class="phead"><span class="ptitle">Naročila</span><span class="ptag" id="agenda-count"></span></div>
+          <div class="pbody agenda-list" id="agenda-list"><div class="agenda-empty">nalaganje …</div></div>
+          <div class="agenda-input-row">
+            <input id="agenda-input" class="chat-input" placeholder="Nova naloga (npr. Izdelaj modul x …)" autocomplete="off" />
+            <button id="agenda-add" class="btn">Dodaj</button>
           </div>
         </div>
       </section>

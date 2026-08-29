@@ -4,6 +4,8 @@ import { fetchFleet, fetchMetrics, getJSON } from './api';
 import { renderFleet } from './components/fleet';
 import { connectFeed } from './components/feed';
 import { renderKpis } from './components/kpis';
+import { initChat } from './components/chat';
+import { initAgenda } from './components/agenda';
 import type { EventLine } from '../shared/types';
 
 function ready(fn: () => void): void {
@@ -32,4 +34,20 @@ ready(() => {
       .then(r => connectFeed(feedEl, dotEl, () => { /* */ }, r.events || []))
       .catch(() => connectFeed(feedEl, dotEl, () => { /* */ }));
   }
+
+  // Pogovor + Agenda (komponente).
+  initChat();
+  initAgenda();
+
+  // Navigacija med pogledi.
+  document.querySelectorAll<HTMLButtonElement>('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const v = btn.dataset.view;
+      document.querySelectorAll<HTMLElement>('[data-view-panel]').forEach(p => {
+        p.classList.toggle('hidden', p.dataset.viewPanel !== v);
+      });
+    });
+  });
 });

@@ -93,6 +93,113 @@ function renderKpis(m) {
   setVal("kpi-nodes", m.nodes);
 }
 
+// src/web/components/chat.ts
+function initChat() {
+  const box = document.getElementById("chat-box");
+  const input = document.getElementById("chat-input");
+  const send = document.getElementById("chat-send");
+  if (!box || !input || !send)
+    return;
+  const addMsg = (role, text) => {
+    const d = document.createElement("div");
+    d.className = `chat-msg ${role}`;
+    d.textContent = text;
+    box.appendChild(d);
+    box.scrollTop = box.scrollHeight;
+  };
+  const ask = async () => {
+    const text = input.value.trim();
+    if (!text)
+      return;
+    addMsg("user", text);
+    input.value = "";
+    const busy = document.createElement("div");
+    busy.className = "chat-msg ai chat-typing";
+    busy.textContent = "…";
+    box.appendChild(busy);
+    box.scrollTop = box.scrollHeight;
+    try {
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, kind: "chat" })
+      });
+      const d = await r.json();
+      busy.textContent = d.reply ?? (d.error ?? "napaka");
+    } catch (e) {
+      busy.textContent = "napaka pri povezavi";
+    }
+    box.scrollTop = box.scrollHeight;
+  };
+  send.addEventListener("click", ask);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter")
+      ask();
+  });
+}
+
+// src/web/components/agenda.ts
+function initAgenda() {
+  const list = document.getElementById("agenda-list");
+  const input = document.getElementById("agenda-input");
+  const addBtn = document.getElementById("agenda-add");
+  if (!list)
+    return;
+  const statusClass = (s) => s === "done" ? "s-ok" : s === "failed" ? "s-crit" : s === "running" ? "s-run" : "s-warn";
+  const render = (items) => {
+    if (!items.length) {
+      list.innerHTML = '<div class="agenda-empty">Agenda je prazna — dodaj nalogo.</div>';
+      return;
+    }
+    list.innerHTML = items.map((it) => {
+      const claimed = it.claimed_by ? ` · ${it.claimed_by}` : "";
+      const worker = it.result_worker ? ` · → ${it.result_worker}` : "";
+      return `<div class="agenda-item" data-id="${it.id}">
+        <div class="agenda-top"><span class="s ${statusClass(it.status)}">${it.status}</span>
+          <span class="agenda-target">${it.target || ""}${claimed}${worker}</span>
+          <button class="agenda-del" data-del="${it.id}" title="Odstrani">✕</button>
+        </div>
+        <div class="agenda-goal">${String(it.goal || "").replace(/</g, "&lt;")}</div>
+      </div>`;
+    }).join("");
+    list.querySelectorAll("[data-del]").forEach((b) => {
+      b.addEventListener("click", () => {
+        fetch("/api/agenda/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: b.dataset.del })
+        }).then(load);
+      });
+    });
+  };
+  const load = () => {
+    getJSON("/api/agenda").then((r) => render(r.items || [])).catch(() => {});
+  };
+  const add = () => {
+    const goal = input?.value.trim() ?? "";
+    if (!goal)
+      return;
+    fetch("/api/agenda", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal, kind: "python" })
+    }).then(() => {
+      if (input)
+        input.value = "";
+      load();
+    });
+  };
+  if (addBtn)
+    addBtn.addEventListener("click", add);
+  if (input)
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter")
+        add();
+    });
+  load();
+  setInterval(load, 15000);
+}
+
 // src/web/main.ts
 function ready(fn) {
   if (document.readyState !== "loading")
@@ -113,4 +220,16 @@ ready(() => {
   if (feedEl) {
     getJSON("/api/events").then((r) => connectFeed(feedEl, dotEl, () => {}, r.events || [])).catch(() => connectFeed(feedEl, dotEl, () => {}));
   }
+  initChat();
+  initAgenda();
+  document.querySelectorAll(".nav-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".nav-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const v = btn.dataset.view;
+      document.querySelectorAll("[data-view-panel]").forEach((p) => {
+        p.classList.toggle("hidden", p.dataset.viewPanel !== v);
+      });
+    });
+  });
 });

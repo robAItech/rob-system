@@ -44,3 +44,21 @@ export interface LiveEvent {
   ts?: number;
   event?: EventLine;     // type === 'event'
 }
+
+export interface AgendaItem {
+  id: string;
+  goal: string;
+  target?: string;
+  kind?: string;
+  status: string;
+  claimed_by?: string;
+  result_worker?: string;
+  created_at?: number;
+  updated_at?: number;
+}
+
+export interface ChatReply {
+  ok: boolean;
+  reply?: string;
+  error?: string;
+}
