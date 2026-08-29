@@ -1,9 +1,10 @@
 // src/web/main.ts — Command Center v2: modularna vstopna točka.
 // Boot check (/api/me) → login overlay, če ni seje; šele nato data init.
-import { fetchFleet, fetchMetrics, getJSON, setUnauthorizedHandler, auth } from './api';
+import { fetchFleet, fetchMetrics, getJSON, setUnauthorizedHandler, auth, isSessionExpired } from './api';
 import { renderFleet } from './components/fleet';
 import { connectFeed } from './components/feed';
 import { renderKpis, recordSample } from './components/kpis';
+import { setPanelState } from './components/state';
 import { initChat } from './components/chat';
 import { initAgenda } from './components/agenda';
 import { initGraph } from './components/graph';
@@ -40,8 +41,23 @@ ready(() => {
     loadKpis();
     setInterval(loadKpis, 15000);
 
-    // Fleet ops panel.
-    const loadFleet = () => fetchFleet().then(d => fleetEl && renderFleet(fleetEl, d)).catch(() => { /* */ });
+    // Fleet ops panel — state machine: loading → data | error | empty.
+    const loadFleet = (): void => {
+      if (!fleetEl) return;
+      setPanelState(fleetEl, 'loading');
+      fetchFleet()
+        .then(d => {
+          if (isSessionExpired()) return;             // login overlay že pokrit
+          if (!d?.ok || !d.agenda) { setPanelState(fleetEl, 'error', 'Napačen odziv serverja', loadFleet); return; }
+          if (!Object.keys(d.workers || {}).length && !d.activity?.length) {
+            setPanelState(fleetEl, 'empty', 'Ni aktivnih workerjev (master / standalone)');
+            renderFleet(fleetEl, d);                  // vseeno pokaži spomin/backup
+            return;
+          }
+          renderFleet(fleetEl, d);
+        })
+        .catch(() => { if (!isSessionExpired()) setPanelState(fleetEl, 'error', 'Master ni dosegljiv', loadFleet); });
+    };
     loadFleet();
     setInterval(loadFleet, 15000);
 

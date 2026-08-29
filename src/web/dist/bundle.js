@@ -1,11 +1,16 @@
 // src/web/api.ts
 var onUnauthorized = null;
+var sessionExpired = false;
 function setUnauthorizedHandler(fn) {
   onUnauthorized = fn;
+}
+function isSessionExpired() {
+  return sessionExpired;
 }
 async function getJSON(path) {
   const r = await fetch(path);
   if (r.status === 401) {
+    sessionExpired = true;
     if (onUnauthorized)
       onUnauthorized();
     throw new Error("unauthorized");
@@ -67,16 +72,22 @@ function renderFleet(el, d) {
 
 // src/web/components/feed.ts
 function connectFeed(feedEl, dotEl, onEvent, seed = []) {
-  const render = (events2) => {
-    feedEl.innerHTML = events2.map((e) => `<div class="feed-line"><span class="t">${e.t}</span><span class="s ${e.c}">${e.s}</span><span class="m">${e.m}</span></div>`).join("") || '<div class="feed-empty">čakam na dogodke …</div>';
-  };
   const events = [...seed];
+  const render = () => {
+    feedEl.innerHTML = events.length ? events.map((e) => `<div class="feed-line"><span class="t">${e.t}</span><span class="s ${e.c}">${e.s}</span><span class="m">${e.m}</span></div>`).join("") : '<div class="panel-state">Ni dogodkov še — čakam …</div>';
+  };
+  const setMsg = (html) => {
+    feedEl.innerHTML = html;
+  };
   if (seed.length)
-    render(events);
+    render();
+  else
+    setMsg('<div class="panel-state"><span class="spinner"></span> povezujem …</div>');
   let es = null;
   try {
     es = new EventSource("/api/stream");
   } catch {
+    setMsg('<div class="panel-state err">SSE ni podprt</div>');
     return;
   }
   es.onopen = () => {
@@ -89,12 +100,26 @@ function connectFeed(feedEl, dotEl, onEvent, seed = []) {
       if (d.type === "event" && d.event) {
         events.unshift(d.event);
         events.length = Math.min(events.length, 12);
-        render(events);
+        render();
         onEvent(d.event);
       }
     } catch {}
   };
-  es.onerror = () => {};
+  es.onerror = () => {
+    if (isSessionExpired()) {
+      try {
+        es?.close();
+      } catch {}
+      if (dotEl)
+        dotEl.classList.remove("live");
+      setMsg('<div class="panel-state err">\uD83D\uDD12 Povezava prekinjena — prijava potrebna.</div>');
+      return;
+    }
+    if (dotEl)
+      dotEl.classList.remove("live");
+    if (!events.length)
+      setMsg('<div class="panel-state err">Povezava prekinjena — poskušam znova …</div>');
+  };
 }
 
 // src/web/components/kpis.ts
@@ -136,6 +161,24 @@ function renderKpis(m) {
     if (sp) {
       sp.innerHTML = sparkline(kpiHistory.filter((s) => s[key] !== undefined).map((s) => s[key]), color);
     }
+  }
+}
+
+// src/web/components/state.ts
+function setPanelState(el, state, msg, onRetry) {
+  if (!el)
+    return;
+  if (state === "loading") {
+    el.innerHTML = `<div class="panel-state"><span class="spinner"></span> nalaganje …</div>`;
+  } else if (state === "error") {
+    el.innerHTML = `<div class="panel-state err">⚠️ ${msg || "Napaka pri nalaganju"}` + (onRetry ? ` <button class="btn mini" id="st-retry">Ponovi</button>` : "") + `</div>`;
+    if (onRetry) {
+      const b = el.querySelector("#st-retry");
+      if (b)
+        b.addEventListener("click", onRetry);
+    }
+  } else if (state === "empty") {
+    el.innerHTML = `<div class="panel-state">${msg || "Ni podatkov"}</div>`;
   }
 }
 
@@ -428,7 +471,28 @@ ready(() => {
     }).catch(() => {});
     loadKpis();
     setInterval(loadKpis, 15000);
-    const loadFleet = () => fetchFleet().then((d) => fleetEl && renderFleet(fleetEl, d)).catch(() => {});
+    const loadFleet = () => {
+      if (!fleetEl)
+        return;
+      setPanelState(fleetEl, "loading");
+      fetchFleet().then((d) => {
+        if (isSessionExpired())
+          return;
+        if (!d?.ok || !d.agenda) {
+          setPanelState(fleetEl, "error", "Napačen odziv serverja", loadFleet);
+          return;
+        }
+        if (!Object.keys(d.workers || {}).length && !d.activity?.length) {
+          setPanelState(fleetEl, "empty", "Ni aktivnih workerjev (master / standalone)");
+          renderFleet(fleetEl, d);
+          return;
+        }
+        renderFleet(fleetEl, d);
+      }).catch(() => {
+        if (!isSessionExpired())
+          setPanelState(fleetEl, "error", "Master ni dosegljiv", loadFleet);
+      });
+    };
     loadFleet();
     setInterval(loadFleet, 15000);
     if (feedEl) {

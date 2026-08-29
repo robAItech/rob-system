@@ -2,14 +2,24 @@
 import type { FleetStatus, SystemMetrics, AgendaCounts } from '../shared/types';
 
 let onUnauthorized: (() => void) | null = null;
+let sessionExpired = false;
 
 export function setUnauthorizedHandler(fn: () => void): void {
   onUnauthorized = fn;
 }
 
+export function isSessionExpired(): boolean {
+  return sessionExpired;
+}
+
+export function resetSessionExpired(): void {
+  sessionExpired = false;
+}
+
 export async function getJSON<T>(path: string): Promise<T> {
   const r = await fetch(path);
   if (r.status === 401) {
+    sessionExpired = true;
     if (onUnauthorized) onUnauthorized();   // prikaži login
     throw new Error('unauthorized');
   }
