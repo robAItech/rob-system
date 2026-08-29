@@ -133,7 +133,7 @@ model je `deepseek-v4-flash` (preslika tudi vse Claude modele).
 ## 5. Preverba core engine-a (raven A)
 
 ```bash
-./rob test                  # celotna testna matrika (388 testov) — mora biti zelena
+./rob test                  # celotna testna matrika (409 testov) — mora biti zelena
 ./rob eval --dry-run        # strukturna preverba eval lestvice (brez LLM)
 ```
 
@@ -170,6 +170,10 @@ bun install                 # TS odvisnosti (src/)
   `DEEPSEEK_API_KEY`, master ključ proxyja je `sk-hermes-master-key`.
 - Dashboard: **http://localhost:8787/command** (ob prvem obisku vneseš
   `ROB_API_TOKEN` iz `.env`).
+- **Command Center v2** vključuje glasovni pogovor (🎤 hands-free: mikrofon
+  posluša sam, odgovor se prebere na glas prek Gemini TTS) in agendo s kartico
+  za prenos shranjenih datotek (`actions/<target>/`, posamezno ali .zip).
+  Glasovni del potrebuje `GEMINI_API_KEY` (glej korak 4).
 - Druge možnosti: `./dev --proxy-only`, `./dev --dashboard-only`,
   `./dev --claude-only`, `./dev --dashboard-only --watch` (hot-reload).
 
@@ -288,7 +292,7 @@ Windows: Docker Desktop mora biti **zagnan** (ne le nameščen).
 **Diagnostika na enem mestu:**
 
 ```bash
-./rob test               # 388 testov zelenih?
+./rob test               # 409 testov zelenih?
 ./rob eval --dry-run     # eval lestvica strukturno OK?
 ./dev --init             # proxy+dashboard: vse pripravljeno?
 ```

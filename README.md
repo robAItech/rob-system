@@ -75,7 +75,7 @@ Vsak modul se gradi v zaporedju: **gbrain → graphify → gstack → hermes →
 | **Verifikacija + zdravljenje** | LoopX (`core/loopx_bridge.py`) | pytest → DeepSeek popravi → ≤5× → zelen / FAILED |
 | **LLM** | DeepSeek (`core/llm_client.py`, `deepseek-v4-flash`) | generira kodo in popravke |
 | **24/7 avtonomija** | Daemon (`core/daemon.py`) | prazni agendo, sam predlaga naloge, teče vzdrževalne jobe, piše heartbeat |
-| **Končni produkt** | 36 `actions/` modulov | delujoče API storitve s testi |
+| **Končni produkt** | 51 `actions/` modulov | delujoče API storitve s testi |
 
 ---
 
@@ -84,7 +84,7 @@ Vsak modul se gradi v zaporedju: **gbrain → graphify → gstack → hermes →
 - **`actions/<modul>/`** — delujoči moduli: koda + Pydantic sheme + FastAPI + pytest testi (vsi zeleni).
 - **`out/*`** — produktni artefakti (dokumenti, UI, skripte) iz TS Hermes plasti.
 - **`.rob_ai/`** — trajno stanje: `memory.db` (GBRAIN spomin), `graph.json` (graf), `daemon.json` (heartbeat), `agenda.json` (čakalna vrsta).
-- **Enotna runtime app** (`core/actions_runtime.py`, port **:8788**) — **34 API modulov** pod eno verigo: `auth → rate-limit → audit → event-bus` (middleware). 2 modula sta knjižnici brez API-ja (`csv_parser`, `retry_wrapper`).
+- **Enotna runtime app** (`core/actions_runtime.py`, port **:8788**) — **52 API modulov** pod eno verigo: `auth → rate-limit → audit → event-bus` (middleware).
 - **Enterprise API moduli** (arhitekturna revizija, 2026): `webhook_dispatcher` (HMAC + retry + DLQ), `api_version_manager` (SemVer + canary + BC-break), `secret_rotation` (double-buffer + audit), `identity_federation_router` (OAuth2/OIDC + PKCE + JWT), `pii_masking_sanitizer` (GDPR/HIPAA maskiranje), `usage_billing_aggregator` (tenant obračun + kvote).
 - **Konsolidirana jedra** (revizija 2026): `resilience_core` (retry + circuit + rate-limit), `telemetry_bus` (korelacijski dogodkovni vod), `data_format_utils` (csv + iso8601 + deep-merge).
 
@@ -100,7 +100,7 @@ Vsak modul se gradi v zaporedju: **gbrain → graphify → gstack → hermes →
   ki izboljša vse prihodnje teke.
 - **24/7 avtonomija:** daemon sam prazni agendo, predlaga nove naloge iz šibkosti
   sistema in teče vzdrževalne jobe (konsolidacija spomina, eval).
-- **Enterprise API pokritje:** 36 modulov od edge (gateway, rate-limit, auth, federacija) do
+- **Enterprise API pokritje:** 52 modulov od edge (gateway, rate-limit, auth, federacija) do
   domene (invoice, warehouse) in observability (metrike, audit, poročila).
 - **Nadzor:** CLI (`./rob`) + Command-Center dashboard (:8787) + CI gate.
 
@@ -124,7 +124,7 @@ cp .env.example .env
 #   → v .env vpiši DEEPSEEK_API_KEY=sk-...
 
 # 3. Preverba
-./rob test          # 388 testov — mora biti 100% zeleno
+./rob test          # 409 testov — mora biti 100% zeleno
 
 # 4. Prvi resničen build (kliče DeepSeek)
 ./rob build testmod "Izdelaj Python modul testmod v actions/testmod/. Funkcija add(a,b) vrne a+b. Vsebuj pytest test, vsi testi 100% zeleni."
@@ -141,13 +141,18 @@ bun install
 # Dashboard: http://localhost:8787/command
 ```
 
+> **Command Center v2:** prijava z `ROB_API_TOKEN`, živi SSE dogodki, KPI trendi,
+> arhitekturni graf (interaktiven), **glasovni pogovor** (🎤 hands-free + TTS,
+> potrebuje `GEMINI_API_KEY`) in **agenda s kartico za prenos shranjenih datotek**
+> (`actions/<target>/` — posamezno ali .zip).
+
 ---
 
 ## 🛠️ Ukazi (`./rob`)
 
 | Ukaz | Kaj naredi |
 |---|---|
-| `./rob test` | Celotna testna matrika (388 testov) |
+| `./rob test` | Celotna testna matrika (409 testov) |
 | `./rob review` | LLM arhitekturna revizija (pytest + telemetrija + predlogi) |
 | `./rob build <mod> "<direktiva>"` | Avtonomno zgradi modul (RSI zanka) |
 | `./rob eval` | SWE-bench stila samo-eval avtonomnosti (`--dry-run` brez LLM) |
@@ -193,10 +198,10 @@ rob-system/
 │                           # hermes-agent, loopx, gbrain-evals (nič ločenega pip install)
 ├── evaluate_autonomy.py    # P0 eval (./rob eval)
 ├── .github/workflows/ci.yml# CI: PR gate + tedenski eval (sob 03:23 UTC)
-└── tests/                  # 39 test datotek, 388 testov
+└── tests/                  # 40 test datotek, 409 testov
 ```
 
-### 36 Action modulov
+### Action moduli (51)
 
 - **Edge / varnost / identiteta:** `api_gateway`, `auth_vault`, `rate_limiter`, `circuit_breaker`, `feature_flag`, `api_version_manager`, `secret_rotation`, `identity_federation_router`, `pii_masking_sanitizer`
 - **Resilience / obračun:** `resilience_core`, `retry_wrapper`, `usage_billing_aggregator`
@@ -210,7 +215,7 @@ rob-system/
 
 ## ✅ Testi in eval
 
-- **Poln suite:** `379` testov / `39` datotek — vodi `./rob test` (`pytest tests/`).
+- **Poln suite:** `409` testov / `40` datotek — vodi `./rob test` (`pytest tests/`).
 - **Master suite** poleg tega požene pytest na vsakem tracked Action modulu.
 - **CI** (`.github/workflows/ci.yml`): PR gate = pytest + eval dry-run; tedenski
   eval avtonomnosti (sobota 03:23 UTC).
