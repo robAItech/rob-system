@@ -124,7 +124,7 @@ cp .env.example .env
 #   → v .env vpiši DEEPSEEK_API_KEY=sk-...
 
 # 3. Preverba
-./rob test          # 379 testov — mora biti 100% zeleno
+./rob test          # 387 testov — mora biti 100% zeleno
 
 # 4. Prvi resničen build (kliče DeepSeek)
 ./rob build testmod "Izdelaj Python modul testmod v actions/testmod/. Funkcija add(a,b) vrne a+b. Vsebuj pytest test, vsi testi 100% zeleni."
@@ -147,7 +147,7 @@ bun install
 
 | Ukaz | Kaj naredi |
 |---|---|
-| `./rob test` | Celotna testna matrika (379 testov) |
+| `./rob test` | Celotna testna matrika (387 testov) |
 | `./rob review` | LLM arhitekturna revizija (pytest + telemetrija + predlogi) |
 | `./rob build <mod> "<direktiva>"` | Avtonomno zgradi modul (RSI zanka) |
 | `./rob eval` | SWE-bench stila samo-eval avtonomnosti (`--dry-run` brez LLM) |
@@ -193,7 +193,7 @@ rob-system/
 │                           # hermes-agent, loopx, gbrain-evals (nič ločenega pip install)
 ├── evaluate_autonomy.py    # P0 eval (./rob eval)
 ├── .github/workflows/ci.yml# CI: PR gate + tedenski eval (sob 03:23 UTC)
-└── tests/                  # 39 test datotek, 379 testov
+└── tests/                  # 39 test datotek, 387 testov
 ```
 
 ### 36 Action modulov

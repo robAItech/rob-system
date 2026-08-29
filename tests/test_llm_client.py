@@ -90,8 +90,9 @@ async def test_model_fallback_na_400():
 
 
 @pytest.mark.asyncio
-async def test_odziv_ko_noben_retry_ne_uspe():
+async def test_odziv_ko_noben_retry_ne_uspe(monkeypatch):
     """Vsi poskusi (coder 3×500 + chat 3×500 = 6) → RuntimeError."""
+    monkeypatch.setattr(settings, "alternate_model", "")  # izklopi ALTERNATE (iz .env)
     c = _client()
     fake = _FakeAsyncClient([_FakeResp(500)] * 6)
     with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
@@ -114,14 +115,30 @@ async def test_openrouter_fallback_ko_deepseek_pade():
 
 
 @pytest.mark.asyncio
-async def test_brez_openrouter_kljuca_se_fallback_ne_zgodijo():
+async def test_brez_openrouter_kljuca_se_fallback_ne_zgodijo(monkeypatch):
     """Brez OpenRouter ključa: DeepSeek 6×500 → RuntimeError (brez dodatnih klicev)."""
+    monkeypatch.setattr(settings, "alternate_model", "")  # izklopi ALTERNATE (iz .env)
     c = _client(openrouter_api_key="")
     fake = _FakeAsyncClient([_FakeResp(500)] * 6)
     with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
         with pytest.raises(RuntimeError):
             await c.generate_completion("hi", use_coder_model=True)
     assert len(fake.posts) == 6   # samo DeepSeek poskusi
+
+
+@pytest.mark.asyncio
+async def test_alternate_model_se_poskusi_kot_zadnja_rezerva(monkeypatch):
+    """DeepSeek+OpenRouter padeta → ALTERNATE_MODEL (glm-5.3-flash:cloud) reši."""
+    monkeypatch.setattr(settings, "alternate_model", "glm-5.3-flash:cloud")
+    c = _client(openrouter_api_key="sk-or-test", openrouter_base_url="https://openrouter.example")
+    # DeepSeek 6×500 → OpenRouter 3×500 → ALTERNATE 1×200 → OK.
+    fake = _FakeAsyncClient([_FakeResp(500)] * 6 + [_FakeResp(500)] * 3 + [_FakeResp(200)])
+    with mock.patch("core.llm_client.httpx.AsyncClient", return_value=fake):
+        out = await c.generate_completion("hi", use_coder_model=True)
+    assert out == "OK"
+    # Zadnji uspešen klic mora biti na OpenRouter base (alternate_base ni nastavljen).
+    last_url = str(fake.posts[-1][0][0])
+    assert "openrouter.example" in last_url
 
 
 @pytest.mark.asyncio

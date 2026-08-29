@@ -19,6 +19,13 @@ class SystemSettings(BaseSettings):
     openrouter_base_url: str = Field(default="https://openrouter.ai/api/v1", alias="OPENROUTER_BASE_URL")
     deepseek_model_chat: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL_CHAT")
     deepseek_model_coder: str = Field(default="deepseek-v4-flash", alias="DEEPSEEK_MODEL_CODER")
+    # Alternativni/nadomestni LLM (zadnja rezerva v fallback verigi).
+    # Ime modela (npr. "glm-5.3-flash:cloud"); prazno = onemogočeno.
+    alternate_model: str = Field(default="", alias="ALTERNATE_MODEL")
+    # Opcijska preglasitev base_url/key za alternativni model. Prazno → uporabi
+    # OpenRouter (če je OPENROUTER_API_KEY nastavljen), sicer DeepSeek base.
+    alternate_base_url: str = Field(default="", alias="ALTERNATE_BASE_URL")
+    alternate_api_key: str = Field(default="", alias="ALTERNATE_API_KEY")
     llm_temperature: float = Field(default=0.1, alias="LLM_TEMPERATURE")
     llm_timeout_seconds: float = Field(default=60.0, alias="LLM_TIMEOUT_SECONDS")
     # Agentic tool-use v RSI heal zanki (OpenAI function-calling). Privzeto vklopljeno.

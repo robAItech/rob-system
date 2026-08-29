@@ -169,6 +169,20 @@ class DeepSeekLLMClient:
                 if ok:
                     return res
                 last_error = res
+        # 3) Alternativni/nadomestni model (ALTERNATE_MODEL, npr. glm-5.3-flash:cloud)
+        #    — zadnja rezerva. Base/key: lastna preglasitev → sicer OpenRouter → sicer DeepSeek.
+        alt_model = (getattr(settings, "alternate_model", "") or "").strip()
+        if alt_model:
+            alt_base = (getattr(settings, "alternate_base_url", "") or "").strip()
+            alt_key = (getattr(settings, "alternate_api_key", "") or "").strip()
+            if not alt_base:
+                alt_base = self.openrouter_base_url if self._has_openrouter() else self.base_url
+            if not alt_key:
+                alt_key = self.openrouter_api_key if self._has_openrouter() else self.api_key
+            ok, res = await self._retry_one(alt_model, alt_base, alt_key, call_fn)
+            if ok:
+                return res
+            last_error = res
         raise RuntimeError(f"LLM klic ni uspel po vseh poskusih: {last_error}")
 
     async def generate_completion(
