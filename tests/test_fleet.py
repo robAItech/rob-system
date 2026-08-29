@@ -5,6 +5,7 @@ monkeypatch-a `requests.post` na TestClient (roundtrip v enem procesu, dve
 "mapi" — master agendo + workerjevo senčno agendo).
 """
 
+import json
 import time
 
 import pytest
@@ -356,3 +357,74 @@ class TestFleetActions:
         (tmp_path / "actions" / "mod" / "__pycache__" / "main.cpython-311.pyc").write_bytes(b"bin")
         files = fleet.export_module_files("mod")
         assert set(files) == {"main.py", "sub/util.py"}
+
+
+class TestFleetBackupRestore:
+    """Backup/restore (izvoz spomina+agende v git) — git se mock-a."""
+
+    def _patch_root(self, monkeypatch, tmp_path):
+        """PROJECT_ROOT in BACKUP_FILE na tmp (BACKUP_FILE je module konstanta)."""
+        monkeypatch.setattr(fleet, "PROJECT_ROOT", tmp_path)
+        monkeypatch.setattr(fleet, "BACKUP_FILE", tmp_path / "fleet" / "backup.json")
+
+
+    def _mk_git(self, monkeypatch, calls, diff_rc=1):
+        def fake_call(cmd, **kw):
+            calls.append(list(cmd))
+            if list(cmd)[:2] == ["git", "diff"]:
+                return diff_rc   # 0 = ni sprememb, 1 = so spremembe
+            return 0
+        monkeypatch.setattr(fleet.subprocess, "call", fake_call)
+
+    def test_backup_commita_in_pusha(self, tmp_state, monkeypatch, tmp_path):
+        self._patch_root(monkeypatch, tmp_path)
+        calls = []
+        self._mk_git(monkeypatch, calls, diff_rc=1)
+        agenda.add("backup naloga", target="bk1")
+        rc = fleet._cmd_backup()
+        assert rc == 0
+        bf = tmp_path / "fleet" / "backup.json"
+        assert bf.exists()
+        data = json.loads(bf.read_text(encoding="utf-8"))
+        assert any(i.get("target") == "bk1" for i in data["agenda"])
+        assert "memory" in data and "tables" in data["memory"]
+        gits = [c for c in calls if c[0] == "git"]
+        assert any(c[1] == "add" for c in gits)
+        assert any(c[1] == "commit" for c in gits)
+        assert any(c == ["git", "push"] for c in gits)
+
+    def test_backup_brez_sprememb_brez_commita(self, tmp_state, monkeypatch, tmp_path):
+        self._patch_root(monkeypatch, tmp_path)
+        calls = []
+        self._mk_git(monkeypatch, calls, diff_rc=0)
+        assert fleet._cmd_backup() == 0
+        assert not any(c[1] == "commit" for c in calls)
+
+    def test_backup_git_add_napaka(self, tmp_state, monkeypatch, tmp_path):
+        def bad_add(cmd, **kw):
+            return 1 if list(cmd)[:2] == ["git", "add"] else 0
+        monkeypatch.setattr(fleet.subprocess, "call", bad_add)
+        self._patch_root(monkeypatch, tmp_path)
+        assert fleet._cmd_backup() == 1
+
+    def test_restore_zdruzi_spomin_in_agendo(self, tmp_state, monkeypatch, tmp_path):
+        self._patch_root(monkeypatch, tmp_path)
+        payload = {
+            "memory": {"tables": {"semantic_memories": [
+                {"theme": "r-tema", "project": "p", "content": "lekcija", "kind": "principle"}]},
+                "exported_at": 1},
+            "agenda": [{"id": "x1", "goal": "restore naloga", "target": "restore_mod", "status": "pending"}],
+            "backed_up_at": int(time.time()),
+        }
+        (tmp_path / "fleet").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "fleet" / "backup.json").write_text(json.dumps(payload), encoding="utf-8")
+        monkeypatch.setattr(fleet.subprocess, "call", lambda *a, **k: 0)
+        rc = fleet._cmd_restore()
+        assert rc == 0
+        assert memory_sync.count_memory()["semantic_memories"] >= 1
+        assert any(i.get("target") == "restore_mod" for i in agenda.all_())
+
+    def test_restore_brez_backupa(self, tmp_state, monkeypatch, tmp_path):
+        self._patch_root(monkeypatch, tmp_path)
+        monkeypatch.setattr(fleet.subprocess, "call", lambda *a, **k: 0)
+        assert fleet._cmd_restore() == 1
