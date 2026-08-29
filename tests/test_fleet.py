@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import core.agenda as agenda
-from core import fleet, memory_sync
+from core import audit, fleet, memory_sync
 
 
 H = {"Authorization": "Bearer test-token"}
@@ -26,6 +26,7 @@ def tmp_state(tmp_path, monkeypatch):
     monkeypatch.setattr(agenda, "AGENDA_FILE", tmp_path / "agenda.json")
     monkeypatch.setattr(fleet, "FLEET_WORKERS_FILE", tmp_path / "fleet_workers.json")
     monkeypatch.setattr(memory_sync, "DEFAULT_DB", tmp_path / "mem.db")
+    monkeypatch.setattr(audit, "AUDIT_FILE", tmp_path / "audit.jsonl")   # testi ne pišejo v pravi audit
     return tmp_path
 
 

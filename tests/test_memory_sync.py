@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import core.agenda as agenda
-from core import fleet, memory_sync
+from core import audit, fleet, memory_sync
 from core.gbrain_bridge import GBrainBridge
 
 
@@ -109,6 +109,7 @@ class TestFleetMemoryEndpoints:
     @pytest.fixture
     def client(self, tmp_path, monkeypatch):
         monkeypatch.setattr(memory_sync, "DEFAULT_DB", tmp_path / "mem.db")
+        monkeypatch.setattr(audit, "AUDIT_FILE", tmp_path / "audit.jsonl")
         GBrainBridge(memory_sync.DEFAULT_DB)
         return TestClient(fleet.create_app(token="test-token"))
 

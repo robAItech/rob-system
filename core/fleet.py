@@ -184,8 +184,19 @@ def create_app(token: Optional[str] = None) -> FastAPI:
 
     @app.post("/fleet/memory", dependencies=[Depends(auth)])
     def memory_merge(payload: dict) -> dict:
-        """Worker pošlje svoj spomin nazaj — master združi (dedup, idempotentno)."""
-        return memory_sync.merge_memory(payload)
+        """Worker pošlje svoj spomin nazaj — master združi (dedup, idempotentno).
+        Če je dodal nove lekcije, zapišemo audit (fleet-memory) z delto —
+        dashboard pokaže 'prej/potem' v živi aktivnosti."""
+        added = memory_sync.merge_memory(payload)
+        total = sum(int(v or 0) for v in added.values())
+        if total > 0:
+            try:
+                detail = " ".join(f"{k.replace('_', ' ')} +{v}" for k, v in added.items() if v)
+                audit.record(event="fleet-memory", project="memory", status="ok",
+                             detail=f"dodanih {total} lekcij: {detail}")
+            except Exception:
+                pass
+        return added
 
     @app.post("/fleet/actions", dependencies=[Depends(auth)])
     def actions_receive(req: ActionPushRequest) -> dict:
