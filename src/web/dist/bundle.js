@@ -95,9 +95,14 @@ function renderKpis(m) {
 
 // src/web/components/chat.ts
 var TASK_RE = /(?:naredi|izdelaj|zgradi|napiši|ustvari|build|razvij|implement|create|make|modul|module)\b/i;
+var MD_RE = /(?:markdown|poročilo|dokument|analiza|predlog|specifikacija|\bspec\b|readme|primerjava|sintetiziraj|opis\b|povzetek)/i;
 var HTML_RE = /(?:spletno\s+stran|html|stran|ui|dashboard|zastavi\s+ogled|landing\s+page)/i;
 function detectKind(text) {
-  return HTML_RE.test(text) ? "html" : "python";
+  if (MD_RE.test(text))
+    return "markdown";
+  if (HTML_RE.test(text))
+    return "html";
+  return "python";
 }
 function initChat() {
   const box = document.getElementById("chat-box");

@@ -4,10 +4,15 @@
 import type { ChatReply } from '../../shared/types';
 
 const TASK_RE = /(?:naredi|izdelaj|zgradi|napiši|ustvari|build|razvij|implement|create|make|modul|module)\b/i;
+// Markdown/poročila: dokumenti, analize, predlogi, specifikacije, README …
+const MD_RE = /(?:markdown|poročilo|dokument|analiza|predlog|specifikacija|\bspec\b|readme|primerjava|sintetiziraj|opis\b|povzetek)/i;
+// Spletne strani / UI / HTML.
 const HTML_RE = /(?:spletno\s+stran|html|stran|ui|dashboard|zastavi\s+ogled|landing\s+page)/i;
 
 function detectKind(text: string): string {
-  return HTML_RE.test(text) ? 'html' : 'python';
+  if (MD_RE.test(text)) return 'markdown';
+  if (HTML_RE.test(text)) return 'html';
+  return 'python';
 }
 
 export function initChat(): void {
