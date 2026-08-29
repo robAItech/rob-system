@@ -6,6 +6,7 @@ monkeypatch-a `requests.post` na TestClient (roundtrip v enem procesu, dve
 """
 
 import json
+import threading
 import time
 
 import pytest
@@ -133,6 +134,44 @@ class TestFleetServer:
                     headers=H)
         txt = (tmp_state / "audit.jsonl").read_text(encoding="utf-8")
         assert "fleet-result" in txt
+
+    def _concurrent_claims(self, client, n_workers):
+        """N thread-ov hkrati claim-a /fleet/claim → vrne [item_id|None]."""
+        results: list = []
+        errors: list = []
+
+        def do_claim(i):
+            try:
+                r = client.post("/fleet/claim", json={"worker": f"w{i}"}, headers=H)
+                items = r.json().get("items", [])
+                results.append(items[0]["id"] if items else None)
+            except Exception as e:
+                errors.append(str(e))
+
+        threads = [threading.Thread(target=do_claim, args=(i,)) for i in range(n_workers)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        return results, errors
+
+    def test_concurrent_claim_vsak_worker_drugacna_naloga(self, client):
+        """4 workerji, 4 naloge → vsak dobi DRUGAČNO (brez podvajanja)."""
+        _add_pending(4)
+        results, errors = self._concurrent_claims(client, 4)
+        assert not errors
+        ids = [x for x in results if x]
+        assert len(ids) == 4
+        assert len(set(ids)) == 4   # atomskost: noben worker ne dobi iste naloge
+
+    def test_concurrent_claim_manj_nalog_kot_workerjev(self, client):
+        """4 workerji, 2 nalogi → samo 2 dobita, brez dvojnega claim-a."""
+        _add_pending(2)
+        results, errors = self._concurrent_claims(client, 4)
+        assert not errors
+        ids = [x for x in results if x]
+        assert len(ids) == 2
+        assert len(set(ids)) == 2
 
 
 class TestFleetAgenda:
