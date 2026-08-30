@@ -56,6 +56,9 @@ __pycache__/
 .rob_ai/eval_history.json
 .rob_ai/.visual_qa_tmp.png
 .rob_ai/gmail_cursor.json
+.rob_ai/watchdog_master.ps1
+.rob_ai/master_daemon_task.xml
+.rob_ai/watchdog.log
 
 # Baze podatkov in lokalno stanje (Rob AI Studio)
 .rob_ai/memory.db
