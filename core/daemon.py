@@ -346,6 +346,38 @@ def _tick_fleet_backup(settings, cfg) -> dict:
         return {"backup": f"napaka: {e}"}
 
 
+def _tick_fleet_git_sync(settings, cfg) -> dict:
+    """Master + worker: avtomatski `git pull --rebase --autostash` — izmenjava
+    kode brez ročnega posega. Ob napaki/konfliktu se zabeleži in nadaljuje
+    (daemon nikoli ne pade zaradi sync-a; naslednji interval poskusi znova).
+
+    Nov pull-ana koda se uporabi ob naslednjem task-u (run_swarm požene svež
+    proces) in ob naslednjem zagonu daemon-a; tekoči daemon proces teče naprej
+    na stari kodi.
+    """
+    try:
+        branch = subprocess.run(
+            ["git", "symbolic-ref", "--short", "HEAD"],
+            capture_output=True, text=True, cwd=PROJECT_ROOT, check=False,
+        ).stdout.strip() or "master"
+        r = subprocess.run(
+            ["git", "pull", "--rebase", "--autostash", "origin", branch],
+            capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=180,
+        )
+        out = (r.stdout or "").strip()
+        if (r.stderr or "").strip():
+            out += "\n" + r.stderr.strip()
+        out = out[-500:]
+        if r.returncode == 0:
+            return {"git_sync": "ok", "branch": branch, "detail": out}
+        _append_error(f"git sync (rc={r.returncode}): {out[-300:]}")
+        return {"git_sync": f"napaka rc={r.returncode}", "branch": branch,
+                "detail": out[-300:]}
+    except Exception as e:
+        _append_error(f"git sync: {e}")
+        return {"git_sync": f"napaka: {e}"}
+
+
 def build_scheduler(settings) -> Scheduler:
     """Tabela periodicnih jobov, krmiljena z DAEMON_* nastavitvami."""
     sched = Scheduler()
@@ -367,6 +399,12 @@ def build_scheduler(settings) -> Scheduler:
     if (getattr(settings, "fleet_role", "standalone") == "master"
             and settings.fleet_backup_seconds > 0):
         sched.add("fleet_backup", _tick_fleet_backup, settings.fleet_backup_seconds)
+    # P9 — avtomatski git sync na masterju IN workerju (pull --rebase --autostash),
+    # da se koda izmenja brez ročnega posega. 0 = izključeno.
+    if (getattr(settings, "fleet_role", "standalone") in ("master", "worker")
+            and getattr(settings, "fleet_git_sync_seconds", 0) > 0):
+        sched.add("fleet_git_sync", _tick_fleet_git_sync,
+                  getattr(settings, "fleet_git_sync_seconds", 0))
     return sched
 
 

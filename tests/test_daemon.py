@@ -210,6 +210,72 @@ def test_decide_idle():
 
 
 # ------------------------------------------------------------------ #
+#  P9 — avtomatski git sync (pull --rebase --autostash)
+# ------------------------------------------------------------------ #
+class _FakeRun:
+    """Nadomestek subprocess.run — vrne nastavljen rc/stdout/stderr."""
+    def __init__(self, rc=0, stdout="", stderr=""):
+        self.returncode = rc
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _fake_git_pull_run(branch="master", rc=0, out="Already up to date.", err=""):
+    """callable, ki posnema `git symbolic-ref` + `git pull` z istim fake-om."""
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "symbolic-ref"]:
+            return _FakeRun(rc=0, stdout=branch)
+        return _FakeRun(rc=rc, stdout=out, stderr=err)
+    return fake_run
+
+
+def test_fleet_git_sync_tick_pulls_with_autostash(env, monkeypatch):
+    calls = []
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:2] == ["git", "symbolic-ref"]:
+            return _FakeRun(rc=0, stdout="master")
+        return _FakeRun(rc=0, stdout="Already up to date.")
+    monkeypatch.setattr(daemon.subprocess, "run", fake_run)
+    res = daemon._tick_fleet_git_sync(_settings(fleet_role="worker"), None)
+    assert res["git_sync"] == "ok"
+    assert ["git", "pull", "--rebase", "--autostash", "origin", "master"] in calls
+
+
+def test_fleet_git_sync_tick_error_does_not_crash(env, monkeypatch):
+    monkeypatch.setattr(daemon.subprocess, "run",
+                        _fake_git_pull_run(rc=128, err="rebase conflict"))
+    res = daemon._tick_fleet_git_sync(_settings(fleet_role="master"), None)
+    assert res["git_sync"].startswith("napaka")
+
+
+def test_fleet_git_sync_tick_exception_is_contained(env, monkeypatch):
+    def boom(*args, **kwargs):
+        raise RuntimeError("no remote")
+    monkeypatch.setattr(daemon.subprocess, "run", boom)
+    res = daemon._tick_fleet_git_sync(_settings(fleet_role="worker"), None)
+    assert res["git_sync"].startswith("napaka")
+
+
+def test_build_scheduler_git_sync_registered_for_master_and_worker():
+    for role in ("master", "worker"):
+        s = daemon.build_scheduler(_settings(
+            fleet_role=role, fleet_git_sync_seconds=3600,
+            fleet_backup_seconds=3600, fleet_memory_sync_seconds=3600,
+            fleet_sync_memory=True))
+        assert "fleet_git_sync" in {j["name"] for j in s._jobs}
+
+
+def test_build_scheduler_git_sync_off_when_zero_or_standalone():
+    s_standalone = daemon.build_scheduler(_settings(fleet_role="standalone"))
+    assert "fleet_git_sync" not in {j["name"] for j in s_standalone._jobs}
+    s_zero = daemon.build_scheduler(_settings(
+        fleet_role="worker", fleet_git_sync_seconds=0,
+        fleet_memory_sync_seconds=3600))
+    assert "fleet_git_sync" not in {j["name"] for j in s_zero._jobs}
+
+
+# ------------------------------------------------------------------ #
 #  Paralelni daemon — spawn / reap
 # ------------------------------------------------------------------ #
 class _FakePopen:

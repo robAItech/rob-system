@@ -113,6 +113,9 @@ class SystemSettings(BaseSettings):
     # Avtomatski git backup na masterju (spomin+agenda → fleet/backup.json).
     # 0 = izključeno (le ročno `rob fleet backup`).
     fleet_backup_seconds: int = Field(default=3600, alias="ROB_FLEET_BACKUP_SECONDS")
+    # P9 — avtomatski git sync (pull --rebase --autostash) na masterju IN
+    # workerju: izmenjava kode brez ročnega posega. 0 = izključeno.
+    fleet_git_sync_seconds: int = Field(default=3600, alias="ROB_FLEET_GIT_SYNC_SECONDS")
 
     def is_real_key_available(self) -> bool:
         return bool(
