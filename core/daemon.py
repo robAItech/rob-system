@@ -401,7 +401,10 @@ def _ensure_services(cfg) -> bool:
     """Idempotentno dvigne proxy+dashboard (reuse dev_cli.cmd_serve).
     Vrne True, če je proxy dosegljiv."""
     try:
-        dev_cli.cmd_serve(cfg)
+        rc = dev_cli.cmd_serve(cfg)
+        if rc != 0:
+            print(f"[daemon] cmd_serve ni uspel (rc={rc}) — proxy ni dvignjen.")
+            _append_error(f"cmd_serve rc={rc}: proxy se ni zagnal")
     except Exception as e:
         print(f"[daemon] cmd_serve napaka: {e}")
         _append_error(f"cmd_serve: {e}")

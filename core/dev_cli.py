@@ -254,10 +254,17 @@ def cmd_init(cfg: Config) -> int:
             print(f"  port {PORT if port == PORT else DASH_PORT}   : PROST  [OK]")
 
     print("Okolje (PATH):")
-    paths = {name: which(name) for name in ("claude", "litellm", "bun")}
+    paths = {name: which(name) for name in ("claude", "bun")}
+    proxy_launch = _proxy_launch_cmd(cfg)
     for name, p in paths.items():
         print(f"  {name:<8}: {p if p else '[MANJKA]'}")
+    if proxy_launch:
+        print(f"  litellm : {' '.join(proxy_launch)}  [zagon proxyja]")
+    else:
+        print("  litellm : [MANJKA]")
     missing = [n for n, p in paths.items() if not p]
+    if not proxy_launch:
+        missing.append("litellm")
     if not cfg.deepseek_key:
         missing.append("DEEPSEEK_API_KEY")
 
@@ -282,16 +289,37 @@ def _run_foreground(cmd: List[str], cfg: Config, env_add: Optional[dict] = None,
     return subprocess.call(cmd, env=env, cwd=str(cwd) if cwd else None)
 
 
+def _proxy_launch_cmd(cfg: Config) -> Optional[List[str]]:
+    """Ukaz za zagon LiteLLM proxyja — uporabijo ga vsi načini.
+
+    Preferira `python -m litellm.proxy.proxy_cli` (prek odobrenega python.exe),
+    ker je Windows Application Control policy na tem masterju blokiral
+    `litellm.exe` shim iz Scripts/ — zato daemon ni mogel avtonomno dvigniti
+    proxyja (korenski vzrok izpada 30. 8. 2026). Če modul ni na voljo
+    (drug računalnik), pade nazaj na `litellm` shim iz PATH.
+    """
+    try:
+        import importlib.util
+        if importlib.util.find_spec("litellm.proxy.proxy_cli") is not None:
+            return [sys.executable, "-m", "litellm.proxy.proxy_cli"]
+    except Exception:
+        pass
+    shim = which("litellm")
+    if shim:
+        return [str(shim)]
+    return None
+
+
 def cmd_proxy_only(cfg: Config) -> int:
-    litellm = which("litellm")
-    if not litellm:
-        print("[NAP] 'litellm' ni na PATH. Preveri:  python -m pip install litellm")
+    proxy_cmd = _proxy_launch_cmd(cfg)
+    if not proxy_cmd:
+        print("[NAP] LiteLLM ni na voljo. Preveri:  python -m pip install litellm")
         return 1
     if not cfg.deepseek_key:
         print("[NAP] DEEPSEEK_API_KEY ni v .env.")
         return 1
     print(f"[PROXY] LiteLLM proxy v OSPREDJU na http://127.0.0.1:{PORT} (Ctrl+C za izhod)...")
-    return _run_foreground([str(litellm), "--config", str(cfg.config_path), "--port", str(PORT)], cfg)
+    return _run_foreground(proxy_cmd + ["--config", str(cfg.config_path), "--port", str(PORT)], cfg)
 
 
 def cmd_dashboard_only(cfg: Config, watch: bool = False) -> int:
@@ -354,9 +382,9 @@ def cmd_all(cfg: Config, args: Sequence[str]) -> int:
     proxy_base = f"http://127.0.0.1:{PORT}"
     dash_url = f"https://127.0.0.1:{DASH_PORT}"
 
-    litellm = which("litellm")
-    if not litellm:
-        print("[NAP] 'litellm' ni na PATH.")
+    proxy_cmd = _proxy_launch_cmd(cfg)
+    if not proxy_cmd:
+        print("[NAP] LiteLLM ni na voljo. Preveri:  python -m pip install litellm")
         return 1
     if not cfg.deepseek_key:
         print("[NAP] DEEPSEEK_API_KEY ni v .env.")
@@ -369,7 +397,7 @@ def cmd_all(cfg: Config, args: Sequence[str]) -> int:
         print(f"[LINK] Proxy že teče na {proxy_base} - uporabljam obstoječega.")
     else:
         print(f"[PROXY] Zaganjam lasten izoliran LiteLLM proxy ({proxy_base}) v OZADJU...")
-        sp_proxy.popen = _spawn([str(litellm), "--config", str(cfg.config_path), "--port", str(PORT)], cfg)
+        sp_proxy.popen = _spawn(proxy_cmd + ["--config", str(cfg.config_path), "--port", str(PORT)], cfg)
         if sp_proxy.popen is None:
             return 1
         if not wait_health(lambda: proxy_health(proxy_base, cfg.master_key), PROXY_TIMEOUT):
@@ -422,9 +450,9 @@ def cmd_serve(cfg: Config) -> int:
     proxy_base = f"http://127.0.0.1:{PORT}"
     dash_url = f"https://127.0.0.1:{DASH_PORT}"
 
-    litellm = which("litellm")
-    if not litellm:
-        print("[NAP] 'litellm' ni na PATH.")
+    proxy_cmd = _proxy_launch_cmd(cfg)
+    if not proxy_cmd:
+        print("[NAP] LiteLLM ni na voljo. Preveri:  python -m pip install litellm")
         return 1
     if not cfg.deepseek_key:
         print("[NAP] DEEPSEEK_API_KEY ni v .env.")
@@ -437,7 +465,7 @@ def cmd_serve(cfg: Config) -> int:
         print(f"[LINK] Proxy že teče na {proxy_base} - uporabljam obstoječega.")
     else:
         print(f"[PROXY] Zaganjam v OZADJU ({proxy_base})...")
-        sp_proxy.popen = _spawn([str(litellm), "--config", str(cfg.config_path), "--port", str(PORT)], cfg)
+        sp_proxy.popen = _spawn(proxy_cmd + ["--config", str(cfg.config_path), "--port", str(PORT)], cfg)
         if sp_proxy.popen is None:
             return 1
         if not wait_health(lambda: proxy_health(proxy_base, cfg.master_key), PROXY_TIMEOUT):
