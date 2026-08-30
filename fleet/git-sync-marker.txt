@@ -1,0 +1,3 @@
+git-sync e2e marker
+pushed: 2026-08-30 20:12:53 (epoch 1788113573)
+namen: dokaz, da worker SAM potegne ta commit brez ročnega pull-a
