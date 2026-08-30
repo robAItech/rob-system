@@ -350,7 +350,7 @@ def cmd_dashboard_only(cfg: Config, watch: bool = False) -> int:
         print("[NAP] 'bun' ni na PATH.")
         return 1
     mode = "WATCH (hot-reload)" if watch else "v OSPREDJU"
-    print(f"[DASH] Command-Center {mode} na https://127.0.0.1:{DASH_PORT} (Ctrl+C za izhod)...")
+    print(f"[DASH] Command-Center {mode} na http://127.0.0.1:{DASH_PORT} (Ctrl+C za izhod)...")
     cmd = [str(bun), "--watch" if watch else "run", "src/server.ts"] if watch \
         else [str(bun), "run", "src/server.ts"]
     return _run_foreground(cmd, cfg, cwd=cfg.root)
@@ -398,7 +398,7 @@ def _spawn(cmd: List[str], cfg: Config, extra_env: Optional[dict] = None,
 def cmd_all(cfg: Config, args: Sequence[str]) -> int:
     """Privzeti način: proxy + dashboard v ozadju, potem claude; cleanup."""
     proxy_base = f"http://127.0.0.1:{PORT}"
-    dash_url = f"https://127.0.0.1:{DASH_PORT}"
+    dash_url = f"http://127.0.0.1:{DASH_PORT}"
 
     proxy_cmd = _proxy_launch_cmd(cfg)
     if not proxy_cmd:
@@ -466,7 +466,7 @@ def cmd_serve(cfg: Config) -> int:
     za remote dostop (če ni nameščen → opozorilo, ne fail).
     """
     proxy_base = f"http://127.0.0.1:{PORT}"
-    dash_url = f"https://127.0.0.1:{DASH_PORT}"
+    dash_url = f"http://127.0.0.1:{DASH_PORT}"
 
     proxy_cmd = _proxy_launch_cmd(cfg)
     if not proxy_cmd:
