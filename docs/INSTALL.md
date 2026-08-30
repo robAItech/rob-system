@@ -240,6 +240,58 @@ pwsh -File scripts\register-autostart.ps1 -Query # preveri
 - **Odpornost (ročno):** `./rob fleet backup` na masterju, `rob fleet restore`
   kjerkoli (git pull → združi backup v lokalni spomin/agendo).
 
+#### Worker — praktični vodič (preverjeno na drugem prenosniku)
+
+> Okolje workerja (E:\RobAI\AI-podjetje-V5): **portabilen Python** v `engine\`
+> (`engine\python.exe` — izolirani način prek `python311._pth`: **ni venv, ni
+> `py` launcherja**), `bash` = **WSL** (ne Git Bash). Repo je `robAItech/rob-system`
+> (oba stroja kažeta nanj).
+
+**1. Vedno `bash rob <ukaz>` — NIKOLI `./rob`.** PowerShell ne zažene datotek
+brez končnice; `./rob test` v napačnem kontekstu vrže lažno `#401 API key is
+invalid` (napačen interpreter). Pravilno:
+```powershell
+cd E:\RobAI\AI-podjetje-V5
+bash rob test          # 409 testov — zeleno
+bash rob daemon --status
+```
+
+**2. Worker daemon v OZADJU** (v ospredju "visi" = normalno čakanje na naloge,
+a terminal zaprtega ubije):
+```powershell
+Start-Process -WindowStyle Hidden -FilePath "E:\RobAI\AI-podjetje-V5\engine\python.exe" -ArgumentList "core\daemon.py" -WorkingDirectory "E:\RobAI\AI-podjetje-V5"
+powershell -ExecutionPolicy Bypass -File scripts\register-autostart.ps1   # še za vsako prijavo
+```
+Preverba: `bash rob daemon --status` → `State: idle` + svež `heartbeat`.
+
+**3. Fleet worker konfiguracija v `.env`** (mora biti usklajena z masterjem):
+```
+ROB_FLEET_ROLE=worker
+ROB_FLEET_MASTER_URL=http://<master-tailscale-ip>:8789
+ROB_FLEET_TOKEN=<ISTA skrivnost kot master>          # master: konča se na …fdb660
+DEEPSEEK_API_KEY=sk-...                               # worker ima lahko SVOJ ključ — le veljaven mora biti
+```
+Preveri ključ: `curl.exe -s -o NUL -w "%{http_code}`n" https://api.deepseek.com/v1/models -H "Authorization: Bearer $((Select-String -Path .env -Pattern '^DEEPSEEK_API_KEY=').Line.Split('=',2)[1])"` → `200`.
+
+**4. `claude` na workerju — NE postavljaj lastnega litellm proxyja.** Uporabi
+**masterjev proxy** (dosegljiv prek Tailscale, `0.0.0.0:4010`):
+```powershell
+$env:ANTHROPIC_BASE_URL = "http://<master-tailscale-ip>:4010"
+$env:ANTHROPIC_API_KEY = "sk-hermes-master-key"
+claude
+# trajno (vsaka nova seja):
+[Environment]::SetEnvironmentVariable("ANTHROPIC_BASE_URL", "http://<master-tailscale-ip>:4010", "User")
+[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", "sk-hermes-master-key", "User")
+```
+Fleet/RSI kliceta DeepSeek **neposredno** — litellm na workerju ni potreben.
+
+> ⚠️ **Če kljub vsemu namestiš litellm na workerju** in pade ob zagonu: pini
+> verzije na masterjeve (`litellm==1.96.2`, `fastapi==0.112.2`,
+> `starlette==0.38.6`, `sse-starlette==2.1.3`). Najpogostejši vzrok padca:
+> litellm/Prisma pobira `DATABASE_URL` (AWS RDS) iz `.env` ali okoljskih
+> spremenljivk → nedosegljiv → `startup failed`. Master nima `DATABASE_URL`.
+> `python -m litellm` NE deluje (ni `__main__`) — zaženi `engine\Scripts\litellm.exe`.
+
 ---
 
 ## 7. Docker RSI peskovnik (neobvezno, a priporočeno)
