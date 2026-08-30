@@ -44,6 +44,15 @@ FALLBACK_MASTER_KEY = "sk-hermes-master-key"
 HEALTH_TIMEOUT = 2      # sekund na en HTTP request
 BANNER = "ROB AI STUDIO — EN UNKAZ ZAGON (proxy :4010 + Command-Center :8787)"
 
+# Okoljske spremenljivke, ki jih ZAVESTNO ne posredujemo podprocesom.
+# LiteLLM ob prisotnosti DATABASE_URL na zagonu poskusi inicializirati Prisma
+# (svojo DB plast); brez Prisma binarij / nedosegljive baze pade z
+# "Unable to find Prisma binaries" oziroma vrne 4000 "No connected db" — zgodilo
+# se je, ko je bila v uporabniškem okolju Windows nastavljena tuja vrednost
+# (AWS RDS iz drugega projekta). Repo uporablja SQLite (.rob_ai/memory.db,
+# .gstack-run.sqlite), zunanje DATABASE_URL ne rabi in je ne sme dedovati.
+_DROP_ENV_VARS: Tuple[str, ...] = ("DATABASE_URL",)
+
 
 # ------------------------------------------------------------------ #
 #  Stanje / konfiguracija
@@ -278,14 +287,27 @@ def cmd_init(cfg: Config) -> int:
     return 0
 
 
-def _run_foreground(cmd: List[str], cfg: Config, env_add: Optional[dict] = None,
-                    cwd: Optional[Path] = None) -> int:
-    """Zaženi ukaz v ospredju (Ctrl+C propagira do procesa)."""
+def _build_env(cfg: Config, env_add: Optional[dict] = None) -> dict:
+    """Okolje za podprocese: os.environ brez škodljivih zunanjih spremenljivk.
+
+    Odstrani DATABASE_URL (glej _DROP_ENV_VARS), da LiteLLM ne poskuša
+    Prisma/DB povezave, nato vstavi ključne nastavitve (DEEPSEEK_API_KEY,
+    PYTHONIOENCODING) in opcijske dodatke.
+    """
     env = dict(os.environ)
+    for name in _DROP_ENV_VARS:
+        env.pop(name, None)
     env["DEEPSEEK_API_KEY"] = cfg.deepseek_key
     env["PYTHONIOENCODING"] = "utf-8"
     if env_add:
         env.update(env_add)
+    return env
+
+
+def _run_foreground(cmd: List[str], cfg: Config, env_add: Optional[dict] = None,
+                    cwd: Optional[Path] = None) -> int:
+    """Zaženi ukaz v ospredju (Ctrl+C propagira do procesa)."""
+    env = _build_env(cfg, env_add)
     return subprocess.call(cmd, env=env, cwd=str(cwd) if cwd else None)
 
 
@@ -360,11 +382,7 @@ def cmd_claude_only(cfg: Config, args: Sequence[str]) -> int:
 def _spawn(cmd: List[str], cfg: Config, extra_env: Optional[dict] = None,
            cwd: Optional[Path] = None) -> Optional[subprocess.Popen]:
     """Zaženi ukaz v ozadju; vrača Popen (ali None ob napaki)."""
-    env = dict(os.environ)
-    env["DEEPSEEK_API_KEY"] = cfg.deepseek_key
-    env["PYTHONIOENCODING"] = "utf-8"
-    if extra_env:
-        env.update(extra_env)
+    env = _build_env(cfg, extra_env)
     try:
         kwargs: dict = {"env": env}
         if cwd is not None:

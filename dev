@@ -18,4 +18,8 @@ set -e
 # Repo koren = direktorij te skripte (ne trdo-kodirana pot).
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-cd "$PROJECT_DIR" && python core/dev_cli.py "$@"
+cd "$PROJECT_DIR"
+# Razrešitev pythona (engine|venv) in PATH delegiramo na `rob`, da `./dev`
+# deluje tudi, ko sistemski python manjka ali je pokvarjen (npr. Microsoft
+# Store-stub). `rob` posreduje vse argumente naprej (`${@:2}`).
+exec ./rob dev "$@"
