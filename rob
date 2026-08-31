@@ -175,6 +175,9 @@ elif [ "$1" == "fleet" ]; then
     # P9 — master–worker fleet: `fleet serve` (master), `fleet status` (pregled).
     # Worker = `ROB_FLEET_ROLE=worker` + `rob daemon`. Glej .env.example.
     cd "$PROJECT_DIR" && python core/fleet.py "${@:2}"
+elif [ "$1" == "memory" ]; then
+    # Pregled/reset učnega spomina (--reset = učenje iz nič).
+    cd "$PROJECT_DIR" && python core/memory_cli.py "${@:2}"
 elif [ "$1" == "report" ]; then
     # Avtonomija — tedenski readout: vsi izvedeni taski + kvaliteta + eval + fleet.
     cd "$PROJECT_DIR" && python core/report.py "${@:2}"
@@ -231,6 +234,7 @@ else
     echo "  ./rob learn       - P7: learning dashboard (eval trend, lekcije, načela, vzorci)"
     echo "  ./rob daemon      - P1: avtonomni daemon 24/7 (--once/--status/--stop/--serve)"
     echo "  ./rob fleet       - P9: fleet serve (master) / status / claim / memory / backup / restore"
+    echo "  ./rob memory      - Pregled/reset učnega spomina (--reset = učenje iz nič)"
     echo "  ./rob report      - Avtonomija: tedenski readout (taski + kvaliteta + eval + fleet)"
     echo "  ./rob quality     - Avtonomija: kvalitetni prag + eskalacije (--gate/--list/--resolve/--reenable)"
     echo "  ./rob push        - P9: eno-ukazni push (pull --rebase + push) za fleet"
