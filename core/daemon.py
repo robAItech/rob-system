@@ -378,6 +378,36 @@ def _tick_fleet_git_sync(settings, cfg) -> dict:
         return {"git_sync": f"napaka: {e}"}
 
 
+def _tick_weekly_report(settings, cfg) -> dict:
+    """Avtonomija: tedenski readout (vsi izvedeni taski + kvaliteta + eval +
+    fleet) → zapis `.rob_ai/weekly_report.md`. Napaka se zabeleži, ne ustavi."""
+    try:
+        from core.report import generate_weekly_report
+        md = generate_weekly_report()
+        out = ROB_AI / "weekly_report.md"
+        out.write_text(md, encoding="utf-8")
+        summary = next((ln for ln in md.split("\n")
+                        if ln.startswith("**Povzetek:**")), "")
+        return {"report": "ok", "file": str(out), "summary": summary}
+    except Exception as e:
+        _append_error(f"weekly report: {e}")
+        return {"report": f"napaka: {e}"}
+
+
+def _tick_quality_gate(settings, cfg) -> dict:
+    """Avtonomija: kvalitetni prag — targete pod pragom označi disabled +
+    zapiše eskalacijo uporabniku (dashboard feed + escalations.json)."""
+    try:
+        from core import quality
+        min_runs = getattr(settings, "quality_min_runs", 3)
+        min_rate = getattr(settings, "quality_min_success_rate", 0.5)
+        res = quality.run_gate(min_runs=min_runs, min_success_rate=min_rate)
+        return {"gate": "ok", **res}
+    except Exception as e:
+        _append_error(f"quality gate: {e}")
+        return {"gate": f"napaka: {e}"}
+
+
 def build_scheduler(settings) -> Scheduler:
     """Tabela periodicnih jobov, krmiljena z DAEMON_* nastavitvami."""
     sched = Scheduler()
@@ -405,6 +435,16 @@ def build_scheduler(settings) -> Scheduler:
             and getattr(settings, "fleet_git_sync_seconds", 0) > 0):
         sched.add("fleet_git_sync", _tick_fleet_git_sync,
                   getattr(settings, "fleet_git_sync_seconds", 0))
+    # Avtonomija — tedenski readout + kvalitetni prag (master/standalone; worker
+    # agregira samo prek masterja). 0 = izključeno.
+    if (getattr(settings, "fleet_role", "standalone") != "worker"
+            and getattr(settings, "report_hours", 0) > 0):
+        sched.add("weekly_report", _tick_weekly_report,
+                  getattr(settings, "report_hours", 0) * 3600)
+    if (getattr(settings, "fleet_role", "standalone") != "worker"
+            and getattr(settings, "quality_gate_hours", 0) > 0):
+        sched.add("quality_gate", _tick_quality_gate,
+                  getattr(settings, "quality_gate_hours", 0) * 3600)
     return sched
 
 

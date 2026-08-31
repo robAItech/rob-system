@@ -59,6 +59,9 @@ __pycache__/
 .rob_ai/watchdog_master.ps1
 .rob_ai/master_daemon_task.xml
 .rob_ai/watchdog.log
+.rob_ai/weekly_report.md
+.rob_ai/quality_registry.json
+.rob_ai/escalations.json
 
 # Baze podatkov in lokalno stanje (Rob AI Studio)
 .rob_ai/memory.db

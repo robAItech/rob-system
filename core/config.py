@@ -116,6 +116,17 @@ class SystemSettings(BaseSettings):
     # P9 — avtomatski git sync (pull --rebase --autostash) na masterju IN
     # workerju: izmenjava kode brez ročnega posega. 0 = izključeno.
     fleet_git_sync_seconds: int = Field(default=3600, alias="ROB_FLEET_GIT_SYNC_SECONDS")
+    # ─── Avtonomija: tedenski readout + kvalitetni prag ─────────────────────
+    # Tedenski readout (rob report): vsi izvedeni taski + kvaliteta + eval +
+    # fleet → .rob_ai/weekly_report.md. 0 = izključeno.
+    report_hours: int = Field(default=168, alias="REPORT_HOURS")
+    # Kvalitetni prag: daily preveri targete, označi slabe (disabled) + eskalira.
+    # 0 = izključeno.
+    quality_gate_hours: int = Field(default=24, alias="QUALITY_GATE_HOURS")
+    # Koliko tekov mora imeti target preden ga sodimo (izogib obsojanju enega teka).
+    quality_min_runs: int = Field(default=3, alias="QUALITY_MIN_RUNS")
+    # Prag uspešnosti (green/runs), pod katerim se target označi kot disabled.
+    quality_min_success_rate: float = Field(default=0.5, alias="QUALITY_MIN_SUCCESS_RATE")
 
     def is_real_key_available(self) -> bool:
         return bool(

@@ -192,7 +192,12 @@ class GoalProposer:
         wm = WorldModel(self.db_path)
 
         # Šibki projekti → build/fix (potrebna človeška potrditev).
+        from core import quality  # lokalno: core.quality je del avtonomnega pragu
         for wp in a["weak_projects"]:
+            # Kvalitetni prag: target z nizko uspešnostjo je DISABLED → ga ne
+            # predlagamo več ("ugasni agenta"); uporabnik ga lahko re-enable-a.
+            if quality.is_disabled(wp["project"]):
+                continue
             goal_text = f"Zmanjšaj neuspehe v projektu {wp['project']}"
             pred = self._predict(goal_text, wp["project"], wm)
             lv = self._learning_value(fail_rate=wp["fail_rate"], action="build",
