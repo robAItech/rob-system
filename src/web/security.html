@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="sl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet Security — Command &amp; Control</title>
+<style>
+  /* ── Design token-i (command-center-mockup.html) ─────────────── */
+  :root{
+    --bg:#04070d; --bg-grid:rgba(53,214,224,.028);
+    --surface:#0a111c; --surface2:#0e1726;
+    --line:#152338; --line-strong:#243a54;
+    --ink:#d8e6f5; --muted:#7c93ab; --faint:#486077;
+    --accent:#35d6e0; --accent-2:#8ee9f2; --accent-soft:rgba(53,214,224,.13);
+    --good:#3fd6a4; --good-soft:rgba(63,214,164,.12);
+    --warn:#f0b543; --warn-soft:rgba(240,181,67,.12);
+    --crit:#f25c6e; --crit-soft:rgba(242,92,110,.13);
+    --font-display:"Chakra Petch",ui-sans-serif,system-ui,sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font:13px/1.5 var(--font-display);-webkit-font-smoothing:antialiased;
+    background-image:linear-gradient(var(--bg-grid) 1px,transparent 1px),linear-gradient(90deg,var(--bg-grid) 1px,transparent 1px);
+    background-size:44px 44px;min-height:100vh}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 24px 60px}
+
+  /* ── Header ─────────────────────────────────────────────────── */
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+    padding:18px 22px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,var(--surface2),var(--surface));
+    border-top:1px solid var(--line-strong)}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .logo{width:34px;height:34px;border:1px solid var(--accent);border-radius:8px;display:grid;place-items:center;
+    font:700 14px var(--font-mono);color:var(--accent);box-shadow:0 0 18px var(--accent-soft)}
+  .brand h1{font:700 16px var(--font-display);letter-spacing:.14em;color:var(--ink)}
+  .brand .sub{font:600 9px var(--font-mono);letter-spacing:.3em;color:var(--faint);text-transform:uppercase}
+  .hdr-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .live{display:flex;align-items:center;gap:6px;font:600 10px var(--font-mono);letter-spacing:.14em;color:var(--muted)}
+  .live .dot{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 8px var(--good);animation:pulse 2s infinite}
+  .live.off .dot{background:var(--crit);box-shadow:0 0 8px var(--crit)}
+  .live .ts{color:var(--faint)}
+  .btn{background:var(--accent-soft);color:var(--accent-2);border:1px solid var(--accent);border-radius:7px;
+    padding:6px 12px;font:600 11px var(--font-display);cursor:pointer;letter-spacing:.06em;transition:filter .15s}
+  .btn:hover{filter:brightness(1.15)}
+  .link{color:var(--muted);font:600 11px var(--font-display);text-decoration:none;letter-spacing:.04em}
+  .link:hover{color:var(--accent-2)}
+
+  /* ── KPI (stat tile-i) ──────────────────────────────────────── */
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:20px 0}
+  .kpi{position:relative;overflow:hidden;background:linear-gradient(180deg,var(--surface2),var(--surface));
+    border:1px solid var(--line);border-top:1px solid var(--line-strong);border-radius:12px;padding:16px 18px}
+  .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
+  .kpi.good::after{background:var(--good)} .kpi.warn::after{background:var(--warn)} .kpi.crit::after{background:var(--crit)}
+  .kpi .k{font:600 9px var(--font-mono);letter-spacing:.2em;text-transform:uppercase;color:var(--faint)}
+  .kpi .v{font:700 30px var(--font-mono);font-variant-numeric:tabular-nums;color:var(--ink);margin-top:6px;letter-spacing:-.02em}
+  .kpi .d{font-size:10.5px;color:var(--faint);letter-spacing:.02em;margin-top:3px}
+  .grade-chip{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:5px;font:700 13px var(--font-mono);vertical-align:4px;border:1px solid var(--line-strong)}
+  .grade-chip.g-a,.grade-chip.g-b{color:var(--good);border-color:var(--good)}
+  .grade-chip.g-c,.grade-chip.g-d{color:var(--warn);border-color:var(--warn)}
+  .grade-chip.g-f{color:var(--crit);border-color:var(--crit)}
+  .sev-mini{display:flex;gap:12px;margin-top:8px;font:600 10px var(--font-mono);letter-spacing:.03em}
+  .s-crit{color:var(--crit)} .s-warn{color:var(--warn)} .s-med{color:var(--accent-2)} .s-low{color:var(--muted)}
+
+  /* ── Sekcije / paneli ───────────────────────────────────────── */
+  .sec{margin-bottom:18px}
+  .sec-h{display:flex;align-items:center;justify-content:space-between;font:600 10px var(--font-mono);
+    letter-spacing:.22em;text-transform:uppercase;color:var(--faint);margin-bottom:8px;padding:0 2px}
+  .panel{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--line);
+    border-top:1px solid var(--line-strong);border-radius:12px;overflow:hidden}
+  .row{display:grid;gap:10px;align-items:center;padding:9px 14px;font-size:12px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .row:nth-child(odd){background:rgba(255,255,255,.015)}
+  .row-head{display:grid;gap:10px;align-items:center;padding:7px 14px;font:600 9px var(--font-mono);letter-spacing:.16em;
+    text-transform:uppercase;color:var(--faint);background:none;border-bottom:1px solid var(--line)}
+  .dev-row{grid-template-columns:1.3fr .8fr .7fr .6fr 1fr}
+  .cra-row{grid-template-columns:20px 78px 1fr}
+  .mono{font-family:var(--font-mono)}
+  .faint{color:var(--faint)} .muted{color:var(--muted)}
+
+  .sev-badge{display:inline-block;padding:1px 8px;border-radius:5px;font:600 9px var(--font-display);letter-spacing:.06em;
+    text-transform:uppercase;border:1px solid;white-space:nowrap}
+  .sev-badge.crit{color:var(--crit);border-color:var(--crit);background:var(--crit-soft)}
+  .sev-badge.warn{color:var(--warn);border-color:var(--warn);background:var(--warn-soft)}
+  .sev-badge.med{color:var(--accent-2);border-color:var(--accent);background:var(--accent-soft)}
+  .sev-badge.low{color:var(--muted);border-color:var(--line-strong)}
+  .cstat{font-weight:700;text-align:center}
+  .cstat.ok{color:var(--good)} .cstat.no{color:var(--crit)} .cstat.part{color:var(--warn)} .cstat.na{color:var(--faint)}
+
+  .mods{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .mod{padding:14px 16px;border:1px solid var(--line);border-top:1px solid var(--line-strong);border-radius:10px;
+    background:linear-gradient(180deg,var(--surface2),var(--surface))}
+  .mod .n{font:600 9px var(--font-mono);letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+  .mod .c{font:700 22px var(--font-mono);color:var(--ink);margin-top:3px}
+  .mod .l{font-size:10px;color:var(--faint)}
+
+  .status{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
+  .status.err{color:var(--crit);border-color:var(--crit-soft)}
+  .empty-h{font-size:11px;color:var(--faint)}
+
+  /* ── Login ──────────────────────────────────────────────────── */
+  #login{position:fixed;inset:0;display:grid;place-items:center;background:rgba(4,7,13,.85);backdrop-filter:blur(6px);z-index:10}
+  #login .card{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--line-strong);
+    border-radius:16px;padding:34px;width:340px;text-align:center}
+  #login h2{font:600 15px var(--font-display);letter-spacing:.1em;margin-bottom:10px}
+  #login p{font-size:12px;color:var(--muted);margin-bottom:16px}
+  #login input{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:7px;color:var(--ink);
+    padding:10px 12px;font:13px var(--font-mono);margin-bottom:12px}
+  #login .err{color:var(--crit);font-size:11px;min-height:15px;margin-top:8px}
+
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  @media (max-width:720px){.kpis{grid-template-columns:1fr}.mods{grid-template-columns:repeat(2,1fr)}
+    .dev-row{grid-template-columns:1fr 1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">🔐</div>
+      <div>
+        <h1>FLEET SECURITY</h1>
+        <div class="sub">Command &amp; Control</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <span class="live" id="live"><span class="dot"></span>ŽIVO <span class="ts" id="last-ts"></span></span>
+      <button class="btn" id="refresh">Osveži</button>
+      <a class="link" href="/command">→ Rob System</a>
+    </div>
+  </header>
+
+  <div id="root">
+    <div class="status" id="status">nalaganje …</div>
+  </div>
+</div>
+
+<div id="login" hidden>
+  <div class="card">
+    <h2>Fleet Security — prijava</h2>
+    <p>Vnesi ROB_API_TOKEN za dostop do varnostnega posnetka.</p>
+    <input id="login-token" type="password" placeholder="API token">
+    <button class="btn" id="login-btn" style="width:100%">Prijavi</button>
+    <div class="err" id="login-err"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById('root');
+  const status = document.getElementById('status');
+  const liveEl = document.getElementById('live');
+  const lastTs = document.getElementById('last-ts');
+  const loginOverlay = document.getElementById('login');
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+    c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;');
+  const gradeFor = s => s >= 90 ? 'A' : s >= 80 ? 'B' : s >= 70 ? 'C' : s >= 60 ? 'D' : 'F';
+  const age = ts => { const s = Math.max(0, Math.floor(Date.now()/1000 - ts)); return s < 90 ? 'zdaj' : s < 3600 ? `pred ${s/60|0} min` : `pred ${s/3600|0} h`; };
+
+  const sevClass = sev => sev === 'critical' ? 'crit' : sev === 'high' ? 'warn' : sev === 'medium' ? 'med' : 'low';
+  const sevLabel = sev => sev === 'critical' ? 'kritična' : sev === 'high' ? 'visoka' : sev === 'medium' ? 'srednja' : sev === 'low' ? 'nizka' : sev;
+  const craIcon = s => s === 'compliant' ? '✓' : s === 'non_compliant' ? '✗' : s === 'partial' ? '~' : '·';
+  const craCls = s => s === 'compliant' ? 'ok' : s === 'non_compliant' ? 'no' : s === 'partial' ? 'part' : 'na';
+  const craLabel = s => s === 'compliant' ? 'skladno' : s === 'non_compliant' ? 'neskladno' : s === 'partial' ? 'delno' : 'n/a';
+
+  function render(d) {
+    const fleet = d.fleet || {}, sev = d.findings_by_severity || {};
+    const mean = fleet.mean_score ?? null, meanGrade = mean == null ? '' : gradeFor(mean);
+    const nCrit = sev.critical ?? 0, nHigh = sev.high ?? 0, nMed = sev.medium ?? 0, nLow = sev.low ?? 0;
+    const total = nCrit + nHigh + nMed + nLow;
+    const kpiVar = nCrit > 0 ? 'crit' : nHigh > 0 ? 'warn' : total > 0 ? 'good' : '';
+
+    let html = '<section class="kpis">';
+    html += `<div class="kpi ${mean == null ? '' : gradeFor(mean) === 'F' ? 'crit' : gradeFor(mean) <= 'D' ? 'warn' : 'good'}"><div class="k">Povprečje posture</div><div class="v">${mean ?? '—'}${meanGrade ? `<span class="grade-chip g-${meanGrade.toLowerCase()}">${meanGrade}</span>` : ''}</div><div class="d">score 0–100 · ${(fleet.grades ? Object.entries(fleet.grades).map(([g,n]) => `${g}:${n}`).join(' ') : '')}</div></div>`;
+    html += `<div class="kpi"><div class="k">Naprave</div><div class="v">${fleet.device_count ?? (d.devices||[]).length}</div><div class="d">v inventarju</div></div>`;
+    html += `<div class="kpi ${kpiVar}"><div class="k">Odprte najdbe</div><div class="v">${total}</div><div class="sev-mini"><span class="s-crit">${nCrit} krit</span><span class="s-warn">${nHigh} vis</span><span class="s-med">${nMed} med</span><span class="s-low">${nLow} niz</span></div></div>`;
+    html += '</section>';
+
+    // Naprave
+    if ((d.devices || []).length) {
+      html += '<section class="sec"><div class="sec-h"><span>Naprave</span></div><div class="panel">';
+      html += '<div class="row-head dev-row"><span>naprava</span><span>vloga</span><span>score</span><span>ocena</span><span>najdbe crit/vis</span></div>';
+      for (const dv of d.devices) {
+        const c = dv.counts || {};
+        html += `<div class="row dev-row"><span class="mono">${esc(dv.hostname || dv.device_id)}</span><span class="faint">${esc(dv.role)}</span><span class="mono">${dv.score ?? '—'}</span><span>${dv.grade ? `<span class="grade-chip g-${esc(dv.grade).toLowerCase()}">${esc(dv.grade)}</span>` : '—'}</span><span class="mono faint">${dv.score == null ? '—' : `${c.critical ?? 0} / ${c.high ?? 0}`}</span></div>`;
+      }
+      html += '</div></section>';
+    }
+
+    // Najdbe
+    html += '<section class="sec"><div class="sec-h"><span>Odprte najdbe (${(d.findings||[]).length})</span></div>';
+    if ((d.findings || []).length) {
+      html += '<div class="panel">';
+      for (const f of d.findings) {
+        html += `<div class="row" style="grid-template-columns:96px 1fr"><span><span class="sev-badge ${sevClass(f.severity)}">${sevLabel(f.severity)}</span></span><span><b class="mono">${esc(f.category)}</b> <span class="muted">— ${esc(f.detail)}</span> <span class="faint">(${esc(f.device_id)})</span></span></div>`;
+      }
+      html += '</div>';
+    } else {
+      html += `<div class="status"><div class="empty-h">— ni odprtih najdb —</div></div>`;
+    }
+    html += '</section>';
+
+    // CRA
+    if ((d.cra || []).length) {
+      html += '<section class="sec"><div class="sec-h"><span>EU CRA skladnost</span></div><div class="panel">';
+      html += '<div class="row-head cra-row"><span></span><span>zahteva</span><span>status</span></div>';
+      for (const c of d.cra) {
+        html += `<div class="row cra-row"><span class="cstat ${craCls(c.status)}">${craIcon(c.status)}</span><span class="mono">${esc(c.requirement_id)}</span><span>${esc(c.title)} <span class="faint mono">· ${craLabel(c.status)}</span></span></div>`;
+      }
+      html += '</div></section>';
+    }
+
+    // Moduli
+    const mods = [
+      ['Monitor', d.monitor?.open_anomaly_findings ?? 0, 'anomalije'],
+      ['Red team', d.redteam?.vulnerable ?? 0, 'vulnerable payload-ov'],
+      ['Supply chain', d.supplychain?.open_findings ?? 0, 'odprte najdbe'],
+      ['Threat intel', d.threatintel?.open_vulnerabilities ?? 0, 'znane ranljivosti'],
+    ];
+    html += '<section class="sec"><div class="sec-h"><span>Moduli</span></div><div class="mods">';
+    for (const [name, n, label] of mods) {
+      html += `<div class="mod"><div class="n">${name}</div><div class="c">${n}</div><div class="l">${label}</div></div>`;
+    }
+    html += '</div></section>';
+
+    root.innerHTML = html;
+    if (d.generated_at) lastTs.textContent = `· ${age(new Date(d.generated_at).getTime()/1000)}`;
+    liveEl.classList.remove('off');
+  }
+
+  function showStatus(msg, cls = '') {
+    root.innerHTML = `<div class="status ${cls}">${esc(msg)}</div>`;
+    liveEl.classList.add('off');
+  }
+
+  async function load() {
+    try {
+      const r = await fetch('/api/fleet-security');
+      if (r.status === 401) { showLogin(); return; }
+      if (!r.ok) { showStatus(`HTTP ${r.status} — Fleet Security ni dosegljiv`, 'err'); return; }
+      const d = await r.json();
+      if (!d.ok) { showStatus(d.error || 'Napaka pri nalaganju posnetka', 'err'); return; }
+      if (!d.fleet?.device_count && !(d.findings || []).length) { showStatus('Ni varnostnih podatkov (prazen inventar)'); return; }
+      render(d);
+    } catch (e) {
+      showStatus(`Napaka: ${e.message || e}`, 'err');
+    }
+  }
+
+  // ── Login (401) ──────────────────────────────────────────────
+  function showLogin() { loginOverlay.hidden = false; document.getElementById('login-err').textContent = ''; }
+  async function doLogin() {
+    const t = document.getElementById('login-token').value.trim();
+    const err = document.getElementById('login-err');
+    if (!t) return;
+    try {
+      const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) });
+      if (r.ok) location.reload();
+      else err.textContent = 'Napačen token. Preveri ROB_API_TOKEN.';
+    } catch (e) { err.textContent = 'Server ni dosegljiv.'; }
+  }
+  document.getElementById('login-btn').addEventListener('click', doLogin);
+  document.getElementById('login-token').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  document.getElementById('refresh').addEventListener('click', load);
+
+  load();
+  setInterval(load, 15000);
+})();
+</script>
+</body>
+</html>

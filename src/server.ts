@@ -1569,6 +1569,12 @@ const server = Bun.serve({
         .catch(() => '<html><body><h2>src/web/index.html manjka (poženi: bun build src/web/main.ts)</h2></body></html>');
       return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
+    // Fleet Security — samostojen dashboard (self-contained, src/web/security.html).
+    if (req.method === 'GET' && url.pathname === '/security') {
+      const html = await Bun.file(`${OUT_ROOT}/src/web/security.html`).text()
+        .catch(() => '<html><body><h2>src/web/security.html manjka</h2></body></html>');
+      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+    }
     if (req.method === 'GET' && url.pathname === '/assets/bundle.js') {
       const js = await Bun.file(`${OUT_ROOT}/src/web/dist/bundle.js`).text().catch(() => '');
       return new Response(js, { headers: { 'Content-Type': 'application/javascript; charset=utf-8' } });
