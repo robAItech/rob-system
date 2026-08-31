@@ -98,6 +98,7 @@
 
   /* ── Login ──────────────────────────────────────────────────── */
   #login{position:fixed;inset:0;display:grid;place-items:center;background:rgba(4,7,13,.85);backdrop-filter:blur(6px);z-index:10}
+  #login[hidden]{display:none!important}
   #login .card{background:linear-gradient(180deg,var(--surface2),var(--surface));border:1px solid var(--line-strong);
     border-radius:16px;padding:34px;width:340px;text-align:center}
   #login h2{font:600 15px var(--font-display);letter-spacing:.1em;margin-bottom:10px}
@@ -247,16 +248,32 @@
   }
 
   // ── Login (401) ──────────────────────────────────────────────
-  function showLogin() { loginOverlay.hidden = false; document.getElementById('login-err').textContent = ''; }
-  async function doLogin() {
-    const t = document.getElementById('login-token').value.trim();
+  function showLogin(msg) {
+    loginOverlay.hidden = false;
     const err = document.getElementById('login-err');
-    if (!t) return;
+    err.textContent = msg || '';
+  }
+  async function doLogin() {
+    const input = document.getElementById('login-token');
+    const btn = document.getElementById('login-btn');
+    const err = document.getElementById('login-err');
+    const t = input.value.trim();
+    if (!t) { err.textContent = 'Vnesi token.'; return; }
+    btn.disabled = true; btn.textContent = 'prijava …';
     try {
       const r = await fetch('/api/auth', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t }) });
-      if (r.ok) location.reload();
-      else err.textContent = 'Napačen token. Preveri ROB_API_TOKEN.';
-    } catch (e) { err.textContent = 'Server ni dosegljiv.'; }
+      if (r.ok) {
+        // Uspeh: skrij overlay in DIREKTNO naloži podatke (brez reload-a).
+        loginOverlay.hidden = true;
+        load();
+      } else {
+        err.textContent = 'Napačen token. Preveri ROB_API_TOKEN v .env.';
+      }
+    } catch (e) {
+      err.textContent = 'Server ni dosegljiv.';
+    } finally {
+      btn.disabled = false; btn.textContent = 'Prijavi';
+    }
   }
   document.getElementById('login-btn').addEventListener('click', doLogin);
   document.getElementById('login-token').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
