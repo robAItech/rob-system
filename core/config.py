@@ -142,6 +142,36 @@ class SystemSettings(BaseSettings):
     # builder dobi povratno informacijo in poskusi znova — do toliko poskusov,
     # nato eskalacija.
     team_max_attempts: int = Field(default=3, alias="TEAM_MAX_ATTEMPTS")
+    # ─── Fleet Security (P1, pasivno) ─────────────────────────────────────
+    # Pasivno-prvi: modul NIKOLI ne skenira/probe-a naprav — sprejema samo
+    # device-reported HostInfo snapshote (HTTP / status datoteke). Guard je
+    # runtime; aktivnega koda sploh ni.
+    fs_passive_only: bool = Field(default=True, alias="FS_PASSIVE_ONLY")
+    # SQLite inventar/najdbe/rezultati — on-prem, v .rob_ai/ (gitignored).
+    fs_db_path: str = Field(default=".rob_ai/fleet_security.db", alias="FS_DB_PATH")
+    # Imenik z YAML baseline-i po role-u (opcijsko; drugače inline default).
+    fs_baselines_dir: str = Field(default=".rob_ai/fleet_security_baselines", alias="FS_BASELINES_DIR")
+    # Naprava, ki ni sporočila svežega heartbeat-a (starejšega od tega), →
+    # stale_heartbeat finding.
+    fs_heartbeat_max_age_seconds: int = Field(default=300, alias="FS_HEARTBEAT_MAX_AGE_SECONDS")
+    # Prag posture ocene, pod katerim se naprava eskalira (kvalitetni gate).
+    fs_score_escalate_below: int = Field(default=60, alias="FS_SCORE_ESCALATE_BELOW")
+    # Padec agregatne mean ocene med pass-oma za več kot toliko točk →
+    # fleet-security-regression (meta_eval stil).
+    fs_regression_drop_points: int = Field(default=10, alias="FS_REGRESSION_DROP_POINTS")
+    # Uteži severity za scoring: "critical:25,high:15,medium:8,low:3".
+    fs_severity_weights: str = Field(default="critical:25,high:15,medium:8,low:3", alias="FS_SEVERITY_WEIGHTS")
+    # Remediacijski PR — config/network policy SAMO; firmware gre skozi OEM
+    # (report-only). PR se nikoli ne auto-merge-a (human-in-the-loop).
+    fs_pr_owner: str = Field(default="robAItech", alias="FS_PR_OWNER")
+    fs_pr_repo: str = Field(default="rob-system", alias="FS_PR_REPO")
+    fs_pr_base_branch: str = Field(default="main", alias="FS_PR_BASE_BRANCH")
+    fs_pr_token: str = Field(default="", alias="FS_PR_TOKEN")
+    # Trdi guard: tudi če kdo nastavi True, remediation.py zavrne auto-merge.
+    fs_pr_auto_merge: bool = Field(default=False, alias="FS_PR_AUTO_MERGE")
+    # Tracked desired-state drevo za PR vsebino (.rob_ai/ je gitignored, zato
+    # remediacijska vsebina živi v config/fleet_security/desired/).
+    fs_desired_state_dir: str = Field(default="config/fleet_security/desired", alias="FS_DESIRED_STATE_DIR")
 
     def is_real_key_available(self) -> bool:
         return bool(
