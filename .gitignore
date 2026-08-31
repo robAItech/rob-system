@@ -69,6 +69,11 @@ __pycache__/
 .rob_ai/memory.db-shm
 .rob_ai/memory.db-wal
 .rob_ai/graph.json
+# Fleet Security — OT podatki ostanejo on-prem, izven gita
+.rob_ai/fleet_security.db
+.rob_ai/fleet_security.db-shm
+.rob_ai/fleet_security.db-wal
+.rob_ai/fleet_security_baselines/
 .loopx/
 .DS_Store
 

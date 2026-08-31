@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS fs_remediations (
     kind        TEXT NOT NULL,
     diff        TEXT NOT NULL DEFAULT '',
     branch      TEXT,
-    commit      TEXT,
+    commit_sha  TEXT,
     pr_url      TEXT,
     status      TEXT NOT NULL,
     message     TEXT NOT NULL DEFAULT '',
@@ -224,21 +224,31 @@ class FleetSecurityStore:
     #  Posture najdbe
     # ------------------------------------------------------------------ #
     def upsert_findings(
-        self, findings: list[PostureFinding], now: int | None = None
+        self,
+        findings: list[PostureFinding],
+        now: int | None = None,
+        assessed: list[str] | None = None,
     ) -> int:
         """Vstavi nove najdbe + resolve odprte, ki niso več v incoming.
 
         Dedup: če že obstaja odprta (device_id, category, detail), je ne
         podvaja. Vrne število vstavljenih.
+
+        Resolve: za vsako napravo v ``assessed`` (privzeto tiste, ki so v
+        ``findings``) se odprte najdbe, ki NISO v incoming setu, označijo kot
+        ``resolved`` — tudi če ima naprava v tem pass-u NIČ najdb (čista).
         """
         now = int(now) if now is not None else _now()
         inserted = 0
-        # Incoming (device_id, category, detail) seti po napravi.
+        # Incoming (device_id, category, detail, severity) seti po napravi.
         by_device: dict[str, set[tuple[str, str, str]]] = {}
         for f in findings:
             by_device.setdefault(f.device_id, set()).add(
                 (f.category, f.detail, f.severity)
             )
+        resolve_devices = (
+            list(assessed) if assessed is not None else list(by_device.keys())
+        )
         with self._get_connection() as conn:
             for f in findings:
                 dup = conn.execute(
@@ -262,8 +272,9 @@ class FleetSecurityStore:
                     (f.device_id, f.category, f.severity, f.detail, f.detected_at),
                 )
                 inserted += 1
-            # Resolve odprtih, ki niso več v incoming (isti device).
-            for device_id, incoming in by_device.items():
+            # Resolve odprtih, ki niso več v incoming (naprava je bila ocenjena).
+            for device_id in resolve_devices:
+                incoming = by_device.get(device_id, set())
                 open_rows = conn.execute(
                     "SELECT * FROM fs_findings WHERE device_id = ? AND status = 'open'",
                     (device_id,),
@@ -279,6 +290,26 @@ class FleetSecurityStore:
                             (now, row["id"]),
                         )
         return inserted
+
+    def resolve_missing_for_roles(
+        self, roles: list[str], now: int | None = None
+    ) -> int:
+        """Resolve sintetične ``missing_device`` najdbe (``<role>:missing``)
+        za role, ki imajo zdaj dejansko napravo. Vrne število rešenih."""
+        now = int(now) if now is not None else _now()
+        resolved = 0
+        with self._get_connection() as conn:
+            for role in roles:
+                cur = conn.execute(
+                    """
+                    UPDATE fs_findings SET status = 'resolved', resolved_at = ?
+                    WHERE status = 'open' AND category = 'missing_device'
+                      AND device_id = ?
+                    """,
+                    (now, f"{role}:missing"),
+                )
+                resolved += cur.rowcount or 0
+        return resolved
 
     def list_open_findings(
         self, device_id: str | None = None
@@ -411,7 +442,7 @@ class FleetSecurityStore:
             cur = conn.execute(
                 """
                 INSERT INTO fs_remediations
-                    (device_id, kind, diff, branch, commit, pr_url, status,
+                    (device_id, kind, diff, branch, commit_sha, pr_url, status,
                      message, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,

@@ -98,6 +98,13 @@ def _count_severities(findings: list[PostureFinding]) -> dict[str, int]:
     return counts
 
 
+def _grade_for_score(score: int) -> str:
+    for threshold, grade in GRADE_THRESHOLDS:
+        if score >= threshold:
+            return grade
+    return "F"
+
+
 # ------------------------------------------------------------------ #
 #  assess_device (čisto, brez I/O)
 # ------------------------------------------------------------------ #
@@ -236,14 +243,16 @@ def _default_local_baseline(role: str) -> Baseline:
 
 
 def load_baselines(store: FleetSecurityStore) -> dict[str, Baseline]:
-    """Baseline-i: fs_baselines tabela → YAML v fs_baselines_dir → inline default.
+    """Baseline-i: YAML v fs_baselines_dir → store → inline default.
 
-    Tabela in YAML imata prednost pred inline defaultom; store (tabela) zmaga
-    nad YAML seed-om, če je isti role v obeh.
+    **YAML je source of truth** za role, ki so v njem definirani: ob vsakem
+    load-u se upsert-a v fs_baselines tabelo, da jih vidita tudi remediacija
+    in compliance (store.get_baseline). Role, definirani samo v tabeli,
+    ostanejo. Inline default se NE persistira (mehak fallback).
     """
     baselines: dict[str, Baseline] = {}
 
-    # YAML seed (.rob_ai/fleet_security_baselines/*.yaml).
+    # YAML seed (.rob_ai/fleet_security_baselines/*.yaml) → persistiraj.
     import yaml
 
     yaml_dir = Path(settings.fs_baselines_dir)
@@ -260,11 +269,13 @@ def load_baselines(store: FleetSecurityStore) -> dict[str, Baseline]:
                 if not isinstance(item, dict) or not item.get("role"):
                     continue
                 try:
-                    baselines[item["role"]] = Baseline.from_jsonable(item)
+                    bl = Baseline.from_jsonable(item)
                 except Exception:
                     continue
+                baselines[bl.role] = bl
+                store.upsert_baseline(bl)
 
-    # Store zmaga.
+    # Store: YAML role-i so že notri (po upsertu), store-only role-i se dodajo.
     for baseline in store.list_baselines():
         baselines[baseline.role] = baseline
 
@@ -359,27 +370,31 @@ def run_assessment(
     )
 
     escalated: list[str] = []
-    inserted_total = 0
     device_scores: dict[str, int] = {}
+    all_findings: list[PostureFinding] = []
 
-    for device in store.list_devices():
+    devices = store.list_devices()
+    assessed_ids = [d.device_id for d in devices]
+    for device in devices:
         device_findings = assess_device(device, baselines.get(device.role), now=now)
         hb = hb_by_device.get(device.device_id)
         if hb is not None:
             device_findings.append(hb)
+        all_findings.extend(device_findings)
         counts = _count_severities(device_findings)
         score, grade = compute_score(counts)
-        inserted_total += store.upsert_findings(device_findings, now=now)
         store.save_score(device.device_id, score, grade, counts, now)
         device_scores[device.device_id] = score
         if score < threshold:
             if _escalate(device.device_id, score, grade):
                 escalated.append(device.device_id)
 
-    # missing_device najdbe (sintetični device_id, niso vezane na realno napravo).
-    missing = [f for f in heartbeat if f.category == "missing_device"]
-    if missing:
-        inserted_total += store.upsert_findings(missing, now=now)
+    # En sam upsert za vse najdbe (vključno s sintetičnimi missing_device);
+    # assessed=assessed_ids poskrbi, da se čiste naprave razrešijo starih najdb.
+    inserted_total = store.upsert_findings(all_findings, now=now, assessed=assessed_ids)
+    inserted_total += store.resolve_missing_for_roles(
+        [d.role for d in devices], now=now
+    )
 
     # Regression: primerjaj z PREDHODNIM '*'-snapshot-om pred shranitvijo novega.
     prev_row = store.latest_score("*")
@@ -392,10 +407,11 @@ def run_assessment(
         prev = {"mean_score": None, "open_critical": 0}
 
     agg = _aggregate_snapshot(store, now)
+    agg_score = int(agg["mean_score"]) if agg["mean_score"] is not None else 0
     store.save_score(
         "*",
-        int(agg["mean_score"]) if agg["mean_score"] is not None else 0,
-        "n/a",
+        agg_score,
+        _grade_for_score(agg_score),
         {
             "open_critical": agg["open_critical"],
             "open_high": agg["open_high"],
