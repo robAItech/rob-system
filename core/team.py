@@ -201,7 +201,9 @@ class TeamCoordinator:
             llm = DeepSeekLLMClient()
             raw = asyncio.run(llm.generate_completion(prompt=prompt, system_prompt=system_prompt, use_coder_model=False))
         except Exception:
-            return {"ok": True, "reason": "verifikator ni dosegljiv"}
+            # FAIL-CLOSED: če verifikator (LLM) odpove, modul NE gre skozi brez
+            # verifikacije. Retry zanka poskusi znova; trajna napaka → eskalacija.
+            return {"ok": False, "reason": "verifikator ni dosegljiv (fail-closed)"}
         obj = self._parse_json_object(raw)
         return {"ok": bool(obj.get("ok", True)), "reason": str(obj.get("reason", ""))}
 
@@ -214,7 +216,13 @@ class TeamCoordinator:
         z RETRY ZANKO — če verify pade (reality check / kvaliteta), builder dobi
         povratno informacijo in poskusi znova (do `max_attempts`), nato eskalira.
 
-        Vrne tudi `attempts` (koliko poskusov) in `retried` (ali je bila retry).
+        Vrne tudi `attempts` (koliko poskusov), `retried` (ali je bila retry) in
+        `attempts_log` (vsi poskusi, za observabilnost).
+
+        OMELJITEV: NE klici iz async konteksta — notranje funkcije (plan/critique/
+        verify) uporabljajo `asyncio.run`, ki pade z RuntimeError, če je event loop
+        že aktiven. Sync kontekst (daemon/run_swarm) je pravilen.
+
         `built=True` samo, če je modul zgrajen IN verificiran.
         """
         plan = self.plan(goal, context=context)
@@ -236,6 +244,7 @@ class TeamCoordinator:
         max_attempts = max(1, int(max_attempts))
 
         last_verdict: Dict[str, Any] = {"ok": False, "reason": "ni bilo uspešnega poskusa"}
+        attempts_log: List[Dict[str, Any]] = []
         attempt_goal = goal
         for attempt in range(1, max_attempts + 1):
             try:
@@ -243,6 +252,11 @@ class TeamCoordinator:
             except Exception:
                 built = False
             last_verdict = self.verify(project, attempt_goal, context=context)
+            attempts_log.append({
+                "attempt": attempt,
+                "built": built,
+                "verdict": last_verdict,
+            })
             if built and last_verdict.get("ok"):
                 return {
                     "goal": goal,
@@ -254,6 +268,7 @@ class TeamCoordinator:
                     "verdict": last_verdict,
                     "attempts": attempt,
                     "retried": attempt > 1,
+                    "attempts_log": attempts_log,
                 }
             # Ni uspelo → naslednji poskus z feedbackom (če imamo še poskuse).
             if attempt < max_attempts:
@@ -273,6 +288,7 @@ class TeamCoordinator:
             "verdict": last_verdict,
             "attempts": max_attempts,
             "retried": max_attempts > 1,
+            "attempts_log": attempts_log,
         }
 
     # ------------------------------------------------------------------ #

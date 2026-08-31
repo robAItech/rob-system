@@ -21,6 +21,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -28,12 +29,21 @@ from typing import Any, Dict, List, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Normalna obratovalna stanja daemona (usklajeno s actions/health_metrics).
-_NORMAL_STATES = {
-    "idle", "running", "running_task", "running_tick",
-    "boot", "ensure_services",
-}
-_HEARTBEAT_FRESH_SECONDS = 300.0
+# Normalna obratovalna stanja daemona in prag svežine heartbeata — ENA
+# avtoritativna definicija v actions/health_metrics (domenski modul); tukaj
+# se importa, da ni podvojenih konstant (drift tveganje). Fallback, če
+# health_metrics ni dosegljiv (deleted/rebuilt).
+try:
+    from actions.health_metrics.health_metrics import (  # noqa: E402
+        _HEALTHY_STATES as _NORMAL_STATES,
+        _HEARTBEAT_FRESH_SECONDS as _HEARTBEAT_FRESH_SECONDS,
+    )
+except Exception:
+    _NORMAL_STATES = {
+        "idle", "running", "running_task", "running_tick",
+        "boot", "ensure_services",
+    }
+    _HEARTBEAT_FRESH_SECONDS = 300.0
 
 
 def _read_daemon(root: Path) -> Dict[str, Any]:
@@ -82,6 +92,10 @@ def run_reality_check(project: str, root: Optional[Path | str] = None) -> Dict[s
     module_dir = root / "actions" / project
     issues: List[str] = []
 
+    # Varnost: project prihaja iz agende (dashboard/LLM) — omeji na varen slug
+    # pred `import actions.<project>` (prepreči import injekcijo).
+    if not re.match(r"^[A-Za-z0-9_-]+$", project):
+        return {"ok": False, "issues": [f"neveljaven project name: {project!r}"]}
     if not module_dir.is_dir():
         return {"ok": False, "issues": [f"actions/{project} ne obstaja"]}
     if not (module_dir / "__init__.py").exists():

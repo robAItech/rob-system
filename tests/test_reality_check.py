@@ -90,6 +90,12 @@ def test_missing_module_fails(env):
     assert reality_check.run_reality_check("ne_obstaja", env)["ok"] is False
 
 
+def test_invalid_project_name_rejected(env):
+    """Neveljaven project name (import injekcija) → zavrnjen pred importom."""
+    assert reality_check.run_reality_check("..\\evil", env)["ok"] is False
+    assert reality_check.run_reality_check("a.b", env)["ok"] is False
+
+
 def test_data_dir_param_recognized(env):
     """Modul s parametrom `data_dir` se pokliče z realnim korenom → crash ujet."""
     _write_real_state(env, "idle")
