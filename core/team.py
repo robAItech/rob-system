@@ -174,6 +174,17 @@ class TeamCoordinator:
         qual = self._code_quality_score(project)
         if qual["score"] < 0.85:
             return {"ok": False, "reason": f"Kakovost kode {qual['score']:.2f} pod pragom 0.85: {qual['issues']}"}
+        # REALITY CHECK — modul poženemo proti REALNIM sistem podatkom.
+        # Ujame module, ki so "zeleni na svojih testih", ampak napačni v resnici
+        # (npr. health_metrics z logiko state=='running'). Deterministično.
+        try:
+            from core.reality_check import run_reality_check
+            rc = run_reality_check(project)
+            if not rc["ok"]:
+                return {"ok": False,
+                        "reason": f"Reality check: {'; '.join(rc['issues'])}"}
+        except Exception as e:
+            return {"ok": False, "reason": f"Reality check napaka: {e}"}
         sources = self._read_sources(project)
         if not self._llm_available() or not sources:
             return {"ok": True, "reason": "hevristika (brez LLM ali brez vira)"}
