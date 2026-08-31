@@ -22,7 +22,10 @@ from core import audit  # noqa: E402
 from core.config import settings  # noqa: E402
 from actions.fleet_security.schemas import (  # noqa: E402
     HostInfo,
+    ModelRecordRequest,
     NetworkObservation,
+    PromptHardeningRequest,
+    RedTeamRunRequest,
     RemediationRequest,
     TelemetrySample,
 )
@@ -33,6 +36,9 @@ from actions.fleet_security import (  # noqa: E402
     compliance,
     remediation,
     monitor,
+    redteam,
+    supplychain,
+    threatintel,
 )
 
 router = APIRouter(prefix="/api/fleet-security", tags=["fleet_security"])
@@ -255,6 +261,120 @@ async def monitor_summary_ep():
         return JSONResponse(status_code=200, content=summary)
     except Exception as e:  # noqa: BLE001
         _audit_http("GET", "/monitor/summary", "failed", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ── Red team (Phase 3, SIMULACIJA samo) ──────────────────────────────
+@router.post("/redteam/run")
+async def redteam_run(payload: RedTeamRunRequest):
+    try:
+        target = redteam.MockBrainTarget(secure=payload.mock_mode == "secure")
+        policy = (
+            tuple(payload.policy) if payload.policy is not None else None
+        )
+        selected = None
+        if payload.payload_ids is not None:
+            by_id = {p["id"]: p for p in redteam.PAYLOAD_LIBRARY}
+            selected = [by_id[i] for i in payload.payload_ids if i in by_id]
+        res = await run_in_threadpool(
+            redteam.run_red_team, _get_store(), payload.robot_id, target,
+            payload.system_prompt, policy, selected, None,
+        )
+        _audit_http("POST", "/redteam/run", "ok", payload.robot_id)
+        return JSONResponse(status_code=200, content=res)
+    except Exception as e:  # noqa: BLE001
+        _audit_http("POST", "/redteam/run", "failed", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/redteam/runs")
+async def redteam_runs(device_id: str | None = None):
+    try:
+        runs = await run_in_threadpool(_get_store().list_redteam_runs, device_id)
+        return JSONResponse(status_code=200, content={"runs": runs})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/redteam/harden")
+async def redteam_harden(payload: PromptHardeningRequest):
+    try:
+        hardened, diff = redteam.harden_system_prompt(payload.system_prompt)
+        _audit_http("POST", "/redteam/harden", "ok", payload.robot_id)
+        return JSONResponse(status_code=200, content={"hardened": hardened, "diff": diff})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/redteam/harden/pr")
+async def redteam_harden_pr(payload: PromptHardeningRequest):
+    try:
+        result = await run_in_threadpool(
+            redteam.open_prompt_hardening_pr, _get_store(), payload.robot_id,
+            payload.system_prompt, payload.dry_run, None, None,
+        )
+        _audit_http("POST", "/redteam/harden/pr", "ok", payload.robot_id)
+        return JSONResponse(status_code=200, content={"result": result.model_dump()})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ── Supply chain (Phase 3) ───────────────────────────────────────────
+@router.post("/supplychain/record")
+async def supplychain_record(payload: ModelRecordRequest):
+    try:
+        row_id = await run_in_threadpool(
+            supplychain.record_model, _get_store(), payload.device_id,
+            payload.model, payload.pushed_by, payload.pushed_at,
+            payload.repo_url, None,
+        )
+        _audit_http("POST", "/supplychain/record", "ok", payload.device_id)
+        return JSONResponse(
+            status_code=201, content={"id": row_id, "device_id": payload.device_id}
+        )
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/supplychain/check")
+async def supplychain_check():
+    try:
+        res = await run_in_threadpool(supplychain.run_supplychain_pass, _get_store())
+        _audit_http("POST", "/supplychain/check", "ok", f"findings={res['findings_detected']}")
+        return JSONResponse(status_code=200, content=res)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/supplychain/history")
+async def supplychain_history(device_id: str | None = None):
+    try:
+        history = await run_in_threadpool(_get_store().list_model_history, device_id)
+        return JSONResponse(status_code=200, content={"history": history})
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ── Threat intel (Phase 3) ───────────────────────────────────────────
+@router.post("/threatintel/check")
+async def threatintel_check():
+    try:
+        res = await run_in_threadpool(threatintel.run_threatintel_pass, _get_store())
+        _audit_http("POST", "/threatintel/check", "ok", f"findings={res['findings_detected']}")
+        return JSONResponse(status_code=200, content=res)
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/threatintel/feed")
+async def threatintel_feed():
+    try:
+        advisories = await run_in_threadpool(threatintel.load_feed)
+        return JSONResponse(
+            status_code=200,
+            content={"advisories": [a.model_dump() for a in advisories]},
+        )
+    except Exception as e:  # noqa: BLE001
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 

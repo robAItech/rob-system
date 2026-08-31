@@ -100,6 +100,11 @@ POSTURE_CATEGORIES = (
     "telemetry_anomaly",
     "unknown_egress",
     "egress_anomaly",
+    # Phase 3 — premium moduli (vsi SIMULACIJA / pasivno-only).
+    "redteam_injection",
+    "model_changed",
+    "model_unverified",
+    "known_vulnerability",
 )
 SEVERITIES = ("critical", "high", "medium", "low")
 
@@ -172,6 +177,61 @@ class NetworkObservation(BaseModel):
         except ValueError:
             raise ValueError(f"invalid dst_ip: {v!r}") from None
         return v
+
+
+# ------------------------------------------------------------------ #
+#  Phase 3 — threat intel + red team + supply chain
+# ------------------------------------------------------------------ #
+class VulnerabilityAdvisory(BaseModel):
+    """Ena ranljivost iz threat intel feeda (seed JSON, module-relative).
+
+    ``affected_versions`` = ekspliciten seznam; ``fixed_in`` = range za vse
+    nižje. Oboje prazno → advisory ni nikoli affected.
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    cve_id: StrictText
+    component: StrictText                     # sovpada s firmware komponento / os.name / model.name
+    affected_versions: list[str] = Field(default_factory=list)
+    fixed_in: str = Field(default="", max_length=200)
+    cvss_score: float = Field(ge=0, le=10)
+    severity: str = Field(default="info", max_length=16)   # seed metadata
+    title: str = Field(default="", max_length=300)
+
+
+class RedTeamRunRequest(BaseModel):
+    """Zahteva za red-team pass (SIMULACIJA samo — MockBrain)."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    robot_id: StrictText
+    system_prompt: str = ""
+    policy: list[str] | None = None           # prepovedane fraze; None = privzeti seznam
+    payload_ids: list[str] | None = None      # None = celoten PAYLOAD_LIBRARY
+    mock_mode: Literal["secure", "naive"] = "naive"
+
+
+class PromptHardeningRequest(BaseModel):
+    """Zahteva za prompt hardening (+ opcijski remediacijski PR)."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    robot_id: StrictText
+    system_prompt: str
+    dry_run: bool = True
+
+
+class ModelRecordRequest(BaseModel):
+    """Eksplicitna registracija modela v provenance registry."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    device_id: StrictText
+    model: ModelInfo
+    pushed_by: str | None = None
+    pushed_at: int | None = None
+    repo_url: str | None = None
 
 
 #: Sentinel: "ključ MORA obstajati (poljubna vrednost)" v baseline zahtevah.

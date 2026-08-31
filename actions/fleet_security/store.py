@@ -115,6 +115,33 @@ CREATE TABLE IF NOT EXISTS fs_network_events (
 CREATE INDEX IF NOT EXISTS idx_fs_network_device_dst ON fs_network_events(device_id, dst_host);
 CREATE INDEX IF NOT EXISTS idx_fs_network_device_ts ON fs_network_events(device_id, ts);
 CREATE INDEX IF NOT EXISTS idx_fs_network_ts ON fs_network_events(ts);
+
+CREATE TABLE IF NOT EXISTS fs_redteam_runs (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id         TEXT NOT NULL,
+    payload_id        TEXT NOT NULL,
+    payload_name      TEXT NOT NULL,
+    vector_category   TEXT NOT NULL,
+    decision          TEXT NOT NULL,
+    judged_vulnerable INTEGER NOT NULL,
+    severity          TEXT NOT NULL,
+    ran_at            INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_fs_redteam_device_ts ON fs_redteam_runs(device_id, ran_at);
+
+CREATE TABLE IF NOT EXISTS fs_model_history (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id     TEXT NOT NULL,
+    model_name    TEXT NOT NULL,
+    model_version TEXT NOT NULL,
+    sha256        TEXT NOT NULL DEFAULT '',
+    provider      TEXT NOT NULL DEFAULT '',
+    pushed_by     TEXT,
+    pushed_at     INTEGER,
+    repo_url      TEXT,
+    ts            INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_fs_model_history_device_ts ON fs_model_history(device_id, ts);
 """
 
 
@@ -711,3 +738,95 @@ class FleetSecurityStore:
                 "DELETE FROM fs_network_events WHERE ts < ?", (int(older_than_ts),)
             )
             return cur.rowcount or 0
+
+    # ------------------------------------------------------------------ #
+    #  Phase 3 — red team run-i
+    # ------------------------------------------------------------------ #
+    def append_redteam_run(
+        self,
+        device_id: str,
+        payload_id: str,
+        payload_name: str,
+        vector_category: str,
+        decision: str,
+        judged_vulnerable: bool,
+        severity: str,
+        ran_at: int,
+    ) -> int:
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO fs_redteam_runs
+                    (device_id, payload_id, payload_name, vector_category,
+                     decision, judged_vulnerable, severity, ran_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    device_id, payload_id, payload_name, vector_category,
+                    decision, 1 if judged_vulnerable else 0, severity, int(ran_at),
+                ),
+            )
+            return int(cur.lastrowid)
+
+    def list_redteam_runs(self, device_id: str | None = None) -> list[dict]:
+        with self._get_connection() as conn:
+            if device_id:
+                rows = conn.execute(
+                    "SELECT * FROM fs_redteam_runs WHERE device_id = ? ORDER BY id",
+                    (device_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM fs_redteam_runs ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------ #
+    #  Phase 3 — model provenance history
+    # ------------------------------------------------------------------ #
+    def append_model_record(
+        self,
+        device_id: str,
+        model_name: str,
+        model_version: str,
+        sha256: str,
+        provider: str,
+        pushed_by: str | None,
+        pushed_at: int | None,
+        repo_url: str | None,
+        ts: int,
+    ) -> int:
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO fs_model_history
+                    (device_id, model_name, model_version, sha256, provider,
+                     pushed_by, pushed_at, repo_url, ts)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    device_id, model_name, model_version, sha256, provider,
+                    pushed_by, pushed_at, repo_url, int(ts),
+                ),
+            )
+            return int(cur.lastrowid)
+
+    def latest_model_record(self, device_id: str) -> dict | None:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM fs_model_history WHERE device_id = ?
+                ORDER BY ts DESC, id DESC LIMIT 1
+                """,
+                (device_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_model_history(self, device_id: str | None = None) -> list[dict]:
+        with self._get_connection() as conn:
+            if device_id:
+                rows = conn.execute(
+                    "SELECT * FROM fs_model_history WHERE device_id = ? ORDER BY id",
+                    (device_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM fs_model_history ORDER BY id").fetchall()
+        return [dict(r) for r in rows]

@@ -98,3 +98,50 @@ GET `/monitor/anomalies` · GET `/monitor/summary`.
 ## Daemon
 `_tick_fleet_monitor`: `run_monitor_pass` → `run_assessment` (score svež).
 Vklopljen samo če `FS_MONITOR_HOURS > 0`.
+
+---
+
+# Phase 3 — Premium moduli (SIMULACIJA / pasivno-only)
+
+Trije moduli na ISTEM findings toku; vsak s svojim `*_CATEGORIES` scopom za
+`resolve_categories` (ne clobber-ajo drug drugih).
+
+## Nova najdbna kategorija
+`redteam_injection` (red team) · `model_changed`/`model_unverified`
+(supply chain) · `known_vulnerability` (threat intel). Severity postavi vsak
+modul eksplicitno (`POSTURE_CATEGORY_SEVERITY` sentinel = `"informational"`).
+
+## Embodied-AI Red Team (`redteam.py`) — SAMO simulacija
+- `PAYLOAD_LIBRARY` — kurirani vektorji (direct/indirect injection, roleplay,
+  encoding, DAN, cross-lingual, system-prompt extraction).
+- `BrainTarget` (`simulated=True`) · `MockBrainTarget(secure)` · `LLMBrainTarget`
+  (DeepSeek, NO-KEY → simuliran izhod).
+- `run_red_team` — decide + judge (hevristika) → runs + `redteam_injection`
+  findings. Guard `fs_redteam_sim_only` (fail-closed; nikoli živi robot).
+- `harden_system_prompt` — deterministično (sandwich + boundaries +
+  precedence + ignore-warning), BREZ LLM.
+- `open_prompt_hardening_pr` — reuse remediacijskega gita/PR; piše
+  `system_prompt.md`; nikoli auto-merge. On-demand (ni daemon tick).
+
+## Model Supply-Chain (`supplychain.py`)
+`fs_model_history` provenance registry. First-seen → baseline (brez findinga);
+sha256/version drift → `model_changed` (high, stabilen detail); prazno sha256 →
+`model_unverified` (medium). Resolve samo prek eksplicitne `record_model`.
+Daemon tick `FS_SUPPLYCHAIN_HOURS` (0=off).
+
+## Threat Intel (`threatintel.py`)
+`data/threat_feed.json` seed (module-relative) → version→vuln mapiranje
+(`compare_versions` numerični dot-segmenti; semver pre-release NI
+implementiran). `known_vulnerability`, severity iz CVSS. Daemon tick
+`FS_THREATINTEL_HOURS` (0=off).
+
+## API / CLI
+`POST /redteam/run|harden|harden/pr` · `GET /redteam/runs` ·
+`POST /supplychain/record|check` · `GET /supplychain/history` ·
+`POST /threatintel/check` · `GET /threatintel/feed`. CLI:
+`redteam run/runs/harden` · `supplychain record/check/history` ·
+`threatintel check/feed`.
+
+## Config
+`FS_REDTEAM_SIM_ONLY` (true) · `FS_SUPPLYCHAIN_HOURS` (0) ·
+`FS_THREATINTEL_HOURS` (0) · `FS_THREAT_FEED_PATH` (override; prazno = seed).

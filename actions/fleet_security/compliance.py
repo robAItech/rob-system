@@ -46,7 +46,11 @@ CRA_REQUIREMENTS: list[dict[str, Any]] = [
         "requirement_id": "REQ-01",
         "title": "Secure by default",
         "annex_ref": "CRA Annex I Part I §1(a); Art. 13",
-        "related_categories": ["config_drift"],
+        "related_categories": [
+            "config_drift",
+            # Phase 3 — red team pokaže prompt-injection ranljivosti action-decider-ja.
+            "redteam_injection",
+        ],
     },
     {
         "requirement_id": "REQ-02",
@@ -59,6 +63,8 @@ CRA_REQUIREMENTS: list[dict[str, Any]] = [
             # Phase 2 — nepooblaščen/neznan omrežni egress = izpostavljenost.
             "unknown_egress",
             "egress_anomaly",
+            # Phase 3 — znane ranljivosti (threat intel feed).
+            "known_vulnerability",
         ],
     },
     {
@@ -71,7 +77,12 @@ CRA_REQUIREMENTS: list[dict[str, Any]] = [
         "requirement_id": "REQ-04",
         "title": "Integrity & tamper protection of critical components",
         "annex_ref": "CRA Annex I Part I §5(a)",
-        "related_categories": ["model_provenance"],
+        "related_categories": [
+            "model_provenance",
+            # Phase 3 — supply chain: spremenjen/neverificiran model.
+            "model_changed",
+            "model_unverified",
+        ],
     },
     {
         "requirement_id": "REQ-05",

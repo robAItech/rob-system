@@ -56,6 +56,12 @@ POSTURE_CATEGORY_SEVERITY: dict[str, str] = {
     "telemetry_anomaly": "monitor",
     "unknown_egress": "monitor",
     "egress_anomaly": "monitor",
+    # Phase 3 — premium moduli. Dokumentacijski sentinel: realno severity
+    # postavi vsak modul eksplicitno (Pydantic regex ne dovoli "informational").
+    "redteam_injection": "informational",
+    "model_changed": "informational",
+    "model_unverified": "informational",
+    "known_vulnerability": "informational",
 }
 
 #: Kategorije, ki jih piše/resolve-a posture pass (scope za resolve_categories).

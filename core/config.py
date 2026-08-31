@@ -186,6 +186,16 @@ class SystemSettings(BaseSettings):
     # Retencija surovih telemetry/omrežnih zapisov (urah).
     fs_telemetry_retention_hours: int = Field(default=24, alias="FS_TELEMETRY_RETENTION_HOURS")
     fs_network_retention_hours: int = Field(default=24, alias="FS_NETWORK_RETENTION_HOURS")
+    # ─── Fleet Security Phase 3 — premium moduli (SIMULACIJA / pasivno-only) ──
+    # Red team je SAMO simuliran (MockBrain ali offline LLM, NO-KEY). Nikoli
+    # živi robot. Guard je fail-closed (target mora imeti simulated=True).
+    fs_redteam_sim_only: bool = Field(default=True, alias="FS_REDTEAM_SIM_ONLY")
+    # Daemon periodic tick za model supply-chain preverbo (urah). 0 = onemogočeno.
+    fs_supplychain_hours: int = Field(default=0, alias="FS_SUPPLYCHAIN_HOURS")
+    # Daemon periodic tick za threat intel feed preverbo (urah). 0 = onemogočeno.
+    fs_threatintel_hours: int = Field(default=0, alias="FS_THREATINTEL_HOURS")
+    # Pot do threat feed JSON (override). Prazno = privzeti seed v actions/fleet_security/data/.
+    fs_threat_feed_path: str = Field(default="", alias="FS_THREAT_FEED_PATH")
 
     def is_real_key_available(self) -> bool:
         return bool(

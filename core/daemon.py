@@ -429,6 +429,36 @@ def _tick_fleet_monitor(settings, cfg) -> dict:
         return {"fleet_monitor": f"napaka: {e}"}
 
 
+def _tick_fleet_supplychain(settings, cfg) -> dict:
+    """Phase 3 — model supply-chain preverba → isti findings tok + reassess."""
+    try:
+        from actions.fleet_security import posture
+        from actions.fleet_security.supplychain import run_supplychain_pass
+        from actions.fleet_security.store import FleetSecurityStore
+        store = FleetSecurityStore(settings.fs_db_path)
+        res = run_supplychain_pass(store)
+        posture.run_assessment(store)
+        return {"fleet_supplychain": "ok", **res}
+    except Exception as e:
+        _append_error(f"fleet supply chain: {e}")
+        return {"fleet_supplychain": f"napaka: {e}"}
+
+
+def _tick_fleet_threatintel(settings, cfg) -> dict:
+    """Phase 3 — threat intel feed preverba → isti findings tok + reassess."""
+    try:
+        from actions.fleet_security import posture
+        from actions.fleet_security.threatintel import run_threatintel_pass
+        from actions.fleet_security.store import FleetSecurityStore
+        store = FleetSecurityStore(settings.fs_db_path)
+        res = run_threatintel_pass(store)
+        posture.run_assessment(store)
+        return {"fleet_threatintel": "ok", **res}
+    except Exception as e:
+        _append_error(f"fleet threat intel: {e}")
+        return {"fleet_threatintel": f"napaka: {e}"}
+
+
 def build_scheduler(settings) -> Scheduler:
     """Tabela periodicnih jobov, krmiljena z DAEMON_* nastavitvami."""
     sched = Scheduler()
@@ -470,6 +500,13 @@ def build_scheduler(settings) -> Scheduler:
     if getattr(settings, "fs_monitor_hours", 0) > 0:
         sched.add("fleet_monitor", _tick_fleet_monitor,
                   settings.fs_monitor_hours * 3600)
+    # Phase 3 — supply chain + threat intel (0 = off). Red team je on-demand.
+    if getattr(settings, "fs_supplychain_hours", 0) > 0:
+        sched.add("fleet_supplychain", _tick_fleet_supplychain,
+                  settings.fs_supplychain_hours * 3600)
+    if getattr(settings, "fs_threatintel_hours", 0) > 0:
+        sched.add("fleet_threatintel", _tick_fleet_threatintel,
+                  settings.fs_threatintel_hours * 3600)
     return sched
 
 

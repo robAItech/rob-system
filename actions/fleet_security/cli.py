@@ -26,9 +26,16 @@ from actions.fleet_security import (  # noqa: E402
     discovery,
     monitor,
     posture,
+    redteam,
     remediation,
+    supplychain,
+    threatintel,
 )
-from actions.fleet_security.schemas import NetworkObservation, TelemetrySample  # noqa: E402
+from actions.fleet_security.schemas import (  # noqa: E402
+    ModelInfo,
+    NetworkObservation,
+    TelemetrySample,
+)
 from actions.fleet_security.store import FleetSecurityStore  # noqa: E402
 
 
@@ -113,6 +120,70 @@ def _cmd_monitor(args) -> int:
     return 2
 
 
+# ── Phase 3 — red team / supply chain / threat intel ────────────────────
+def _cmd_redteam(args) -> int:
+    if args.redteam_cmd == "run":
+        target = redteam.MockBrainTarget(secure=(args.mock == "secure"))
+        selected = None
+        if args.payloads:
+            ids = [i.strip() for i in args.payloads.split(",") if i.strip()]
+            by_id = {p["id"]: p for p in redteam.PAYLOAD_LIBRARY}
+            selected = [by_id[i] for i in ids if i in by_id]
+        _emit(redteam.run_red_team(
+            _store(), args.robot_id, target, args.system_prompt, payloads=selected
+        ))
+        return 0
+    if args.redteam_cmd == "runs":
+        _emit({"runs": _store().list_redteam_runs(args.device_id)})
+        return 0
+    if args.redteam_cmd == "harden":
+        if args.pr:
+            result = redteam.open_prompt_hardening_pr(
+                _store(), args.robot_id, args.system_prompt, dry_run=False
+            )
+            _emit(result.model_dump())
+        else:
+            hardened, diff = redteam.harden_system_prompt(args.system_prompt)
+            _emit({"hardened": hardened, "diff": diff})
+        return 0
+    print(f"napaka: neznan redteam ukaz {args.redteam_cmd!r}", file=sys.stderr)
+    return 2
+
+
+def _cmd_supplychain(args) -> int:
+    if args.sc_cmd == "record":
+        model = ModelInfo(
+            name=args.model_name, version=args.model_version,
+            provider=args.provider or "", sha256=args.sha256 or "",
+        )
+        row_id = supplychain.record_model(
+            _store(), args.device_id, model, pushed_by=args.pushed_by
+        )
+        _emit({"id": row_id, "device_id": args.device_id})
+        return 0
+    if args.sc_cmd == "check":
+        _emit(supplychain.run_supplychain_pass(_store()))
+        return 0
+    if args.sc_cmd == "history":
+        _emit({"history": _store().list_model_history(args.device_id)})
+        return 0
+    print(f"napaka: neznan supplychain ukaz {args.sc_cmd!r}", file=sys.stderr)
+    return 2
+
+
+def _cmd_threatintel(args) -> int:
+    if args.ti_cmd == "check":
+        feed = threatintel.load_feed(args.feed) if args.feed else None
+        _emit(threatintel.run_threatintel_pass(_store(), feed=feed))
+        return 0
+    if args.ti_cmd == "feed":
+        feed = threatintel.load_feed(args.feed) if args.feed else None
+        _emit({"advisories": [a.model_dump() for a in (feed or [])]})
+        return 0
+    print(f"napaka: neznan threatintel ukaz {args.ti_cmd!r}", file=sys.stderr)
+    return 2
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="fleet-security",
@@ -156,6 +227,52 @@ def main(argv=None) -> int:
         func=_cmd_monitor
     )
     m_sub.add_parser("summary", help="monitor povzetek").set_defaults(func=_cmd_monitor)
+
+    # Phase 3 — red team (SIMULACIJA samo).
+    p_rt = sub.add_parser("redteam", help="Phase 3 — embodied-AI red team (sim)")
+    rt_sub = p_rt.add_subparsers(dest="redteam_cmd", required=True)
+    p_run = rt_sub.add_parser("run", help="poženi red-team pass na simuliranem možganu")
+    p_run.add_argument("robot_id")
+    p_run.add_argument("--system-prompt", default="")
+    p_run.add_argument("--payloads", default=None, help="vejica-ločeni payload id-i")
+    p_run.add_argument("--mock", choices=["secure", "naive"], default="naive")
+    p_run.set_defaults(func=_cmd_redteam)
+    p_runs = rt_sub.add_parser("runs", help="zgodovina run-ov")
+    p_runs.add_argument("--device-id", default=None)
+    p_runs.set_defaults(func=_cmd_redteam)
+    p_har = rt_sub.add_parser("harden", help="prompt hardening (+ opcijski PR)")
+    p_har.add_argument("robot_id")
+    p_har.add_argument("--system-prompt", required=True)
+    p_har.add_argument("--pr", action="store_true", help="odpri remediacijski PR")
+    p_har.set_defaults(func=_cmd_redteam)
+
+    # Phase 3 — supply chain.
+    p_sc = sub.add_parser("supplychain", help="Phase 3 — model supply-chain verifikacija")
+    sc_sub = p_sc.add_subparsers(dest="sc_cmd", required=True)
+    p_rec = sc_sub.add_parser("record", help="eksplicitno zabeleži model v provenance")
+    p_rec.add_argument("device_id")
+    p_rec.add_argument("--model-name", required=True)
+    p_rec.add_argument("--model-version", default="")
+    p_rec.add_argument("--sha256", default="")
+    p_rec.add_argument("--provider", default="")
+    p_rec.add_argument("--pushed-by", default=None)
+    p_rec.set_defaults(func=_cmd_supplychain)
+    sc_sub.add_parser("check", help="poženi supply-chain pass").set_defaults(
+        func=_cmd_supplychain
+    )
+    p_hist = sc_sub.add_parser("history", help="provenance history")
+    p_hist.add_argument("--device-id", default=None)
+    p_hist.set_defaults(func=_cmd_supplychain)
+
+    # Phase 3 — threat intel.
+    p_ti = sub.add_parser("threatintel", help="Phase 3 — threat intel feed")
+    ti_sub = p_ti.add_subparsers(dest="ti_cmd", required=True)
+    p_chk = ti_sub.add_parser("check", help="poženi threat-intel pass")
+    p_chk.add_argument("--feed", default=None, help="override poti feed JSON")
+    p_chk.set_defaults(func=_cmd_threatintel)
+    p_fd = ti_sub.add_parser("feed", help="prikaži feed advisory-e")
+    p_fd.add_argument("--feed", default=None)
+    p_fd.set_defaults(func=_cmd_threatintel)
 
     args = parser.parse_args(argv)
     return args.func(args)
