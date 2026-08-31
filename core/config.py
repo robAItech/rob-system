@@ -130,6 +130,14 @@ class SystemSettings(BaseSettings):
     # Po re-enable (uporabnik odpravi težavo) target dobi "milost": gate ga ne
     # flag-a znova na podlagi STARE zgodovine, dokler ne poteče (dni).
     quality_reenable_grace_days: int = Field(default=7, alias="QUALITY_REENABLE_GRACE_DAYS")
+    # ─── Agent swarm (team) — avtomatska izbira za kompleksne naloge ────────
+    # Daemon sam odloči, kdaj naloga uporabi multi-agent team (plan→critique→
+    # build→verify) namesto enojnega RSI loopa — brez uporabniškega vnosa.
+    team_auto_enabled: bool = Field(default=True, alias="TEAM_AUTO_ENABLED")
+    # Vejice-ločen seznam kind-ov, ki avtomatsko dobijo team. Privzeto
+    # 'autonomous' (goal_autonomy kompleksne naloge). Dokumentne naloge (doc-guard)
+    # ostanejo single/run_autonomous.
+    team_auto_kinds: str = Field(default="autonomous", alias="TEAM_AUTO_KINDS")
 
     def is_real_key_available(self) -> bool:
         return bool(

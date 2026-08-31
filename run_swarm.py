@@ -49,10 +49,21 @@ def _process_items(items: list) -> list:
     Deljeno jedro F3 (`--process-agenda`) in daemonovega `--item <id>` (P1), da se
     mark/run/mark logika ne podvaja. Vrne [(id, ok), ...].
     """
-    from core.agenda import mark
+    from core.agenda import mark, set_kind
+    from core.config import settings as _settings
+    from core.exec_mode import decide_exec_mode
     results = []
     for it in items:
         ok = False
+        # Avtomatski team swarm: kompleksne naloge (TEAM_AUTO_KINDS) se izvedejo
+        # z multi-agent timom (plan→critique→build→verify), ne enojnim RSI.
+        # Brez uporabniškega vnosa — kind se promovira v 'team' pred dispatch.
+        try:
+            if decide_exec_mode(it, _settings) == "team" and it.get("kind") != "team":
+                set_kind(it["id"], "team")
+                it["kind"] = "team"
+        except Exception:
+            pass
         print(f"  ▶ obdelujem: {it['id']} · {it['goal'][:60]}")
         mark(it["id"], "running")
         try:

@@ -203,6 +203,22 @@ def mark(item_id: str, status: str) -> None:
     _locked(_do)
 
 
+def set_kind(item_id: str, kind: str) -> None:
+    """Spremeni `kind` naloge (npr. na `'team'`).
+
+    Uporablja daemon/run_swarm za avtomatsko izbiro izvajalnega načina
+    (avtomatski team swarm) — kind določa, kateri orchestrator požene nalogo.
+    """
+    def _do() -> None:
+        items = _load()
+        for it in items:
+            if it.get("id") == item_id:
+                it["kind"] = kind
+                it["updated_at"] = int(time.time())
+        _save(items)
+    _locked(_do)
+
+
 def purge_history(keep: tuple = ("pending", "running")) -> int:
     """Odstrani zaključene naloge (done/failed) iz agende; obdrži aktivne.
 

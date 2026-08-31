@@ -40,13 +40,27 @@ def test_process_items_other_sources_use_run(iso):
     assert results == [(item["id"], True)]
 
 
-def test_process_items_autonomous_kind_uses_run_autonomous(iso):
-    item = agenda.add("avtonomna naloga", kind="autonomous", target="calc", source="cli")
+def test_process_items_autonomous_kind_promotes_to_team(iso):
+    """Avtomatski team swarm: kind='autonomous' (modulska) → team (run_team)."""
+    item = agenda.add("Zgradi avtonomni modul", kind="autonomous", target="calc", source="cli")
+    fake_team = mock.Mock(return_value=True)
+    with mock.patch("run_swarm.RobAIOrchestrator.run_team", fake_team):
+        results = _process_items([item])
+
+    fake_team.assert_called_once_with("calc", "Zgradi avtonomni modul")
+    assert agenda.get(item["id"])["kind"] == "team"   # promoviran
+    assert results == [(item["id"], True)]
+
+
+def test_process_items_autonomous_doc_goal_uses_run_autonomous(iso):
+    """Doc-guard: dokumentna avtonomna naloga → run_autonomous (ne team)."""
+    item = agenda.add("Napiši markdown predlog", kind="autonomous", target="calc", source="cli")
     fake_auto = mock.Mock(return_value=True)
     with mock.patch("run_swarm.RobAIOrchestrator.run_autonomous", fake_auto):
         results = _process_items([item])
 
-    fake_auto.assert_called_once_with("calc", "avtonomna naloga")
+    fake_auto.assert_called_once_with("calc", "Napiši markdown predlog")
+    assert agenda.get(item["id"])["kind"] == "autonomous"   # ni promoviran
     assert results == [(item["id"], True)]
 
 
