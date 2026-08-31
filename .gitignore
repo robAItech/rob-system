@@ -62,6 +62,7 @@ __pycache__/
 .rob_ai/weekly_report.md
 .rob_ai/quality_registry.json
 .rob_ai/escalations.json
+.rob_ai/reenable_grace.json
 
 # Baze podatkov in lokalno stanje (Rob AI Studio)
 .rob_ai/memory.db

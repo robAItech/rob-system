@@ -42,6 +42,7 @@ from core import audit  # noqa: E402
 DEFAULT_DB = PROJECT_ROOT / ".rob_ai" / "memory.db"
 QUALITY_REGISTRY = PROJECT_ROOT / ".rob_ai" / "quality_registry.json"
 ESCALATIONS_FILE = PROJECT_ROOT / ".rob_ai" / "escalations.json"
+REENABLE_GRACE_FILE = PROJECT_ROOT / ".rob_ai" / "reenable_grace.json"
 
 # Eventa, ki predstavljata izvedbo naloge (lokalno / fleet worker).
 TASK_EVENTS = ("daemon-task", "fleet-result")
@@ -141,13 +142,29 @@ def _flag_disabled(project: str, m: Dict[str, Any], min_success_rate: float) -> 
 
 
 def reenable(project: str) -> bool:
-    """Uporabnik ponovno omogoči target (odstrani iz disabled registra)."""
+    """Uporabnik ponovno omogoči target (odstrani iz disabled registra).
+
+    Zapiše tudi "milost" (grace) — gate ne flag-a targeta znova na podlagi
+    STARE zgodovine, dokler grace ne poteče (glej `run_gate`).
+    """
     reg = _load_json(QUALITY_REGISTRY, {})
     if project in reg:
         reg.pop(project)
         _save_json(QUALITY_REGISTRY, reg)
+        grace = _load_json(REENABLE_GRACE_FILE, {})
+        grace[project] = int(time.time())
+        _save_json(REENABLE_GRACE_FILE, grace)
         return True
     return False
+
+
+def is_in_grace(project: str, grace_days: int = 7) -> bool:
+    """Ali je target v "milostnem" obdobju po re-enable (ne flag-aj znova)."""
+    grace = _load_json(REENABLE_GRACE_FILE, {})
+    ts = grace.get(project)
+    if not ts:
+        return False
+    return int(time.time()) - int(ts) < max(0, int(grace_days)) * 86400
 
 
 # ------------------------------------------------------------------ #
@@ -193,8 +210,12 @@ def resolve_escalation(project: str, resolved_by: str = "user") -> bool:
 #  Kvalitetni prag (gate)
 # ------------------------------------------------------------------ #
 def run_gate(min_runs: int = 3, min_success_rate: float = 0.5,
+             grace_days: int = 7,
              db_path: Optional[Path | str] = None) -> Dict[str, Any]:
     """Preveri vse targete; pod pragom → disabled + eskalacija. Deterministično.
+
+    `grace_days`: target, ki je bil pravkar re-enable-ana, se NE flag-a znova na
+    podlagi stare zgodovine (dobi čas, da dokaže novo uspešnost).
 
     Vrne povzetek: {checked, flagged, escalated}. Idempotentno: za target, ki je
     že disabled / ima odprto eskalacijo, ne ponovi.
@@ -204,12 +225,16 @@ def run_gate(min_runs: int = 3, min_success_rate: float = 0.5,
     for project, m in q.items():
         if m["runs"] < min_runs:
             continue
+        # "Milost" po re-enable — ne obsojaj na stari zgodovini.
+        if is_in_grace(project, grace_days):
+            continue
         checked += 1
         if m["success_rate"] >= min_success_rate:
             continue
-        if not is_disabled(project):
-            _flag_disabled(project, m, min_success_rate)
-            flagged += 1
+        if is_disabled(project):
+            continue  # že disabled + uporabnik se je odločil → brez dnevnega šuma
+        _flag_disabled(project, m, min_success_rate)
+        flagged += 1
         if record_escalation(
                 project, "nizka uspešnost",
                 f"{m['green']}/{m['runs']} zelenih ({m['success_rate']:.0%})"):

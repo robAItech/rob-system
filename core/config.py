@@ -127,6 +127,9 @@ class SystemSettings(BaseSettings):
     quality_min_runs: int = Field(default=3, alias="QUALITY_MIN_RUNS")
     # Prag uspešnosti (green/runs), pod katerim se target označi kot disabled.
     quality_min_success_rate: float = Field(default=0.5, alias="QUALITY_MIN_SUCCESS_RATE")
+    # Po re-enable (uporabnik odpravi težavo) target dobi "milost": gate ga ne
+    # flag-a znova na podlagi STARE zgodovine, dokler ne poteče (dni).
+    quality_reenable_grace_days: int = Field(default=7, alias="QUALITY_REENABLE_GRACE_DAYS")
 
     def is_real_key_available(self) -> bool:
         return bool(

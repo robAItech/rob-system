@@ -401,7 +401,9 @@ def _tick_quality_gate(settings, cfg) -> dict:
         from core import quality
         min_runs = getattr(settings, "quality_min_runs", 3)
         min_rate = getattr(settings, "quality_min_success_rate", 0.5)
-        res = quality.run_gate(min_runs=min_runs, min_success_rate=min_rate)
+        grace = getattr(settings, "quality_reenable_grace_days", 7)
+        res = quality.run_gate(min_runs=min_runs, min_success_rate=min_rate,
+                               grace_days=grace)
         return {"gate": "ok", **res}
     except Exception as e:
         _append_error(f"quality gate: {e}")

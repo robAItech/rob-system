@@ -16,6 +16,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(quality, "DEFAULT_DB", tmp_path / "memory.db")
     monkeypatch.setattr(quality, "QUALITY_REGISTRY", tmp_path / "quality_registry.json")
     monkeypatch.setattr(quality, "ESCALATIONS_FILE", tmp_path / "escalations.json")
+    monkeypatch.setattr(quality, "REENABLE_GRACE_FILE", tmp_path / "reenable_grace.json")
     monkeypatch.setattr(audit, "AUDIT_FILE", tmp_path / "audit.jsonl")
     return tmp_path
 
@@ -99,6 +100,31 @@ def test_reenable_removes_disabled(env):
     assert quality.reenable("weak")
     assert not quality.is_disabled("weak")
     assert not quality.reenable("weak")
+
+
+def test_reenable_grants_grace_so_gate_does_not_reflag(env, monkeypatch):
+    db = env / "memory.db"
+    _make_db(db, [("weak", "failed")] * 4)   # stara zgodovina = 0%
+    quality.run_gate(min_runs=3, min_success_rate=0.5, db_path=db)
+    assert quality.is_disabled("weak")
+
+    # Uporabnik re-enable → target dobi "milost" (grace).
+    monkeypatch.setattr(quality.time, "time", lambda: 1_000_000)
+    assert quality.reenable("weak")
+    assert not quality.is_disabled("weak")
+    assert quality.is_in_grace("weak", grace_days=7)
+
+    # Gate ob ponovnem zagonu NE flag-a znova (na stari zgodovini).
+    res = quality.run_gate(min_runs=3, min_success_rate=0.5, grace_days=7, db_path=db)
+    assert res["flagged"] == 0
+    assert not quality.is_disabled("weak")
+
+    # Po preteku grace → gate spet lahko flag-a.
+    monkeypatch.setattr(quality.time, "time", lambda: 1_000_000 + 8 * 86400)
+    assert not quality.is_in_grace("weak", grace_days=7)
+    res2 = quality.run_gate(min_runs=3, min_success_rate=0.5, grace_days=7, db_path=db)
+    assert res2["flagged"] == 1
+    assert quality.is_disabled("weak")
 
 
 def test_resolve_escalation(env):
