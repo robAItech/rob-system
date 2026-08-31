@@ -12,6 +12,8 @@ in ob težavi doda ključ ``error``.
 from __future__ import annotations
 
 import json
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Union
 
@@ -19,6 +21,33 @@ _DEFAULT_STATE = "unknown"
 
 _STATUS_KEYS = ("pending", "done", "failed")
 _AGENDA_COLLECTION_KEYS = ("items", "tasks", "entries", "agenda")
+
+# Daemon je ZDRAV v normalnih obratovalnih stanjih (idle, dela, se dviga) —
+# NE samo v "running" (to stanje daemon nikoli ne ima). Nezdrav = shutdown/degraded.
+_HEALTHY_STATES = {
+    "idle", "running", "running_task", "running_tick",
+    "boot", "ensure_services",
+}
+# Daemon piše heartbeat na ~30 s. Če je starejši od tega pragu, je zataknjen/padel.
+_HEARTBEAT_FRESH_SECONDS = 300.0
+
+
+def _heartbeat_age(heartbeat_ts: Any) -> Optional[float]:
+    """Starost heartbeata v sekundah; None, če ni parsable (ISO/neznano)."""
+    if heartbeat_ts is None:
+        return None
+    text = str(heartbeat_ts).strip()
+    if not text:
+        return None
+    try:
+        return time.time() - float(text)            # epoch (realni daemon)
+    except ValueError:
+        pass
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))  # ISO 8601
+        return time.time() - dt.timestamp()
+    except ValueError:
+        return None
 
 
 def _read_json(path: Path) -> Optional[dict]:
@@ -109,7 +138,12 @@ def collect_metrics(
     """Zberi metrike stanja daemona in agende.
 
     Vrne dict s ključi ``daemon`` (``state``, ``heartbeat_ts``),
-    ``agenda`` (``pending``, ``done``, ``failed``) in ``healthy``.
+    ``agenda`` (``pending``, ``done``, ``failed``), ``healthy`` in
+    (če je heartbeat parsable) ``heartbeat_age_s``.
+
+    ``healthy`` = daemon v normalnem obratovalnem stanju (npr. ``idle``,
+    ``running_task``) IN heartbeat svež (ne starejši od ~5 min). Nezdrav =
+    ``shutdown``/``degraded`` ali zastapljen heartbeat (zataknjen/padel daemon).
     Ob manjkajočih/poškodovanih virih ne pade — vrne privzete vrednosti
     in ključ ``error`` z opisom težave.
 
@@ -139,13 +173,16 @@ def collect_metrics(
     heartbeat_ts = _normalize_heartbeat(daemon.get("heartbeat_ts"))
     counts = _count_statuses(agenda)
 
-    healthy = state == "running" and heartbeat_ts is not None
+    age = _heartbeat_age(heartbeat_ts)
+    healthy = state in _HEALTHY_STATES and age is not None and age < _HEARTBEAT_FRESH_SECONDS
 
     result: Dict[str, Any] = {
         "daemon": {"state": state, "heartbeat_ts": heartbeat_ts},
         "agenda": counts,
         "healthy": healthy,
     }
+    if age is not None:
+        result["heartbeat_age_s"] = round(age, 1)
     if errors:
         result["error"] = "; ".join(errors)
     return result
@@ -169,8 +206,16 @@ def summary(base_dir: Optional[Union[str, Path]] = None) -> str:
     agenda = metrics["agenda"]
     state = daemon["state"]
     heartbeat = daemon["heartbeat_ts"] or _DEFAULT_STATE
+    # Človeško berljiv heartbeat (HH:MM:SS), če je parsable epoch; sicer surov.
+    hb_display = heartbeat
+    if metrics.get("heartbeat_age_s") is not None:
+        try:
+            hb_display = time.strftime("%H:%M:%S", time.localtime(float(heartbeat)))
+        except (TypeError, ValueError, OSError):
+            pass
+    health = "zdrav" if metrics.get("healthy") else "ni zdrav"
     return (
-        f"Daemon: {state} (heartbeat {heartbeat}) — agenda: "
+        f"Daemon: {state} ({health}, heartbeat {hb_display}) — agenda: "
         f"{agenda['pending']} pending, {agenda['done']} done, "
         f"{agenda['failed']} failed."
     )

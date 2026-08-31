@@ -11,6 +11,7 @@ Pokriva normalne in robne pogoje modula:
 """
 
 import json
+import time
 
 import pytest
 
@@ -34,11 +35,15 @@ def _write_json(tmp_path, name, payload):
 
 
 def test_collect_metrics_happy_path(tmp_path):
-    """Uspešno branje obeh datotek vrne pričakovane metrike."""
+    """Uspešno branje obeh datotek vrne pričakovane metrike.
+
+    Realni primer: daemon je v normalnem stanju ``idle`` (ne ``running``)
+    s SVEŽIM heartbeat-om → healthy True."""
+    now = int(time.time())
     _write_json(
         tmp_path,
         "daemon.json",
-        {"state": "running", "heartbeat_ts": "2025-01-01T00:00:00Z"},
+        {"state": "idle", "heartbeat_ts": now},
     )
     _write_json(
         tmp_path,
@@ -55,13 +60,37 @@ def test_collect_metrics_happy_path(tmp_path):
 
     metrics = collect_metrics(tmp_path)
 
-    assert metrics["daemon"] == {
-        "state": "running",
-        "heartbeat_ts": "2025-01-01T00:00:00Z",
-    }
+    assert metrics["daemon"] == {"state": "idle", "heartbeat_ts": str(now)}
     assert metrics["agenda"] == {"pending": 1, "done": 2, "failed": 1}
     assert metrics["healthy"] is True
+    assert metrics["heartbeat_age_s"] < 10
     assert "error" not in metrics
+
+
+def test_healthy_idle_state_is_healthy(tmp_path):
+    """Daemon v 'idle' (normalno stanje) + svež heartbeat → healthy True."""
+    now = int(time.time())
+    _write_json(tmp_path, "daemon.json", {"state": "idle", "heartbeat_ts": now})
+    _write_json(tmp_path, "agenda.json", {"items": []})
+    assert collect_metrics(tmp_path)["healthy"] is True
+
+
+def test_healthy_stale_heartbeat_is_false(tmp_path):
+    """Svežo stanje ampak ZASTAREL heartbeat (>5 min) → healthy False (zataknjen)."""
+    stale = int(time.time()) - 600
+    _write_json(tmp_path, "daemon.json", {"state": "idle", "heartbeat_ts": stale})
+    _write_json(tmp_path, "agenda.json", {"items": []})
+    metrics = collect_metrics(tmp_path)
+    assert metrics["healthy"] is False
+    assert metrics["heartbeat_age_s"] > 500
+
+
+def test_healthy_shutdown_is_false(tmp_path):
+    """Daemon v 'shutdown' → healthy False tudi ob svežem heartbeat-u."""
+    now = int(time.time())
+    _write_json(tmp_path, "daemon.json", {"state": "shutdown", "heartbeat_ts": now})
+    _write_json(tmp_path, "agenda.json", {"items": []})
+    assert collect_metrics(tmp_path)["healthy"] is False
 
 
 def test_collect_metrics_missing_daemon(tmp_path):
