@@ -2047,6 +2047,25 @@ const server = Bun.serve({
         current_tasks: daemon.current_tasks || null,
       } });
     }
+    // Fleet Security — konsolidiran varnostni snapshot (actions/fleet_security/dashboard.py).
+    if (req.method === 'GET' && url.pathname === '/api/fleet-security') {
+      try {
+        const proc = Bun.spawn({
+          cmd: ['python', '-m', 'actions.fleet_security.dashboard'],
+          cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+        });
+        const out = await new Response(proc.stdout).text();
+        const code = await proc.exited;
+        if (code !== 0) {
+          const err = await new Response(proc.stderr).text().catch(() => '');
+          return json({ ok: false, error: `fleet-security snapshot (exit ${code}): ${err.slice(0, 300)}` }, 500);
+        }
+        return json({ ok: true, ...JSON.parse(out.trim() || '{}') });
+      } catch (err) {
+        return json({ ok: false, error: String(err instanceof Error ? err.message : err) }, 500);
+      }
+    }
     // Realen arhitekturni graf iz graph.json (redukcija na modulno raven).
     if (req.method === 'POST' && url.pathname === '/api/agenda') {
       const raw = await req.text().catch(() => '');

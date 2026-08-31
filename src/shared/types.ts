@@ -39,6 +39,71 @@ export interface SystemMetrics {
   llmOnline?: boolean;
 }
 
+// ── Fleet Security (dashboard snapshot iz actions/fleet_security/dashboard.py) ──
+export interface FleetSecurityFleet {
+  device_count: number;
+  mean_score: number | null;
+  grades: Record<string, number>;          // A..F -> count
+}
+
+export interface FleetSecurityDevice {
+  device_id: string;
+  role: string;
+  hostname: string;
+  score?: number;                          // samo če je bilo ocenjeno
+  grade?: string;
+  counts?: Record<string, number>;         // severity -> count
+}
+
+export interface FleetSecurityFinding {
+  severity: string;                        // critical|high|medium|low
+  category: string;
+  device_id: string;
+  detail: string;
+}
+
+export interface FleetSecurityCra {
+  requirement_id: string;
+  title: string;
+  status: string;                          // compliant|non_compliant|partial|not_applicable
+}
+
+export interface FleetSecurityMonitor {
+  open_anomaly_findings: number;
+  by_category?: Record<string, number>;
+}
+
+export interface FleetSecurityRedteam {
+  runs: number;
+  vulnerable: number;
+  open_injection_findings: number;
+}
+
+export interface FleetSecuritySupplychain {
+  history_records: number;
+  open_findings: number;
+}
+
+export interface FleetSecurityThreatintel {
+  advisories: number;
+  open_vulnerabilities: number;
+}
+
+export interface FleetSecurityStatus {
+  ok?: boolean;
+  error?: string;
+  generated_at?: string;
+  fleet?: FleetSecurityFleet;
+  devices?: FleetSecurityDevice[];
+  findings?: FleetSecurityFinding[];
+  findings_by_severity?: Record<string, number>;
+  cra?: FleetSecurityCra[];
+  monitor?: FleetSecurityMonitor;
+  redteam?: FleetSecurityRedteam;
+  supplychain?: FleetSecuritySupplychain;
+  threatintel?: FleetSecurityThreatintel;
+}
+
 export interface LiveEvent {
   type: string;          // connected | heartbeat | event
   ts?: number;

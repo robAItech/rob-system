@@ -28,6 +28,7 @@
         <button class="nav-btn" data-view="chat">Pogovor</button>
         <button class="nav-btn" data-view="agenda">Agenda</button>
         <button class="nav-btn" data-view="graph">Graf</button>
+        <button class="nav-btn" data-view="security">Varnost</button>
       </nav>
       <div class="sys">
         <span>LLM <b id="llm-label">DeepSeek</b></span>
@@ -111,6 +112,15 @@
           </div>
           <svg id="graph-svg" class="graph-svg" role="img" aria-label="Arhitekturni graf"></svg>
           <div id="graph-tip" class="graph-tip"></div>
+        </div>
+      </section>
+
+      <!-- VARNOST -->
+      <section class="view hidden" data-view-panel="security">
+        <div class="view-head"><h1>Varnost flote</h1><span class="meta">fleet security · snapshot</span></div>
+        <div class="panel">
+          <div class="phead"><span class="ptitle">🔐 Fleet Security</span><span class="ptag">SNAPSHOT</span></div>
+          <div class="pbody fleet-security-body" id="fleet-security-body"><span class="muted">nalaganje …</span></div>
         </div>
       </section>
     </main>

@@ -1,5 +1,5 @@
 // src/web/api.ts — tipiziran API client (server.ts kontrakt iz shared/types).
-import type { FleetStatus, SystemMetrics, AgendaCounts } from '../shared/types';
+import type { FleetStatus, SystemMetrics, AgendaCounts, FleetSecurityStatus } from '../shared/types';
 
 let onUnauthorized: (() => void) | null = null;
 let sessionExpired = false;
@@ -39,6 +39,8 @@ export const fetchMetrics = () => getJSON<SystemMetrics>('/api/metrics');
 
 export interface AgendaResponse { ok: boolean; items: Array<Record<string, unknown>>; }
 export const fetchAgenda = () => getJSON<AgendaResponse>('/api/agenda');
+
+export const fetchFleetSecurity = () => getJSON<FleetSecurityStatus>('/api/fleet-security');
 
 // Human-readable starost iz unix timestampa.
 export function ageAgo(ts?: number): string {
