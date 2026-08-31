@@ -74,6 +74,9 @@ __pycache__/
 .rob_ai/fleet_security.db-shm
 .rob_ai/fleet_security.db-wal
 .rob_ai/fleet_security_baselines/
+# Fleet Security — demo artefakti (generirani ob vsakem zagonu)
+.rob_ai/fleet_security_demo.*
+demo_report.md
 .loopx/
 .DS_Store
 
