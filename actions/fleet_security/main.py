@@ -20,9 +20,20 @@ from starlette.concurrency import run_in_threadpool  # noqa: E402
 
 from core import audit  # noqa: E402
 from core.config import settings  # noqa: E402
-from actions.fleet_security.schemas import HostInfo, RemediationRequest  # noqa: E402
+from actions.fleet_security.schemas import (  # noqa: E402
+    HostInfo,
+    NetworkObservation,
+    RemediationRequest,
+    TelemetrySample,
+)
 from actions.fleet_security.store import FleetSecurityStore  # noqa: E402
-from actions.fleet_security import discovery, posture, compliance, remediation  # noqa: E402
+from actions.fleet_security import (  # noqa: E402
+    discovery,
+    posture,
+    compliance,
+    remediation,
+    monitor,
+)
 
 router = APIRouter(prefix="/api/fleet-security", tags=["fleet_security"])
 app = FastAPI(title="Fleet Security (passive)", version="1.0.0")
@@ -181,6 +192,70 @@ async def health():
         )
     except Exception as e:  # noqa: BLE001
         return JSONResponse(status_code=500, content={"status": "error", "error": str(e)})
+
+
+# ── Monitor (Phase 2, Skin A) ─────────────────────────────────────────
+@router.post("/monitor/telemetry")
+async def ingest_telemetry(payload: TelemetrySample):
+    try:
+        res = await run_in_threadpool(monitor.ingest_telemetry, _get_store(), payload)
+        _audit_http("POST", "/monitor/telemetry", "ok", payload.device_id)
+        return JSONResponse(status_code=201, content=res)
+    except Exception as e:  # noqa: BLE001
+        _audit_http("POST", "/monitor/telemetry", "failed", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/monitor/network")
+async def ingest_network(payload: NetworkObservation):
+    try:
+        res = await run_in_threadpool(
+            monitor.ingest_network_observation, _get_store(), payload
+        )
+        _audit_http("POST", "/monitor/network", "ok", payload.device_id)
+        return JSONResponse(status_code=201, content=res)
+    except Exception as e:  # noqa: BLE001
+        _audit_http("POST", "/monitor/network", "failed", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/monitor/run")
+async def run_monitor():
+    try:
+        summary = await run_in_threadpool(monitor.run_monitor_pass, _get_store())
+        _audit_http(
+            "POST", "/monitor/run", "ok",
+            f"findings={summary['findings_detected']}",
+        )
+        return JSONResponse(status_code=200, content=summary)
+    except Exception as e:  # noqa: BLE001
+        _audit_http("POST", "/monitor/run", "failed", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/monitor/anomalies")
+async def monitor_anomalies(device_id: str | None = None):
+    try:
+        findings = await run_in_threadpool(_get_store().list_open_findings, device_id)
+        monitor_findings = [
+            f.model_dump()
+            for f in findings
+            if f.category in monitor.MONITOR_CATEGORIES
+        ]
+        return JSONResponse(status_code=200, content={"findings": monitor_findings})
+    except Exception as e:  # noqa: BLE001
+        _audit_http("GET", "/monitor/anomalies", "failed", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.get("/monitor/summary")
+async def monitor_summary_ep():
+    try:
+        summary = await run_in_threadpool(monitor.monitor_summary, _get_store())
+        return JSONResponse(status_code=200, content=summary)
+    except Exception as e:  # noqa: BLE001
+        _audit_http("GET", "/monitor/summary", "failed", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 # Router mora biti vključen PO definiciji vseh route (include_router zajame

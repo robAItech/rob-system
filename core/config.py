@@ -172,6 +172,20 @@ class SystemSettings(BaseSettings):
     # Tracked desired-state drevo za PR vsebino (.rob_ai/ je gitignored, zato
     # remediacijska vsebina živi v config/fleet_security/desired/).
     fs_desired_state_dir: str = Field(default="config/fleet_security/desired", alias="FS_DESIRED_STATE_DIR")
+    # ─── Fleet Security Phase 2 — telemetry/egress monitor (pasivno) ──────
+    # Daemon periodic tick interval za monitor pass (urah). 0 = onemogočeno.
+    fs_monitor_hours: int = Field(default=0, alias="FS_MONITOR_HOURS")
+    # Koliko zadnjih telemetry vzorcev na napravo za z-score anomalijo.
+    fs_telemetry_window: int = Field(default=20, alias="FS_TELEMETRY_WINDOW")
+    # Prag |z| za telemetry anomalijo (>= 3 medium, >= 5 high).
+    fs_anomaly_z_threshold: float = Field(default=3.0, alias="FS_ANOMALY_Z_THRESHOLD")
+    # Najmanj vzorcev, preden se z-score sploh izračuna.
+    fs_anomaly_min_samples: int = Field(default=5, alias="FS_ANOMALY_MIN_SAMPLES")
+    # Vejica-ločen allowlist egress destinacij (domene/IP/CIDR).
+    fs_egress_allowlist: str = Field(default="", alias="FS_EGRESS_ALLOWLIST")
+    # Retencija surovih telemetry/omrežnih zapisov (urah).
+    fs_telemetry_retention_hours: int = Field(default=24, alias="FS_TELEMETRY_RETENTION_HOURS")
+    fs_network_retention_hours: int = Field(default=24, alias="FS_NETWORK_RETENTION_HOURS")
 
     def is_real_key_available(self) -> bool:
         return bool(

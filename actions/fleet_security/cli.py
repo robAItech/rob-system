@@ -21,7 +21,14 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.config import settings  # noqa: E402
-from actions.fleet_security import compliance, discovery, posture, remediation  # noqa: E402
+from actions.fleet_security import (  # noqa: E402
+    compliance,
+    discovery,
+    monitor,
+    posture,
+    remediation,
+)
+from actions.fleet_security.schemas import NetworkObservation, TelemetrySample  # noqa: E402
 from actions.fleet_security.store import FleetSecurityStore  # noqa: E402
 
 
@@ -69,6 +76,43 @@ def _cmd_remediate(args) -> int:
     return 0
 
 
+def _cmd_monitor(args) -> int:
+    """Dispatch monitor leaf-ukazov (telemetry|network|run|summary)."""
+    if args.monitor_cmd == "telemetry":
+        metrics: dict[str, float] = {}
+        for kv in args.metrics:
+            if "=" not in kv:
+                print(f"napaka: pričakoval key=value, dobil {kv!r}", file=sys.stderr)
+                return 2
+            key, _, val = kv.partition("=")
+            try:
+                metrics[key] = float(val)
+            except ValueError:
+                print(f"napaka: {val!r} ni številka za {key}", file=sys.stderr)
+                return 2
+        sample = TelemetrySample(device_id=args.device_id, source="cli", metrics=metrics)
+        _emit(monitor.ingest_telemetry(_store(), sample))
+        return 0
+    if args.monitor_cmd == "network":
+        obs = NetworkObservation(
+            device_id=args.device_id,
+            dst_host=args.dst_host,
+            dst_ip=args.dst_ip,
+            dst_port=args.dst_port,
+            proto=args.proto,
+        )
+        _emit(monitor.ingest_network_observation(_store(), obs))
+        return 0
+    if args.monitor_cmd == "run":
+        _emit(monitor.run_monitor_pass(_store()))
+        return 0
+    if args.monitor_cmd == "summary":
+        _emit(monitor.monitor_summary(_store()))
+        return 0
+    print(f"napaka: neznan monitor ukaz {args.monitor_cmd!r}", file=sys.stderr)
+    return 2
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="fleet-security",
@@ -94,6 +138,24 @@ def main(argv=None) -> int:
         p.add_argument("device_id")
         p.add_argument("--kind", choices=["config", "network_policy"], default="config")
         p.set_defaults(func=_cmd_remediate, pr=not dry)
+
+    p_monitor = sub.add_parser("monitor", help="Phase 2 — operator monitor (pasivno)")
+    m_sub = p_monitor.add_subparsers(dest="monitor_cmd", required=True)
+    p_tel = m_sub.add_parser("telemetry", help="pošlji telemetry vzorec")
+    p_tel.add_argument("device_id")
+    p_tel.add_argument("metrics", nargs="+", help="key=value key=value ...")
+    p_tel.set_defaults(func=_cmd_monitor)
+    p_net = m_sub.add_parser("network", help="pošlji omrežno opazko")
+    p_net.add_argument("device_id")
+    p_net.add_argument("dst_host")
+    p_net.add_argument("dst_ip", nargs="?")
+    p_net.add_argument("dst_port", nargs="?", type=int)
+    p_net.add_argument("proto", nargs="?")
+    p_net.set_defaults(func=_cmd_monitor)
+    m_sub.add_parser("run", help="poženi monitor pass (detekcija + prune)").set_defaults(
+        func=_cmd_monitor
+    )
+    m_sub.add_parser("summary", help="monitor povzetek").set_defaults(func=_cmd_monitor)
 
     args = parser.parse_args(argv)
     return args.func(args)

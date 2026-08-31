@@ -92,6 +92,29 @@ CREATE TABLE IF NOT EXISTS fs_remediations (
     created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_fs_remediations_device ON fs_remediations(device_id);
+
+CREATE TABLE IF NOT EXISTS fs_telemetry (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id    TEXT NOT NULL,
+    ts           INTEGER NOT NULL,
+    source       TEXT NOT NULL DEFAULT 'device',
+    metrics_json TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_fs_telemetry_device_ts ON fs_telemetry(device_id, ts);
+CREATE INDEX IF NOT EXISTS idx_fs_telemetry_ts ON fs_telemetry(ts);
+
+CREATE TABLE IF NOT EXISTS fs_network_events (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id TEXT NOT NULL,
+    ts        INTEGER NOT NULL,
+    dst_host  TEXT,
+    dst_ip    TEXT,
+    dst_port  INTEGER,
+    proto     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fs_network_device_dst ON fs_network_events(device_id, dst_host);
+CREATE INDEX IF NOT EXISTS idx_fs_network_device_ts ON fs_network_events(device_id, ts);
+CREATE INDEX IF NOT EXISTS idx_fs_network_ts ON fs_network_events(ts);
 """
 
 
@@ -228,6 +251,7 @@ class FleetSecurityStore:
         findings: list[PostureFinding],
         now: int | None = None,
         assessed: list[str] | None = None,
+        resolve_categories: set[str] | None = None,
     ) -> int:
         """Vstavi nove najdbe + resolve odprte, ki niso več v incoming.
 
@@ -237,6 +261,10 @@ class FleetSecurityStore:
         Resolve: za vsako napravo v ``assessed`` (privzeto tiste, ki so v
         ``findings``) se odprte najdbe, ki NISO v incoming setu, označijo kot
         ``resolved`` — tudi če ima naprava v tem pass-u NIČ najdb (čista).
+
+        ``resolve_categories`` scopa-ta resolve na podane kategorije (Phase 2:
+        posture in monitor pisatelja resolve-ata vsak SVOJE kategorije in si
+        tako ne clobber-ata najdb).
         """
         now = int(now) if now is not None else _now()
         inserted = 0
@@ -280,6 +308,11 @@ class FleetSecurityStore:
                     (device_id,),
                 ).fetchall()
                 for row in open_rows:
+                    if (
+                        resolve_categories is not None
+                        and row["category"] not in resolve_categories
+                    ):
+                        continue
                     key = (row["category"], row["detail"], row["severity"])
                     if key not in incoming:
                         conn.execute(
@@ -485,3 +518,196 @@ class FleetSecurityStore:
                     "SELECT * FROM fs_remediations ORDER BY id"
                 ).fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------ #
+    #  Phase 2 — telemetry (časovna vrsta)
+    # ------------------------------------------------------------------ #
+    def append_telemetry(
+        self, device_id: str, ts: int, source: str, metrics: dict
+    ) -> int:
+        """Shrani en telemetry vzorec. Vrne id."""
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO fs_telemetry (device_id, ts, source, metrics_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (device_id, int(ts), source, json.dumps(metrics, sort_keys=True)),
+            )
+            return int(cur.lastrowid)
+
+    def recent_telemetry(
+        self, device_id: str, metric: str | None = None, n: int = 20
+    ) -> list[dict]:
+        """Zadnjih ``n`` vzorcev naprave, ASC po ts (najnovejši nazadnje).
+
+        Vrne dict-e s ``metrics`` že json.loads-ane; če je ``metric`` podan,
+        se vzorci brez te metrike izpustijo.
+        """
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, device_id, ts, source, metrics_json FROM fs_telemetry
+                WHERE device_id = ? ORDER BY ts DESC, id DESC LIMIT ?
+                """,
+                (device_id, int(n)),
+            ).fetchall()
+        out = []
+        for r in reversed(rows):
+            metrics = json.loads(r["metrics_json"] or "{}")
+            if metric is not None and metric not in metrics:
+                continue
+            out.append(
+                {
+                    "id": r["id"],
+                    "device_id": r["device_id"],
+                    "ts": r["ts"],
+                    "source": r["source"],
+                    "metrics": metrics,
+                }
+            )
+        return out
+
+    def telemetry_in_window(self, device_id: str, window_seconds: int) -> list[dict]:
+        """Vzorci naprave z ``ts >= now - window_seconds`` (ASC)."""
+        from time import time as _t
+
+        cutoff = int(_t()) - int(window_seconds)
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, device_id, ts, source, metrics_json FROM fs_telemetry
+                WHERE device_id = ? AND ts >= ? ORDER BY ts ASC
+                """,
+                (device_id, cutoff),
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "device_id": r["device_id"],
+                "ts": r["ts"],
+                "source": r["source"],
+                "metrics": json.loads(r["metrics_json"] or "{}"),
+            }
+            for r in rows
+        ]
+
+    def telemetry_device_count(self) -> int:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(DISTINCT device_id) AS n FROM fs_telemetry"
+            ).fetchone()
+        return int(row["n"]) if row else 0
+
+    def monitor_device_ids(self) -> set[str]:
+        """Unija device id-jev iz inventarja + telemetry + omrežnih opazk."""
+        out: set[str] = set()
+        with self._get_connection() as conn:
+            for table in ("fs_devices", "fs_telemetry", "fs_network_events"):
+                try:
+                    rows = conn.execute(
+                        f"SELECT DISTINCT device_id FROM {table}"
+                    ).fetchall()
+                except sqlite3.OperationalError:
+                    continue
+                out.update(r["device_id"] for r in rows)
+        return out
+
+    # ------------------------------------------------------------------ #
+    #  Phase 2 — omrežne opazke
+    # ------------------------------------------------------------------ #
+    def append_network_observation(
+        self,
+        device_id: str,
+        ts: int,
+        dst_host: str | None,
+        dst_ip: str | None,
+        dst_port: int | None,
+        proto: str | None,
+    ) -> int:
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO fs_network_events
+                    (device_id, ts, dst_host, dst_ip, dst_port, proto)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (device_id, int(ts), dst_host, dst_ip, dst_port, proto),
+            )
+            return int(cur.lastrowid)
+
+    def recent_network_events(
+        self, device_id: str, since_ts: int | None = None, n: int = 500
+    ) -> list[dict]:
+        """Nedavne omrežne opazke naprave (ASC po ts)."""
+        with self._get_connection() as conn:
+            if since_ts is not None:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM fs_network_events
+                    WHERE device_id = ? AND ts >= ? ORDER BY ts ASC LIMIT ?
+                    """,
+                    (device_id, int(since_ts), int(n)),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM fs_network_events
+                    WHERE device_id = ? ORDER BY ts ASC LIMIT ?
+                    """,
+                    (device_id, int(n)),
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def known_destinations(
+        self, device_id: str, before_ts: int | None = None
+    ) -> set[str]:
+        """Vse znane dst destinacije (host ali ip) naprave do ``before_ts``."""
+        with self._get_connection() as conn:
+            if before_ts is not None:
+                rows = conn.execute(
+                    """
+                    SELECT dst_host, dst_ip FROM fs_network_events
+                    WHERE device_id = ? AND ts < ?
+                    """,
+                    (device_id, int(before_ts)),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT dst_host, dst_ip FROM fs_network_events
+                    WHERE device_id = ?
+                    """,
+                    (device_id,),
+                ).fetchall()
+        out: set[str] = set()
+        for r in rows:
+            if r["dst_host"]:
+                out.add(r["dst_host"])
+            if r["dst_ip"]:
+                out.add(r["dst_ip"])
+        return out
+
+    def network_device_count(self) -> int:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(DISTINCT device_id) AS n FROM fs_network_events"
+            ).fetchone()
+        return int(row["n"]) if row else 0
+
+    # ------------------------------------------------------------------ #
+    #  Phase 2 — retencija / pruning
+    # ------------------------------------------------------------------ #
+    def prune_telemetry(self, older_than_ts: int) -> int:
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                "DELETE FROM fs_telemetry WHERE ts < ?", (int(older_than_ts),)
+            )
+            return cur.rowcount or 0
+
+    def prune_network_events(self, older_than_ts: int) -> int:
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                "DELETE FROM fs_network_events WHERE ts < ?", (int(older_than_ts),)
+            )
+            return cur.rowcount or 0

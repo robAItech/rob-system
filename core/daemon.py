@@ -410,6 +410,25 @@ def _tick_quality_gate(settings, cfg) -> dict:
         return {"gate": f"napaka: {e}"}
 
 
+def _tick_fleet_monitor(settings, cfg) -> dict:
+    """Phase 2 — pasivni operator monitor: telemetry/egress anomalije → isti
+    findings tok; nato reassess, da se najdbe odrazijo v score/eskalaciji.
+
+    Omogoči z FS_MONITOR_HOURS (> 0). 0 = izključeno (ni v schedulerju).
+    """
+    try:
+        from actions.fleet_security import posture
+        from actions.fleet_security.monitor import run_monitor_pass
+        from actions.fleet_security.store import FleetSecurityStore
+        store = FleetSecurityStore(settings.fs_db_path)
+        res = run_monitor_pass(store)
+        posture.run_assessment(store)
+        return {"fleet_monitor": "ok", **res}
+    except Exception as e:
+        _append_error(f"fleet monitor: {e}")
+        return {"fleet_monitor": f"napaka: {e}"}
+
+
 def build_scheduler(settings) -> Scheduler:
     """Tabela periodicnih jobov, krmiljena z DAEMON_* nastavitvami."""
     sched = Scheduler()
@@ -447,6 +466,10 @@ def build_scheduler(settings) -> Scheduler:
             and getattr(settings, "quality_gate_hours", 0) > 0):
         sched.add("quality_gate", _tick_quality_gate,
                   getattr(settings, "quality_gate_hours", 0) * 3600)
+    # Phase 2 — pasivni fleet security monitor (telemetry/egress). 0 = off.
+    if getattr(settings, "fs_monitor_hours", 0) > 0:
+        sched.add("fleet_monitor", _tick_fleet_monitor,
+                  settings.fs_monitor_hours * 3600)
     return sched
 
 

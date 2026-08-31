@@ -52,7 +52,14 @@ CRA_REQUIREMENTS: list[dict[str, Any]] = [
         "requirement_id": "REQ-02",
         "title": "Vulnerability handling (no known exploitable vulns in default config)",
         "annex_ref": "CRA Annex I Part I §2(a)",
-        "related_categories": ["firmware_drift", "model_provenance", "os_version_drift"],
+        "related_categories": [
+            "firmware_drift",
+            "model_provenance",
+            "os_version_drift",
+            # Phase 2 — nepooblaščen/neznan omrežni egress = izpostavljenost.
+            "unknown_egress",
+            "egress_anomaly",
+        ],
     },
     {
         "requirement_id": "REQ-03",

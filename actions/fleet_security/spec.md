@@ -49,5 +49,52 @@ critical) · `stale_heartbeat`(high) · `missing_device`(critical).
 
 ## Meje (deferred)
 K8s manifest (compose prek `./rob deploy`) · daemon periodic assess · LLM
-poročilni prozo · Phase 2 skin-a · Phase 3 moduli (embodied-AI red team,
-model supply-chain verifikacija, threat intel feed).
+poročilni prozo · Phase 3 moduli (embodied-AI red team, model supply-chain
+verifikacija, threat intel feed).
+
+---
+
+# Phase 2 — Operator Monitor (Skin A) + OEM Embed SDK (Skin B)
+
+Dva tanka skin-a na ENAM jedru (~80% deljeno). Vse monitor najdbe tečejo v
+ISTI `fs_findings` tok → posture + CRA + eskalacija ostanejo eno.
+
+## Nova najdbna kategorija
+`telemetry_anomaly` (|z|>=3 medium, >=5 high) · `unknown_egress` (first-seen
+dst, high) · `egress_anomaly` (>=5 unknown dst v oknu, medium).
+
+## Monitor (`monitor.py`)
+- `ingest_telemetry` / `ingest_network_observation` — pasivno, vsak zapis →
+  audit.
+- `detect_telemetry_anomalies` — z-score (signal_calc.z_score, populacijska
+  varianca) zadnjega vzorca vs. rolling baseline; flat data → 0.0 → ni flag.
+- `detect_egress_anomalies` — window-based first-seen (known_before iz
+  fs_network_events) + allowlist (domene/IP/CIDR).
+- `run_monitor_pass` — detekcija → `upsert_findings(..., resolve_categories=
+  MONITOR_CATEGORIES)` (ne clobber-a posture) → prune retencije → audit.
+- `monitor_summary`.
+
+## Cross-category clobber fix
+`store.upsert_findings(..., resolve_categories)` scopa-ta resolve na podane
+kategorije. Posture pass uporablja `POSTURE_OWNED_CATEGORIES`, monitor
+`MONITOR_CATEGORIES` — si ne brišeta najdb. Posture score šteje OPEN najdbe
+po upsertu → monitor najdbe znižajo score.
+
+## OEM SDK (`sdk.py`) — dependency-free (samo stdlib)
+`fingerprint()` (točno strict HostInfo obliko) · `report_hostinfo` ·
+`report_telemetry` · `report_network`. Transport `urllib.request`, nikoli ne
+pade (`{"ok": False, "error": ...}`). `sdk_demo.py` = dogfood.
+
+## API (main.py)
+POST `/monitor/telemetry` · POST `/monitor/network` · POST `/monitor/run` ·
+GET `/monitor/anomalies` · GET `/monitor/summary`.
+
+## Config
+`FS_MONITOR_HOURS` (daemon tick, 0=off) · `FS_TELEMETRY_WINDOW` (20) ·
+`FS_ANOMALY_Z_THRESHOLD` (3.0) · `FS_ANOMALY_MIN_SAMPLES` (5) ·
+`FS_EGRESS_ALLOWLIST` · `FS_TELEMETRY_RETENTION_HOURS` (24) ·
+`FS_NETWORK_RETENTION_HOURS` (24).
+
+## Daemon
+`_tick_fleet_monitor`: `run_monitor_pass` → `run_assessment` (score svež).
+Vklopljen samo če `FS_MONITOR_HOURS > 0`.

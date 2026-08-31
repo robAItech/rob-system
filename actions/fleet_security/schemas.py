@@ -15,7 +15,7 @@ Deterministično, brez LLM.
 from __future__ import annotations
 
 from typing import Any, Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 #: Ne-prazn, strict string za identifikatorje (device_id, hostname, ...).
 StrictText = Annotated[str, StringConstraints(strict=True, min_length=1)]
@@ -96,6 +96,10 @@ POSTURE_CATEGORIES = (
     "config_drift",
     "stale_heartbeat",
     "missing_device",
+    # Phase 2 — operator monitor (telemetry/egress najdbe v ISTI findings tok).
+    "telemetry_anomaly",
+    "unknown_egress",
+    "egress_anomaly",
 )
 SEVERITIES = ("critical", "high", "medium", "low")
 
@@ -121,6 +125,53 @@ class PostureScore(BaseModel):
     grade: str = Field(pattern=r"^[A-F]$")
     counts: dict[str, int] = Field(default_factory=dict)   # severity -> count
     assessed_at: int
+
+
+# ------------------------------------------------------------------ #
+#  Phase 2 — operator monitor (telemetry + omrežne opazke)
+# ------------------------------------------------------------------ #
+class TelemetrySample(BaseModel):
+    """Pasiven telemetry vzorec naprave (device-reported, nikoli probed).
+
+    ``metrics`` so imenovane skalarne vrednosti (cpu_pct, mem_pct, ...).
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    device_id: StrictText
+    ts: int | None = None                       # device epoch; server stampa, če ni
+    source: str = Field(default="device", max_length=64)
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
+class NetworkObservation(BaseModel):
+    """Pasivna omrežna opazka (dst tuple iz logov/netstat; nikoli skenirano).
+
+    Vsaj eden od ``dst_host``/``dst_ip`` naj bo podan; ``dst_ip`` se validira
+    prek ``ipaddress``.
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    device_id: StrictText
+    ts: int | None = None
+    dst_host: str | None = Field(default=None, max_length=253)
+    dst_ip: str | None = Field(default=None, max_length=45)
+    dst_port: int | None = Field(default=None, ge=1, le=65535)
+    proto: str | None = Field(default=None, max_length=16)
+
+    @field_validator("dst_ip")
+    @classmethod
+    def _valid_ip(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        from ipaddress import ip_address
+
+        try:
+            ip_address(v)
+        except ValueError:
+            raise ValueError(f"invalid dst_ip: {v!r}") from None
+        return v
 
 
 #: Sentinel: "ključ MORA obstajati (poljubna vrednost)" v baseline zahtevah.

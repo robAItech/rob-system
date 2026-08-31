@@ -43,6 +43,8 @@ SEVERITY_WEIGHTS: dict[str, int] = {
 GRADE_THRESHOLDS: tuple[tuple[int, str], ...] = ((90, "A"), (80, "B"), (70, "C"), (60, "D"))
 
 #: Kategorija → privzeta severity (config_drift se lahko dvigne na critical).
+#: Phase 2 monitor kategorije so dokumentacijsko "monitor" — severity nastavi
+#: monitor.py eksplicitno (odvisno od |z| oz. tipa egress najdbe).
 POSTURE_CATEGORY_SEVERITY: dict[str, str] = {
     "os_version_drift": "high",
     "firmware_drift": "high",
@@ -51,7 +53,22 @@ POSTURE_CATEGORY_SEVERITY: dict[str, str] = {
     "config_drift": "high",
     "stale_heartbeat": "high",
     "missing_device": "critical",
+    "telemetry_anomaly": "monitor",
+    "unknown_egress": "monitor",
+    "egress_anomaly": "monitor",
 }
+
+#: Kategorije, ki jih piše/resolve-a posture pass (scope za resolve_categories).
+#: Monitor kategorije so izključene — posture NE clobber-a monitor najdb.
+POSTURE_OWNED_CATEGORIES = frozenset({
+    "os_version_drift",
+    "firmware_drift",
+    "firmware_unknown",
+    "model_provenance",
+    "config_drift",
+    "stale_heartbeat",
+    "missing_device",
+})
 
 
 def _now() -> int:
@@ -381,20 +398,30 @@ def run_assessment(
         if hb is not None:
             device_findings.append(hb)
         all_findings.extend(device_findings)
-        counts = _count_severities(device_findings)
+
+    # En sam upsert za vse najdbe (vključno s sintetičnimi missing_device).
+    # resolve_categories=POSTURE_OWNED_CATEGORIES: posture resolve-a SAMO svoje
+    # kategorije — monitor najdb se ne dotika (Phase 2, cross-category clobber fix).
+    inserted_total = store.upsert_findings(
+        all_findings,
+        now=now,
+        assessed=assessed_ids,
+        resolve_categories=POSTURE_OWNED_CATEGORIES,
+    )
+    inserted_total += store.resolve_missing_for_roles(
+        [d.role for d in devices], now=now
+    )
+
+    # Score iz OPEN najdb (po upsertu) — monitor najdbe znižajo posture score
+    # (dokumentirana semantika: score = 100 − Σ weights nad OPEN najdbami).
+    for device in devices:
+        counts = _count_severities(store.list_open_findings(device.device_id))
         score, grade = compute_score(counts)
         store.save_score(device.device_id, score, grade, counts, now)
         device_scores[device.device_id] = score
         if score < threshold:
             if _escalate(device.device_id, score, grade):
                 escalated.append(device.device_id)
-
-    # En sam upsert za vse najdbe (vključno s sintetičnimi missing_device);
-    # assessed=assessed_ids poskrbi, da se čiste naprave razrešijo starih najdb.
-    inserted_total = store.upsert_findings(all_findings, now=now, assessed=assessed_ids)
-    inserted_total += store.resolve_missing_for_roles(
-        [d.role for d in devices], now=now
-    )
 
     # Regression: primerjaj z PREDHODNIM '*'-snapshot-om pred shranitvijo novega.
     prev_row = store.latest_score("*")
