@@ -209,8 +209,14 @@ class TeamCoordinator:
     #  Cel cikel
     # ------------------------------------------------------------------ #
     def run(self, project: str, goal: str, executor: Optional[Callable[[str], bool]] = None,
-            context: Optional[str] = None) -> Dict[str, Any]:
-        """Cel adversarial cikel: plan → critique → (revise) → build → verify."""
+            context: Optional[str] = None, max_attempts: Optional[int] = None) -> Dict[str, Any]:
+        """Cel adversarial cikel: plan → critique → (revise) → build → verify,
+        z RETRY ZANKO — če verify pade (reality check / kvaliteta), builder dobi
+        povratno informacijo in poskusi znova (do `max_attempts`), nato eskalira.
+
+        Vrne tudi `attempts` (koliko poskusov) in `retried` (ali je bila retry).
+        `built=True` samo, če je modul zgrajen IN verificiran.
+        """
         plan = self.plan(goal, context=context)
         critique = self.critique(goal, plan, context=context)
         revised = False
@@ -221,20 +227,52 @@ class TeamCoordinator:
         if executor is None:
             from core.orchestrator import RobAIOrchestrator
             executor = lambda g: RobAIOrchestrator._phase(project, g, "podcilj")
-        try:
-            built = bool(executor(goal))
-        except Exception:
-            built = False
+        if max_attempts is None:
+            try:
+                from core.config import settings
+                max_attempts = getattr(settings, "team_max_attempts", 3)
+            except Exception:
+                max_attempts = 3
+        max_attempts = max(1, int(max_attempts))
 
-        verdict = self.verify(project, goal, context=context)
+        last_verdict: Dict[str, Any] = {"ok": False, "reason": "ni bilo uspešnega poskusa"}
+        attempt_goal = goal
+        for attempt in range(1, max_attempts + 1):
+            try:
+                built = bool(executor(attempt_goal))
+            except Exception:
+                built = False
+            last_verdict = self.verify(project, attempt_goal, context=context)
+            if built and last_verdict.get("ok"):
+                return {
+                    "goal": goal,
+                    "plan": plan[:500],
+                    "severity": critique.get("severity"),
+                    "objections": critique.get("objections", []),
+                    "revised": revised,
+                    "built": True,
+                    "verdict": last_verdict,
+                    "attempts": attempt,
+                    "retried": attempt > 1,
+                }
+            # Ni uspelo → naslednji poskus z feedbackom (če imamo še poskuse).
+            if attempt < max_attempts:
+                reason = str(last_verdict.get("reason") or "preverjanje ni uspelo")[:400]
+                attempt_goal = (
+                    f"{goal}\n\nPREJŠNJI POSKUS NI USPEL: {reason}. "
+                    f"Popravi zgrajeni modul (actions/{project}/), da opravi "
+                    f"preverjanja (testi + kvaliteta + reality check)."
+                )
         return {
             "goal": goal,
             "plan": plan[:500],
             "severity": critique.get("severity"),
             "objections": critique.get("objections", []),
             "revised": revised,
-            "built": built,
-            "verdict": verdict,
+            "built": False,
+            "verdict": last_verdict,
+            "attempts": max_attempts,
+            "retried": max_attempts > 1,
         }
 
     # ------------------------------------------------------------------ #

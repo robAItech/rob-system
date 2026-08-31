@@ -138,6 +138,10 @@ class SystemSettings(BaseSettings):
     # 'autonomous' (goal_autonomy kompleksne naloge). Dokumentne naloge (doc-guard)
     # ostanejo single/run_autonomous.
     team_auto_kinds: str = Field(default="autonomous", alias="TEAM_AUTO_KINDS")
+    # Retry zanka v team buildu: če verify pade (reality check / kvaliteta),
+    # builder dobi povratno informacijo in poskusi znova — do toliko poskusov,
+    # nato eskalacija.
+    team_max_attempts: int = Field(default=3, alias="TEAM_MAX_ATTEMPTS")
 
     def is_real_key_available(self) -> bool:
         return bool(
