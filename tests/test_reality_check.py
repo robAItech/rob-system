@@ -88,3 +88,15 @@ def collect_metrics(base_dir="."):
 
 def test_missing_module_fails(env):
     assert reality_check.run_reality_check("ne_obstaja", env)["ok"] is False
+
+
+def test_data_dir_param_recognized(env):
+    """Modul s parametrom `data_dir` se pokliče z realnim korenom → crash ujet."""
+    _write_real_state(env, "idle")
+    _write_module(env, "dirmod", '''
+def collect_status(data_dir="."):
+    raise RuntimeError("napačna pot (data_dir)")
+''', export="collect_status")
+    res = reality_check.run_reality_check("dirmod", env)
+    assert res["ok"] is False
+    assert any("real-run fail" in i for i in res["issues"])

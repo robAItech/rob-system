@@ -87,14 +87,20 @@ def run_reality_check(project: str, root: Optional[Path | str] = None) -> Dict[s
     if not (module_dir / "__init__.py").exists():
         return {"ok": False, "issues": [f"actions/{project}/__init__.py manjka"]}
 
-    # Import modula (iz njegovega imenika).
-    sys.path.insert(0, str(module_dir))
+    # Import modula — robustno: najprej kot podpaket `actions.<project>` (pravilni
+    # relative importi v __init__.py), nato fallback z vstavitvijo imenika na path.
+    mod = None
     try:
-        mod = importlib.import_module(project)
-    except Exception as e:  # pragma: no cover — import napake so raznolike
-        return {"ok": False, "issues": [f"import fail: {e}"]}
+        mod = importlib.import_module(f"actions.{project}")
+    except Exception:
+        try:
+            sys.path.insert(0, str(module_dir))
+            mod = importlib.import_module(project)
+        except Exception as e:  # pragma: no cover — import napake so raznolike
+            return {"ok": False, "issues": [f"import fail: {e}"]}
 
-    # Deterministične funkcije z `base_dir` parametrom = bralci stanja sistema.
+    # Parametri, ki pomenijo "koren/sistemski imenik" → pokličemo z realnim korenom.
+    _DIR_PARAMS = ("base_dir", "root", "cwd", "data_dir", "dir", "directory", "path")
     for name in dir(mod):
         if name.startswith("_"):
             continue
@@ -106,11 +112,11 @@ def run_reality_check(project: str, root: Optional[Path | str] = None) -> Dict[s
         except (TypeError, ValueError):
             continue
         params = list(sig.parameters.values())
-        base_param = next((p for p in params if p.name in ("base_dir", "root", "cwd")), None)
-        if base_param is None:
+        dir_param = next((p for p in params if p.name in _DIR_PARAMS), None)
+        if dir_param is None:
             continue  # ni deterministični bralec stanja s korenom → preskoči
         try:
-            out = obj(**{base_param.name: str(root)})
+            out = obj(**{dir_param.name: str(root)})
         except Exception as e:
             issues.append(f"{name}: real-run fail: {e}")
             continue
