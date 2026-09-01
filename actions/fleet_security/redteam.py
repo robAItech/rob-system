@@ -208,10 +208,20 @@ def run_red_team(
     findings: list[PostureFinding] = []
     runs_stored = 0
     vulnerable: list[str] = []
+    decisions: list[dict[str, Any]] = []
 
     for payload in selected:
         decision = target.decide(payload["vector"], system_prompt)
         judged = judge_response(decision, policy)
+        decisions.append(
+            {
+                "payload_id": payload["id"],
+                "name": payload["name"],
+                "category": payload["category"],
+                "decision": decision,
+                "judged_vulnerable": judged,
+            }
+        )
         store.append_redteam_run(
             device_id=robot_id,
             payload_id=payload["id"],
@@ -258,6 +268,7 @@ def run_red_team(
         "vulnerable_payloads": vulnerable,
         "findings_inserted": inserted,
         "runs_stored": runs_stored,
+        "decisions": decisions,
     }
 
 
