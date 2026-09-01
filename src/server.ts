@@ -65,6 +65,8 @@ function authCookie(req: Request): string {
 }
 function isAuthed(req: Request): boolean {
   if (!API_TOKEN) return true;                      // zaščita ni konfigurirana
+  // OEM embed SDK / API-key tok: Authorization: Bearer <ROB_API_TOKEN>.
+  if (req.headers.get('Authorization') === `Bearer ${API_TOKEN}`) return true;
   return SESSIONS.has(authCookie(req));
 }
 function unauthorized(): Response {

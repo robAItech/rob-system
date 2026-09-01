@@ -109,3 +109,6 @@ certs/
 # Projektni settings.json je izjema (shared allowlist); settings.local.json je osebni.
 .claude/*
 !.claude/settings.json
+
+# Python build artifacts (pip install -e)
+*.egg-info/
