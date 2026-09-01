@@ -9,9 +9,11 @@ generičen opis, če LLM ni na voljo — ni blokada).
 
 from __future__ import annotations
 
+import re
 import sys
 import time
 import uuid
+from functools import lru_cache
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -52,6 +54,28 @@ def _now() -> int:
     return int(time.time())
 
 
+_UUID4_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+
+def _validate_firm_id(firm_id: str) -> None:
+    """Stroga UUID4 validacija na router meji (prepreči path traversal).
+
+    firm_id pride iz URL path parametra in se uporabi kot del datotečne poti
+    per-firm DB (``store.py``: db_root / f"{firm_id}.db"). Nevalidiran bi
+    omogočil traversal (npr. ``%5C..%5C..`` na Windows). UUID4 regex + resolve/
+    relative_to check sta obramba v globino. (Security specialist, CRITICAL.)
+    """
+    if not _UUID4_RE.match(firm_id):
+        raise UnknownFirmError(f"Neveljaven firm_id: {firm_id}")
+    root = Path(settings.nis2_db_root).resolve()
+    candidate = (root / f"{firm_id}.db").resolve()
+    if root not in candidate.parents:
+        raise UnknownFirmError(f"Neveljaven firm_id: {firm_id}")
+
+
 def _get_store(firm_id: str) -> Nis2Store:
     return Nis2Store(Path(settings.nis2_db_root), firm_id)
 
@@ -75,7 +99,13 @@ def _audit_http(method: str, path: str, status: str, detail: str = "") -> None:
         pass
 
 
+@lru_cache(maxsize=1)
 def _rules_bundle():
+    """Rules so statičen data, ki se ne spreminja v runtime — cache-iraj.
+
+    (Performance specialist, CRITICAL): prej je vsak request re-readal + re-
+    validiral oba rules JSON-a. lru_cache(maxsize=1) je dovolj — en bundle.
+    """
     return load_rules()
 
 
@@ -158,6 +188,7 @@ async def create_firm(payload: CreateFirmRequest) -> JSONResponse:
 async def get_firm(firm_id: str) -> JSONResponse:
     """Paket: profile + scope + politike + risk register."""
     try:
+        _validate_firm_id(firm_id)
         if not _firm_db_exists(firm_id):
             raise UnknownFirmError(f"Firma ne obstaja: {firm_id}")
         store = _get_store(firm_id)
@@ -202,6 +233,7 @@ async def get_firm(firm_id: str) -> JSONResponse:
 async def generate_policies(firm_id: str) -> JSONResponse:
     """Renderira politike (iz predlog) za firmo."""
     try:
+        _validate_firm_id(firm_id)
         if not _firm_db_exists(firm_id):
             raise UnknownFirmError(f"Firma ne obstaja: {firm_id}")
         store = _get_store(firm_id)
@@ -235,6 +267,7 @@ async def generate_policies(firm_id: str) -> JSONResponse:
 async def assess_risk(firm_id: str) -> JSONResponse:
     """Oceni tveganja (register + LLM opis, če je na voljo)."""
     try:
+        _validate_firm_id(firm_id)
         if not _firm_db_exists(firm_id):
             raise UnknownFirmError(f"Firma ne obstaja: {firm_id}")
         store = _get_store(firm_id)

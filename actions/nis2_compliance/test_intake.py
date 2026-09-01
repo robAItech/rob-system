@@ -127,3 +127,27 @@ def test_intake_save_get_evidence_roundtrip(tmp_path):
     assert by_item["OBL-16-01"].status == "dokazano"
     assert by_item["OBL-16-01"].evidence_ref == "Inventar.xlsx"
     assert by_item["OBL-01-01"].status == "v delu"
+
+
+def test_blank_answer_v_delu():
+    """Prazn/whitespace odgovor → 'v delu' (strip guard, intake.py:83)."""
+    qmap = _real_map()
+    # Poisci en item v mapi, ki obstaja v rules.
+    mapped_item = next(iter(qmap.values()))
+    answers = [IntakeAnswer(question_id="sektor", answer="energetika", answered_at=NOW)]
+    drafts = intake_to_draft_evidence(answers, _bundle(), _scope("bistveni"), qmap)
+    # Noben odgovor ni mapiran na qmap ključ (sektor ni v qmap) → vse v delu.
+    assert drafts, "pričakovano vsaj en draft"
+    assert all(d.status in ("dokazano", "v delu") for d in drafts)
+    # Blank odgovor na ključ, ki JE v mapi → v delu.
+    key = next(k for k in qmap if qmap[k] == mapped_item)
+    blank = [IntakeAnswer(question_id=key, answer="   ", answered_at=NOW)]
+    drafts2 = intake_to_draft_evidence(blank, _bundle(), _scope("bistveni"), qmap)
+    assert any(d.item_id == mapped_item and d.status == "v delu" for d in drafts2)
+
+
+def test_load_question_map_missing_file():
+    """load_question_map z neobstoječim path → FileNotFoundError (fail-loud)."""
+    import pytest as _pytest
+    with _pytest.raises(FileNotFoundError):
+        load_question_map(RULES_DIR / "ne-obstaja.json")

@@ -20,6 +20,7 @@ from actions.nis2_compliance.policies import (  # noqa: E402
 from actions.nis2_compliance.schemas import (  # noqa: E402
     FirmProfile,
     PolicyNotFoundError,
+    PolicyRenderError,
     ScopeResult,
 )
 
@@ -100,3 +101,20 @@ def test_render_all_policies_deterministic_hash():
 def test_render_policy_missing_template_raises():
     with pytest.raises(PolicyNotFoundError):
         render_policy(POLICIES_DIR / "ne-obstaja.md", _firm(), _scope())
+
+
+def test_render_policy_unknown_placeholder_error(tmp_path):
+    """Predloga z neznanim placeholderjem → PolicyRenderError (fail-loud, policies.py:126)."""
+    bad = tmp_path / "bad.md"
+    bad.write_text("# Politika\n{{neobstojec_placeholder}}\n", encoding="utf-8")
+    with pytest.raises(PolicyRenderError):
+        render_policy(bad, _firm(), _scope("bistveni"))
+
+
+def test_render_all_policies_izven_fallback():
+    """'izven' scope → fallback tier substitucije (mehkejši pragovi), vseh 7 politik."""
+    docs = render_all_policies(POLICIES_DIR, _firm(), _scope("izven"))
+    assert len(docs) == 7
+    # Noben output nima nedorečenega placeholderja.
+    for d in docs:
+        assert "{{" not in d.body_markdown

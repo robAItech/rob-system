@@ -51,6 +51,9 @@ CATEGORY_MITIGATIONS: dict[int, str] = {
 
 DEFAULT_MITIGATION = "Uvesti ustrezne varnostne ukrepe po ZInfV-1"
 
+#: Fail-closed fallback za PII redakcijo (nikoli raw LLM tekst v DB).
+_GENERIC_DESC_FALLBACK = "Opis tveganja ni na voljo (redakcija ni uspela)."
+
 #: Async funkcija (prompt → opis tveganja), npr. DeepSeekLLMClient.
 LLMDescFn = Callable[[str], Awaitable[str]]
 
@@ -67,11 +70,15 @@ def _generic_description(obl, item) -> str:
 
 
 def _redact_pii(text: str) -> str:
-    """Redakcija PII (email/telefon/IBAN) pred shranitvijo opisa."""
+    """Redakcija PII (email/telefon/IBAN) pred shranitvijo opisa.
+
+    FAIL-CLOSED (security specialist, CRITICAL): če redakcija pade, se vrne
+    generičen opis (NE raw tekst) — PII nikoli ne pristane v DB neodredaktiran.
+    """
     try:
         return PIIMasker().redact_text(text)
-    except Exception:  # noqa: BLE001 — redakcija nikoli ne sme blokirati registra
-        return text
+    except Exception:  # noqa: BLE001
+        return _GENERIC_DESC_FALLBACK
 
 
 async def build_risk_register(

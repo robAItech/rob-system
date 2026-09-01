@@ -113,3 +113,6 @@ certs/
 
 # Python build artifacts (pip install -e)
 *.egg-info/
+
+# Interni /spec spec arhivi (kopirani za spawn, ne del izdelka)
+.specs/

@@ -17,7 +17,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -25,11 +24,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from actions.nis2_compliance.schemas import (  # noqa: E402
     Category,
-    ChecklistItem,
     EVIDENCE_TIPS,
-    IncidentReporting,
     Obligation,
-    RiskDefaults,
     RulesBundle,
     TierRules,
     TIERS,

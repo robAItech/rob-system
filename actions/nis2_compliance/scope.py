@@ -38,13 +38,13 @@ def _now() -> int:
 
 
 def _evidence(
-    input: ScopeInput, thresholds: dict, z_p: int, z_b: int, p_p: float, p_b: float
+    scope_input: ScopeInput, thresholds: dict, z_p: int, z_b: int, p_p: float, p_b: float
 ) -> dict[str, Any]:
     return {
         "input": {
-            "zaposleni": input.zaposleni,
-            "promet_mio": input.promet_mio,
-            "sektor": input.sektor,
+            "zaposleni": scope_input.zaposleni,
+            "promet_mio": scope_input.promet_mio,
+            "sektor": scope_input.sektor,
         },
         "uporabljene_meje": {
             "zaposleni": {"pomembni": z_p, "bistveni": z_b},
@@ -53,18 +53,18 @@ def _evidence(
     }
 
 
-def determine_scope(input: ScopeInput, thresholds: dict, priloga: dict) -> ScopeResult:
+def determine_scope(scope_input: ScopeInput, thresholds: dict, priloga: dict) -> ScopeResult:
     """Deterministično: bistveni / pomembni / izven.
 
     Raises:
         InvalidScopeInputError: negativen zaposleni ali promet (fail-loud).
     """
-    if input.zaposleni < 0:
-        raise InvalidScopeInputError(f"negativen zaposleni: {input.zaposleni}")
-    if input.promet_mio < 0:
-        raise InvalidScopeInputError(f"negativen promet: {input.promet_mio}")
+    if scope_input.zaposleni < 0:
+        raise InvalidScopeInputError(f"negativen zaposleni: {scope_input.zaposleni}")
+    if scope_input.promet_mio < 0:
+        raise InvalidScopeInputError(f"negativen promet: {scope_input.promet_mio}")
 
-    sektor = input.sektor.strip().lower()
+    sektor = scope_input.sektor.strip().lower()
     priloga1 = {str(s).strip().lower() for s in priloga.get("priloga1", [])}
     priloga2 = {str(s).strip().lower() for s in priloga.get("priloga2", [])}
 
@@ -76,54 +76,54 @@ def determine_scope(input: ScopeInput, thresholds: dict, priloga: dict) -> Scope
     if sektor in priloga1:
         return ScopeResult(
             tier="bistveni",
-            razlog=f"sektor '{input.sektor}' v Priloga 1 → bistveni",
-            evidence=_evidence(input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
+            razlog=f"sektor '{scope_input.sektor}' v Priloga 1 → bistveni",
+            evidence=_evidence(scope_input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
             checked_at=_now(),
         )
     if sektor in priloga2:
         return ScopeResult(
             tier="pomembni",
-            razlog=f"sektor '{input.sektor}' v Priloga 2 → pomembni",
-            evidence=_evidence(input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
+            razlog=f"sektor '{scope_input.sektor}' v Priloga 2 → pomembni",
+            evidence=_evidence(scope_input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
             checked_at=_now(),
         )
 
-    if input.zaposleni >= z_bistveni or input.promet_mio >= p_bistveni:
-        if input.zaposleni >= z_bistveni and input.promet_mio >= p_bistveni:
+    if scope_input.zaposleni >= z_bistveni or scope_input.promet_mio >= p_bistveni:
+        if scope_input.zaposleni >= z_bistveni and scope_input.promet_mio >= p_bistveni:
             razlog = (
-                f"zaposleni={input.zaposleni} ≥ {z_bistveni} in "
-                f"promet={input.promet_mio} ≥ {p_bistveni} (bistveni)"
+                f"zaposleni={scope_input.zaposleni} ≥ {z_bistveni} in "
+                f"promet={scope_input.promet_mio} ≥ {p_bistveni} (bistveni)"
             )
-        elif input.zaposleni >= z_bistveni:
-            razlog = f"zaposleni={input.zaposleni} ≥ {z_bistveni} (bistveni)"
+        elif scope_input.zaposleni >= z_bistveni:
+            razlog = f"zaposleni={scope_input.zaposleni} ≥ {z_bistveni} (bistveni)"
         else:
-            razlog = f"promet={input.promet_mio} ≥ {p_bistveni} (bistveni)"
+            razlog = f"promet={scope_input.promet_mio} ≥ {p_bistveni} (bistveni)"
         return ScopeResult(
             tier="bistveni",
             razlog=razlog,
-            evidence=_evidence(input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
+            evidence=_evidence(scope_input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
             checked_at=_now(),
         )
 
-    if input.zaposleni >= z_pomembni and input.promet_mio >= p_pomembni:
+    if scope_input.zaposleni >= z_pomembni and scope_input.promet_mio >= p_pomembni:
         razlog = (
-            f"zaposleni={input.zaposleni} ≥ {z_pomembni} in "
-            f"promet={input.promet_mio} ≥ {p_pomembni} (pomembni)"
+            f"zaposleni={scope_input.zaposleni} ≥ {z_pomembni} in "
+            f"promet={scope_input.promet_mio} ≥ {p_pomembni} (pomembni)"
         )
         return ScopeResult(
             tier="pomembni",
             razlog=razlog,
-            evidence=_evidence(input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
+            evidence=_evidence(scope_input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
             checked_at=_now(),
         )
 
     razlog = (
-        f"pod mejo: zaposleni={input.zaposleni} < {z_pomembni} ali "
-        f"promet={input.promet_mio} < {p_pomembni}"
+        f"pod mejo: zaposleni={scope_input.zaposleni} < {z_pomembni} ali "
+        f"promet={scope_input.promet_mio} < {p_pomembni}"
     )
     return ScopeResult(
         tier="izven",
         razlog=razlog,
-        evidence=_evidence(input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
+        evidence=_evidence(scope_input, thresholds, z_pomembni, z_bistveni, p_pomembni, p_bistveni),
         checked_at=_now(),
     )

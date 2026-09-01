@@ -108,8 +108,8 @@ def test_assess_risk(client):
 
 
 def test_unknown_firm_404(client):
-    """AC7: neznana firma → 404."""
-    resp = client.get("/api/nis2-compliance/firms/ne-obstaja")
+    """AC7: neznana firma → 404 (veljaven UUID, ki ne obstaja)."""
+    resp = client.get("/api/nis2-compliance/firms/00000000-0000-4000-8000-000000000000")
     assert resp.status_code == 404
     assert "ne obstaja" in resp.json()["error"]
 
@@ -160,3 +160,73 @@ def test_build_runtime_app_mounts_nis2():
         mods = client.get("/api/runtime/modules").json()
     mounted = {m["name"] for m in mods if m["mounted"]}
     assert "nis2_compliance" in mounted
+
+
+# ── Defensive/error branches (coverage gap, ship audit) ───────────────
+def test_create_firm_rules_load_failure_500(client, monkeypatch):
+    """Pokvarjen load_rules → 500 + audit 'failed' (zero silent failures)."""
+    from actions.nis2_compliance import main as nis2_main
+
+    def boom():
+        raise RuntimeError("rules crasnejo")
+
+    monkeypatch.setattr(nis2_main, "_rules_bundle", boom)
+    resp = client.post("/api/nis2-compliance/firms", json=_firm_payload())
+    assert resp.status_code == 500
+
+
+def test_policies_unknown_firm_404(client):
+    """POST /firms/{id}/policies za neznano firmo → 404."""
+    resp = client.post("/api/nis2-compliance/firms/ne-obstaja/policies")
+    assert resp.status_code == 404
+
+
+def test_risk_unknown_firm_404(client):
+    """POST /firms/{id}/risk za neznano firmo → 404."""
+    resp = client.post("/api/nis2-compliance/firms/ne-obstaja/risk")
+    assert resp.status_code == 404
+
+
+def test_risk_llm_path_uses_stub(client, monkeypatch):
+    """LLM path /risk: stub _llm_desc_fn → njegov tekst (PII-redaktiran) v register."""
+    from actions.nis2_compliance import main as nis2_main
+
+    firm = _create_firm(client)
+    fid = firm["firm_id"]
+
+    async def fake_llm(prompt):
+        return "Opis tveganja z emailom: test@firma.si in telefonom 041 123 456"
+
+    monkeypatch.setattr(settings, "nis2_risk_llm_desc", True)
+    # is_real_key_available() vrača True ob realnem-looking keyju (core/config.py:242).
+    monkeypatch.setattr(settings, "deepseek_api_key", "sk-real-key-1234567890")
+    monkeypatch.setattr(nis2_main, "_llm_desc_fn", fake_llm)
+    resp = client.post(f"/api/nis2-compliance/firms/{fid}/risk")
+    assert resp.status_code == 200
+    body = resp.json()
+    items = body.get("items", [])
+    assert items, "pričakovan risk register"
+    joined = " ".join(i.get("description", "") for i in items)
+    assert "test@firma.si" not in joined, "email mora biti PII-redaktiran"
+    assert "@" not in joined, "email ni redaktiran"
+    assert "Opis tveganja" in joined or "041" not in joined
+
+
+def test_create_firm_no_answers(client):
+    """create brez answers → uspeh (prazni evidence, ne 400)."""
+    payload = _firm_payload(answers=[])
+    resp = client.post("/api/nis2-compliance/firms", json=payload)
+    assert resp.status_code == 200
+
+
+def test_firm_id_path_traversal_rejected(client, monkeypatch, tmp_path):
+    """Path traversal firm_id → 404 (validacija na router meji, security CRITICAL)."""
+    db_root = tmp_path / "nis2"
+    monkeypatch.setattr(settings, "nis2_db_root", str(db_root))
+    _create_firm(client)  # validna firma dokaže, da rute delujejo
+    for bad in ("..", "..%2f..%2foutside", "%2e%2e", "a/b", "not-a-uuid"):
+        resp = client.get(f"/api/nis2-compliance/firms/{bad}")
+        assert resp.status_code == 404, (bad, resp.status_code)
+    # Nobena DB ne sme nastati zunaj nis2_db_root.
+    outside = [p for p in tmp_path.rglob("*.db") if "nis2" not in str(p)]
+    assert not outside, f"DB zunaj tenant root: {outside}"

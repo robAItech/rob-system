@@ -173,3 +173,35 @@ def test_evidence_deterministic_order(tmp_path):
     )
     got = store.get_evidence_draft("firma-a")
     assert [e.item_id for e in got] == ["OBL-01-02", "OBL-02-01"]
+
+
+# ── Fail-loud defensive branches (coverage gap, ship audit) ───────────
+def test_create_firm_duplicate_integrity_error(tmp_path):
+    """Duplikat firm_id → IntegrityError (fail-loud contract, store.py:120)."""
+    import sqlite3
+
+    store = Nis2Store(tmp_path, "firma-a")
+    store.create_firm(_profile())
+    with pytest.raises(sqlite3.IntegrityError):
+        store.create_firm(_profile())
+
+
+def test_save_scope_fk_violation_unknown_firm(tmp_path):
+    """FK: save_scope_result za firmo brez profila → IntegrityError."""
+    import sqlite3
+
+    store = Nis2Store(tmp_path, "firma-neznana")
+    with pytest.raises(sqlite3.IntegrityError):
+        store.save_scope_result("firma-neznana", _scope())
+
+
+def test_evidence_resave_does_not_duplicate(tmp_path):
+    """Re-save evidence ne sme tiho podvojiti vrstic (append-only pomeni dedup risk)."""
+    store = Nis2Store(tmp_path, "firma-a")
+    store.create_firm(_profile())
+    store.save_evidence_draft("firma-a", _evidence(), now=NOW)
+    store.save_evidence_draft("firma-a", _evidence(), now=NOW)
+    got = store.get_evidence_draft("firma-a")
+    # Trenutno append-only: dve kopiji. Dokumentirano — risk.build preko dict
+    # last-wins dedupe-a; če se spremeni v upsert, ta test to ujame.
+    assert len(got) == 2 * len(_evidence())

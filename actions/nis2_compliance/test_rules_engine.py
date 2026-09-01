@@ -368,3 +368,49 @@ def test_runtime_tolerant_to_missing_module():
 
     assert actions_runtime._load_module("totally_missing_module_zzz") is None
     assert actions_runtime._load_module("__bad-name__") is None
+
+
+# ── Defensive branches (coverage gap, ship audit) ─────────────────────
+def test_validate_rules_non_dict():
+    """Non-dict input → fail-loud napaka (ne KeyError)."""
+    errors = validate_rules(["ni objekt"])
+    assert errors, "pričakovana vsaj ena napaka za non-dict"
+    assert any("objekt" in e.lower() for e in errors)
+
+
+def test_load_rules_missing_tiers_file(tmp_path):
+    """Tiers datoteka manjka, rules obstaja → RulesNotFoundError (fail-loud)."""
+    rules_f = tmp_path / "zinfv1_rules.json"
+    rules_f.write_text(__import__("json").dumps(_base_rules()), encoding="utf-8")
+    # Path s samo rules datoteko → tiers ni najden.
+    with pytest.raises(RulesNotFoundError):
+        load_rules(tmp_path)
+
+
+def test_load_rules_corrupt_json(tmp_path):
+    """Pokvarjen JSON → napaka (RulesValidationError ali RulesNotFoundError — ne tih load)."""
+    import json
+
+    rules_f = tmp_path / "zinfv1_rules.json"
+    rules_f.write_text("{ not valid json", encoding="utf-8")
+    tiers_f = tmp_path / "zinfv1_tiers.json"
+    tiers_f.write_text(json.dumps(_base_tiers()), encoding="utf-8")
+    with pytest.raises((RulesValidationError, RulesNotFoundError)):
+        load_rules(tmp_path)
+
+
+def test_get_tier_rules_missing_tier_key_unknown_error():
+    """Bundle, katerega tiers dict nima veljavnega tier ključa → UnknownTierError (ne KeyError)."""
+    import types
+
+    bundle = types.SimpleNamespace(tiers={})
+    with pytest.raises(UnknownTierError):
+        get_tier_rules(bundle, "bistveni")
+
+
+def test_validate_tiers_risk_defaults_out_of_range():
+    """risk_defaults izven 1-5 → napaka (fail-loud)."""
+    tiers = _base_tiers()
+    tiers["tiers"]["bistveni"]["risk_defaults"] = {"likelihood": 6, "impact": 0}
+    errors = validate_tiers(tiers)
+    assert any("risk_defaults" in e for e in errors)

@@ -15,7 +15,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:

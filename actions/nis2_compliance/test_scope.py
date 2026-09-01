@@ -113,3 +113,18 @@ def test_evidence_includes_used_thresholds():
     meje = res.evidence["uporabljene_meje"]
     assert meje["zaposleni"]["bistveni"] == 250
     assert meje["promet_mio"]["pomembni"] == 10
+
+
+def test_obe_meji_bistveni_razlog():
+    """Obe meji (zaposleni≥250 IN promet≥50) → 'bistveni' z razlogom, ki imenuje obe."""
+    res = determine_scope(_input(zaposleni=300, promet=60.0), THRESHOLDS, PRILOGA)
+    assert res.tier == "bistveni"
+    assert "zaposleni" in res.razlog and "promet" in res.razlog
+
+
+def test_scope_exact_boundaries():
+    """Boundary equality: zaposleni==250→bistveni, promet==50→bistveni, 50/10→pomembni, 49.99→izven."""
+    assert determine_scope(_input(zaposleni=250, promet=1.0), THRESHOLDS, PRILOGA).tier == "bistveni"
+    assert determine_scope(_input(zaposleni=10, promet=50.0), THRESHOLDS, PRILOGA).tier == "bistveni"
+    assert determine_scope(_input(zaposleni=50, promet=10.0), THRESHOLDS, PRILOGA).tier == "pomembni"
+    assert determine_scope(_input(zaposleni=50, promet=9.99), THRESHOLDS, PRILOGA).tier == "izven"
