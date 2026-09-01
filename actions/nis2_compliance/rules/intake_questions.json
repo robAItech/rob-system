@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "question_map": {
+    "register_sredstev": "OBL-16-01",
+    "politika_dostopov": "OBL-16-02",
+    "mfa_aktiviran": "OBL-17-02",
+    "varnostno_kopiranje": "OBL-07-01",
+    "test_obnove": "OBL-07-02",
+    "antivirus_sken": "OBL-20-01",
+    "incident_postopek": "OBL-04-01",
+    "varnostne_pogodbe": "OBL-08-01"
+  }
+}
