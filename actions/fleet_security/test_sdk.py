@@ -73,7 +73,10 @@ def test_sdk_report_roundtrip_via_asgi(tmp_path, monkeypatch):
         r = client.post(path, json=payload)
         return {"ok": r.status_code < 300, "status": r.status_code, "data": r.json()}
 
-    monkeypatch.setattr(sdk, "_post", fake_post)
+    # Kanonični vir je paket — patch-a se client._post (ne re-export sdk._post).
+    from fleet_security_sdk import client as _sdk_client
+
+    monkeypatch.setattr(_sdk_client, "_post", fake_post)
 
     res = sdk.report_hostinfo(
         "http://127.0.0.1:8000", hostinfo=sdk.fingerprint(device_id="sdk-1")
