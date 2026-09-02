@@ -665,7 +665,7 @@ function mdToSafeHtml(md) {
     out.push(`<div>${escapeHtml2(line)}</div>`);
   }
   return out.join(`
-`);
+`).replace(/\*\*/g, "");
 }
 function initChief() {
   const digestEl = document.getElementById("chief-digest");

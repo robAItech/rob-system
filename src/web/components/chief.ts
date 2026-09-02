@@ -32,7 +32,8 @@ function mdToSafeHtml(md: string): string {
     }
     out.push(`<div>${escapeHtml(line)}</div>`);
   }
-  return out.join('\n');
+  // Odstrani markdown **poudarek** (ne znašamo ga v obliki — samo čist tekst).
+  return out.join('\n').replace(/\*\*/g, '');
 }
 
 export function initChief(): void {
