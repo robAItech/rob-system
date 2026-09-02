@@ -40,7 +40,9 @@ def test_model_seed_se_nalozi():
     m = load_model(MODEL_FILE)
     assert isinstance(m, dict) and m.get("robert")
     assert isinstance(m.get("ventures"), dict) and m["ventures"]
-    assert m.get("first_week_lock", {}).get("locked")
+    lock = m.get("execution_lock") or m.get("first_week_lock") or {}
+    assert lock.get("locked")
+    assert "src/" in lock.get("allowed_write", [])   # faza 2: src odprto
 
 
 def test_load_model_missing_vrne_prazno(tmp_path):

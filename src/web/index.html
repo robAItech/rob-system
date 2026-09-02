@@ -27,6 +27,7 @@
         <button class="nav-btn active" data-view="overview">Pregled</button>
         <button class="nav-btn" data-view="chat">Pogovor</button>
         <button class="nav-btn" data-view="agenda">Agenda</button>
+        <button class="nav-btn" data-view="chief">Chief</button>
         <button class="nav-btn" data-view="graph">Graf</button>
       </nav>
       <div class="sys">
@@ -95,6 +96,25 @@
           <div class="agenda-input-row">
             <input id="agenda-input" class="chat-input" placeholder="Nova naloga (npr. Izdelaj modul x …)" autocomplete="off" />
             <button id="agenda-add" class="btn">Dodaj</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- CHIEF -->
+      <section class="view hidden" data-view-panel="chief">
+        <div class="view-head"><h1>Chief of Staff</h1><span class="meta">dnevno poročilo · učenje iz popravkov</span></div>
+        <div class="panels">
+          <div class="panel">
+            <div class="phead"><span class="ptitle">📋 Dnevno poročilo</span><span class="ptag" id="chief-meta">—</span></div>
+            <div class="pbody chief-digest" id="chief-digest"><span class="muted">nalaganje …</span></div>
+          </div>
+          <div class="panel">
+            <div class="phead"><span class="ptitle">✍️ Popravek lastnika</span><span class="ptag">popravek → lekcija</span></div>
+            <div class="pbody chief-correct-row">
+              <input id="chief-input" class="chat-input" placeholder="Popravi poročilo (npr. »To ni bilo prav, ker …«)" autocomplete="off" />
+              <button id="chief-send" class="btn">Pošlji</button>
+            </div>
+            <div id="chief-msg" class="chief-msg"></div>
           </div>
         </div>
       </section>

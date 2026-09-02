@@ -1988,6 +1988,41 @@ const server = Bun.serve({
       if (await f.exists()) { try { d = JSON.parse(await f.text()) as Record<string, unknown>; } catch { /* */ } }
       return json({ ok: true, ...d });
     }
+    // Chief of Staff — dnevno poročilo + učenje (podatki iz .rob_ai/chief/).
+    if (req.method === 'GET' && url.pathname === '/api/chief') {
+      const dir = `${OUT_ROOT}/.rob_ai/chief`;
+      const latest = Bun.file(`${dir}/latest.md`);
+      const digest = (await latest.exists()) ? await latest.text().catch(() => '') : '';
+      const lessons: Record<string, unknown>[] = [];
+      const history: Record<string, unknown>[] = [];
+      const readLines = async (name: string): Promise<Record<string, unknown>[]> => {
+        const f = Bun.file(`${dir}/${name}`);
+        if (!(await f.exists())) return [];
+        const text = await f.text().catch(() => '');
+        return text.trim().split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter((x) => x !== null);
+      };
+      for (const x of await readLines('lessons.jsonl')) lessons.push(x);
+      for (const x of await readLines('history.jsonl')) history.push(x);
+      return json({ ok: true, digest, lessons: lessons.slice(-8).reverse(), history: history.slice(-7) });
+    }
+    // Chief of Staff — shrani lastnikov popravek (učni signal → lekcija).
+    if (req.method === 'POST' && url.pathname === '/api/chief/correct') {
+      const raw = await req.text().catch(() => '');
+      let body: { text?: unknown } = {};
+      try { body = JSON.parse(raw); } catch { /* ignore */ }
+      const text = String(body.text || '').trim();
+      if (!text) return json({ ok: false, error: 'text je prazen' }, 400);
+      const proc = Bun.spawn({
+        cmd: ['python', '-c',
+          `from chief.chief_of_staff import append_correction; r = append_correction(text=${JSON.stringify(text)}); print('1' if r else '0')`],
+        cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+      });
+      const out = await new Response(proc.stdout).text();
+      const code = await proc.exited;
+      const ok = code === 0 && out.trim() === '1';
+      return json({ ok, saved: ok });
+    }
     // P9 — fleet status: workerji, agenda, daemon, spomin (živi pregled flote).
     if (req.method === 'GET' && url.pathname === '/api/fleet') {
       const wf = Bun.file(`${OUT_ROOT}/.rob_ai/fleet_workers.json`);

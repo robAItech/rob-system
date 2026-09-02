@@ -235,8 +235,8 @@ def build_digest(model: dict, date: Optional[str] = None,
     # 5) Učenje + varovalke.
     L.append("## Učenje in meja")
     L.append(_CORRECTION_HINT)
-    L.append("- Prvi teden: pisanje/izvedba samo na actions/, tests/, docs/, chief/ "
-             "— jedro (daemon/orchestrator/agenda) zaklenjeno.")
+    L.append("- Dovoljene cone pisanja: actions/, src/, tests/, docs/, chief/ "
+             "(iz execution_lock v modelu); Python jedro sistema zaklenjeno.")
     return "\n".join(L)
 
 
@@ -421,16 +421,17 @@ def guard(rel_path: str, model: Optional[dict] = None) -> Tuple[bool, str]:
     Vrne (True, "ok") ali (False, razlog).
     """
     model = model if model is not None else load_model()
-    lock = model.get("first_week_lock", {}) if isinstance(model, dict) else {}
+    lock = (model.get("execution_lock") or model.get("first_week_lock")
+            or {}) if isinstance(model, dict) else {}
     allowed = [str(x) for x in lock.get("allowed_write", [])]
     locked = [str(x) for x in lock.get("locked", [])]
     p = str(rel_path or "").replace("\\", "/").lstrip("./")
 
     for bad in locked:
         if p == bad or p.startswith(bad.rstrip("/") + "/"):
-            return False, f"zaklenjeno v prvem tednu: {bad}"
+            return False, f"zaklenjeno (jedro): {bad}"
     if not allowed:
-        return False, "model nima first_week_lock.allowed_write"
+        return False, "model nima execution_lock.allowed_write"
     for a in allowed:
         if p.startswith(a.rstrip("/")):
             return True, "ok"

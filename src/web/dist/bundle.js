@@ -635,6 +635,101 @@ function initAgenda() {
   setInterval(load, 15000);
 }
 
+// src/web/components/chief.ts
+function escapeHtml2(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function mdToSafeHtml(md) {
+  const out = [];
+  for (const raw of md.split(`
+`)) {
+    const line = raw.replace(/\s+$/, "");
+    if (!line.trim()) {
+      out.push('<div class="chief-gap"></div>');
+      continue;
+    }
+    const h2 = line.match(/^##\s+(.*)$/);
+    if (h2) {
+      out.push(`<h4>${escapeHtml2(h2[1])}</h4>`);
+      continue;
+    }
+    const h1 = line.match(/^#\s+(.*)$/);
+    if (h1) {
+      out.push(`<h3>${escapeHtml2(h1[1])}</h3>`);
+      continue;
+    }
+    if (/^\s*[-*]\s+/.test(line)) {
+      out.push(`<div class="chief-li">• ${escapeHtml2(line.replace(/^\s*[-*]\s+/, ""))}</div>`);
+      continue;
+    }
+    out.push(`<div>${escapeHtml2(line)}</div>`);
+  }
+  return out.join(`
+`);
+}
+function initChief() {
+  const digestEl = document.getElementById("chief-digest");
+  const metaEl = document.getElementById("chief-meta");
+  const input = document.getElementById("chief-input");
+  const sendBtn = document.getElementById("chief-send");
+  const msgEl = document.getElementById("chief-msg");
+  if (!digestEl)
+    return;
+  const render = (r) => {
+    if (metaEl) {
+      const n = (r.lessons || []).length;
+      metaEl.textContent = n ? `naučeno: ${n} lekcij` : "dnevno poročilo";
+    }
+    if (!r.digest) {
+      digestEl.innerHTML = '<div class="muted">Ni še poročila — zaženi <code>python -m chief --report</code> ali počakaj na dnevni beat.</div>';
+      return;
+    }
+    digestEl.innerHTML = mdToSafeHtml(r.digest);
+  };
+  const load = () => {
+    getJSON("/api/chief").then(render).catch(() => {
+      if (digestEl)
+        digestEl.innerHTML = '<div class="muted">Chief ni dosegljiv.</div>';
+    });
+  };
+  const send = () => {
+    const text = input?.value.trim() ?? "";
+    if (!text)
+      return;
+    if (msgEl) {
+      msgEl.textContent = "…";
+      msgEl.className = "chief-msg";
+    }
+    fetch("/api/chief/correct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    }).then((r) => r.json()).then((r) => {
+      if (msgEl) {
+        msgEl.textContent = r.ok ? "✅ Popravek shranjen — učenje posodobljeno." : "❌ Popravek ni bil shranjen.";
+        msgEl.className = `chief-msg ${r.ok ? "ok" : "err"}`;
+      }
+      if (input)
+        input.value = "";
+      setTimeout(load, 400);
+    }).catch(() => {
+      if (msgEl) {
+        msgEl.textContent = "❌ Napaka pri pošiljanju.";
+        msgEl.className = "chief-msg err";
+      }
+    });
+  };
+  if (sendBtn)
+    sendBtn.addEventListener("click", send);
+  if (input)
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter")
+        send();
+    });
+  load();
+  setInterval(load, 60000);
+}
+
 // src/web/components/graph.ts
 var COLORS = { core: "#ffd166", action: "#4fc3ff", root: "#5e7ba0" };
 var W = 900;
@@ -882,6 +977,7 @@ ready(() => {
     }
     initChat();
     initAgenda();
+    initChief();
     initGraph();
     document.querySelectorAll(".nav-btn").forEach((btn) => {
       btn.addEventListener("click", () => {

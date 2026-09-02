@@ -7,6 +7,7 @@ import { renderKpis, recordSample } from './components/kpis';
 import { setPanelState } from './components/state';
 import { initChat } from './components/chat';
 import { initAgenda } from './components/agenda';
+import { initChief } from './components/chief';
 import { initGraph } from './components/graph';
 import type { EventLine } from '../shared/types';
 
@@ -68,9 +69,10 @@ ready(() => {
         .catch(() => connectFeed(feedEl, dotEl, () => { /* */ }));
     }
 
-    // Pogovor + Agenda + Graf.
+    // Pogovor + Agenda + Chief + Graf.
     initChat();
     initAgenda();
+    initChief();
     initGraph();
 
     // Navigacija.

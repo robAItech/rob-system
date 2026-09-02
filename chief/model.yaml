@@ -29,10 +29,13 @@ style_guardrails:
     - "komunikacija s strankami navzven"
     - "sprememba jedra sistema"
 
-first_week_lock:
-  # Pravilo prvega tedna: chief sme delovati SAMO na nenevarnih delih.
+execution_lock:
+  # Faza 2 (2026-09-02): src/ odprto (Chief panel na dashboardu). Python jedro
+  # sistema (daemon/orchestrator/agenda/loopx/run_swarm/rob/fleet) ostane
+  # zaklenjeno — tam chief ne sme pisati.
   allowed_write:
     - "actions/"
+    - "src/"
     - "tests/"
     - "docs/"
     - "chief/"
@@ -46,4 +49,4 @@ first_week_lock:
     - "run_swarm.py"
     - "rob"
     - "fleet/"
-  note: "Jedro zaklenjeno prvi teden, dokler chief ne dokaže, da se odloča dobro."
+  note: "src/ odprto (UI); Python jedro sistema zaklenjeno."

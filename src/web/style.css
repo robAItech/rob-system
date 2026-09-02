@@ -203,3 +203,17 @@ body{
 @media (prefers-reduced-motion: reduce){
   *{animation:none!important;transition:none!important}
 }
+
+/* ── Chief of Staff panel ────────────────────────────────── */
+.chief-digest{max-height:430px;overflow:auto;font-size:13.5px;line-height:1.6;color:var(--ink)}
+.chief-digest h3{margin:.55em 0 .2em;font-size:1.08em;color:var(--ink)}
+.chief-digest h4{margin:.7em 0 .25em;font-size:.98em;color:var(--accent)}
+.chief-digest .chief-li{margin:.1em 0;padding-left:.3em}
+.chief-digest .chief-gap{height:.5em}
+.chief-digest code{background:rgba(127,127,127,.16);border-radius:4px;padding:0 5px;font-size:.92em}
+.chief-digest .muted{color:var(--faint)}
+.chief-correct-row{display:flex;gap:8px;align-items:center}
+.chief-correct-row .chat-input{flex:1}
+.chief-msg{font-size:13px;color:var(--faint);margin-top:8px;min-height:16px}
+.chief-msg.ok{color:var(--good)}
+.chief-msg.err{color:var(--bad)}
