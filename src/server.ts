@@ -52,6 +52,10 @@ const OUT_ROOT = process.env.OUT_ROOT ?? '.';
 // =====================================================================
 const API_TOKEN = process.env.ROB_API_TOKEN || '';
 const SESSIONS = new Set<string>();
+// Kadar ROB_API_TOKEN NI nastavljen, dashboard ni namenjen LAN-u: veži se na
+// 127.0.0.1 (DASH_HOST preglasi le v zaščitenem načinu), da tuji peeri na
+// omrežju ne morejo pisati (npr. /api/chief/correct).
+const BIND_HOST = API_TOKEN ? (process.env.DASH_HOST || '0.0.0.0') : '127.0.0.1';
 
 function authCookie(req: Request): string {
   try {
@@ -1521,6 +1525,7 @@ async function handleGoogleApi(req: Request, url: URL): Promise<Response> {
 const tls = await tlsOptions();
 const server = Bun.serve({
   port: PORT,
+  hostname: BIND_HOST,
   ...tls,
   async fetch(req) {
     const url = new URL(req.url);
@@ -2006,22 +2011,33 @@ const server = Bun.serve({
       return json({ ok: true, digest, lessons: lessons.slice(-8).reverse(), history: history.slice(-7) });
     }
     // Chief of Staff — shrani lastnikov popravek (učni signal → lekcija).
+    // Varnost/robustnost: besedilo gre po STDIN (ne v interpoliran python -c
+    // niz — ni RCE, a je krhko in ima ~32 KB CreateProcess omejitev); cap 2000
+    // znakov; Bun.spawn v try/catch (velik/neveljaven vnos ne sme pasti).
     if (req.method === 'POST' && url.pathname === '/api/chief/correct') {
+      if (rateLimited(server.requestIP(req)?.address || 'local')) return json({ ok: false, error: 'rate limit: preveč zahtevkov (10/min)' }, 429);
       const raw = await req.text().catch(() => '');
       let body: { text?: unknown } = {};
       try { body = JSON.parse(raw); } catch { /* ignore */ }
       const text = String(body.text || '').trim();
       if (!text) return json({ ok: false, error: 'text je prazen' }, 400);
-      const proc = Bun.spawn({
-        cmd: ['python', '-c',
-          `from chief.chief_of_staff import append_correction; r = append_correction(text=${JSON.stringify(text)}); print('1' if r else '0')`],
-        cwd: OUT_ROOT, stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
-      });
-      const out = await new Response(proc.stdout).text();
-      const code = await proc.exited;
-      const ok = code === 0 && out.trim() === '1';
-      return json({ ok, saved: ok });
+      if (text.length > 2000) return json({ ok: false, error: 'text predolg (>2000 znakov)' }, 400);
+      try {
+        const proc = Bun.spawn({
+          cmd: ['python', '-c',
+            'import sys\nfrom chief.chief_of_staff import append_correction\n'
+            + 'r = append_correction(text=sys.stdin.read())\nprint("1" if r else "0")'],
+          cwd: OUT_ROOT, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe',
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+        });
+        if (proc.stdin) { proc.stdin.write(text); proc.stdin.end(); }
+        const out = await new Response(proc.stdout).text();
+        const code = await proc.exited;
+        const ok = code === 0 && out.trim() === '1';
+        return json({ ok, saved: ok });
+      } catch (err) {
+        return json({ ok: false, error: String(err instanceof Error ? err.message : err) }, 500);
+      }
     }
     // P9 — fleet status: workerji, agenda, daemon, spomin (živi pregled flote).
     if (req.method === 'GET' && url.pathname === '/api/fleet') {

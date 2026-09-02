@@ -257,7 +257,12 @@ def write_digest(digest_dir: Optional[Path] = None, date: Optional[str] = None,
         tmp = d / f"{date}.md.{os.getpid()}.tmp"
         tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, target)                       # atomično (Windows-safe)
-        (d / "latest.md").write_text(text, encoding="utf-8")
+        # latest.md skozi isti tmp + os.replace — da GET /api/chief nikoli ne
+        # prebere strganega (delno zapisanega) digesta ob race z --report.
+        lt = d / "latest.md"
+        ltmp = d / f"latest.md.{os.getpid()}.tmp"
+        ltmp.write_text(text, encoding="utf-8")
+        os.replace(ltmp, lt)
         return target
     except OSError:
         return None
@@ -351,10 +356,27 @@ def record_history(digest_dir: Optional[Path] = None, date: Optional[str] = None
     predlogi = propose_next(model, act)
     try:
         d.mkdir(parents=True, exist_ok=True)
+        # Upsert po datumu: ena vrstica na dan — ponovni --report istega dne ne
+        # podvoji števcev (sicer bi 7-dnevna metrika bila izkrivljena).
+        f = _history_file(d)
+        rows: List[dict] = []
+        if f.exists():
+            for ln in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                if not ln.strip():
+                    continue
+                try:
+                    x = json.loads(ln)
+                except Exception:
+                    continue
+                if str(x.get("date")) != date:
+                    rows.append(x)
         row = {"date": date, "ok": act.get("ok", 0), "failed": act.get("failed", 0),
                "proposals": predlogi[:5], "ts": int(time.time())}
-        with _history_file(d).open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        rows.append(row)
+        tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
+        tmp.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
+                       encoding="utf-8")
+        os.replace(tmp, f)
         return True
     except OSError:
         return False
@@ -425,15 +447,31 @@ def guard(rel_path: str, model: Optional[dict] = None) -> Tuple[bool, str]:
             or {}) if isinstance(model, dict) else {}
     allowed = [str(x) for x in lock.get("allowed_write", [])]
     locked = [str(x) for x in lock.get("locked", [])]
-    p = str(rel_path or "").replace("\\", "/").lstrip("./")
+    raw = str(rel_path or "").strip().replace("\\", "/")
+    if not raw or raw in (".", ".."):
+        return False, "prazna ali neveljavna pot"
+
+    # Normaliziraj na repo-relativno absolutno pot: `resolve` razreši '..',
+    # sledi symlinkom in zavrne vse, kar uhaja izven ROOT (tudi absolutne poti
+    # zunaj korena in traversal skozi dovoljeno cono v zaklenjeno jedro).
+    try:
+        cand = (ROOT / raw).resolve()
+        rel = cand.relative_to(ROOT.resolve()).as_posix()
+    except Exception:
+        return False, "pot uhaja izven korena projekta"
+    rel_l = rel.casefold()                     # Windows: poti so case-insensitive
+
+    def match(z: str) -> bool:                 # CELE potne segmente, ne prefiks
+        base = z.rstrip("/").casefold()
+        return rel_l == base or rel_l.startswith(base + "/")
 
     for bad in locked:
-        if p == bad or p.startswith(bad.rstrip("/") + "/"):
+        if match(bad):
             return False, f"zaklenjeno (jedro): {bad}"
     if not allowed:
         return False, "model nima execution_lock.allowed_write"
     for a in allowed:
-        if p.startswith(a.rstrip("/")):
+        if match(a):
             return True, "ok"
     return False, f"izven dovoljenih con: {', '.join(allowed)}"
 

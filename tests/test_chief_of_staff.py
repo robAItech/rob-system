@@ -29,7 +29,7 @@ def _model():
             "b": {"name": "Posel B", "status": "active", "next_action": ""},
         },
         "first_week_lock": {
-            "allowed_write": ["actions/", "tests/", "docs/", "chief/"],
+            "allowed_write": ["actions/", "src/", "tests/", "docs/", "chief/"],
             "locked": ["core/daemon.py", "run_swarm.py"],
         },
     }
@@ -167,3 +167,33 @@ def test_guard_pusti_nenevarno_in_blokira_jedro():
 def test_guard_zavrne_izven_con():
     ok, why = guard("random/kar_koli.py", _model())
     assert not ok and "dovoljenih con" in why
+
+
+# --- guard trdnost (traversal / sosednji prefiks / absolutna pot) --------- #
+def test_guard_blokira_traversal_v_jedro():
+    # src/../core/daemon.py se razreši v ROOT/core/daemon.py → zaklenjeno.
+    ok, _ = guard("src/../core/daemon.py", _model())
+    assert not ok
+
+
+def test_guard_blokira_sosednji_prefiks():
+    # 'src2/' NE sme zadeti dovoljene cone 'src/'.
+    ok, _ = guard("src2/x.py", _model())
+    assert not ok
+    ok2, _ = guard("actions2/x.py", _model())
+    assert not ok2
+
+
+def test_guard_dovoli_pod_celo_dovoljeno_cono():
+    assert guard("src/web/components/chief.ts", _model())[0] is True
+    assert guard("actions/nek_modul/main.py", _model())[0] is True
+
+
+def test_guard_zavrne_absolutno_pot_izven_korena(tmp_path):
+    ok, _ = guard(str(tmp_path / "x.py"), _model())
+    assert not ok
+
+
+def test_guard_zavrne_prazno():
+    assert not guard("", _model())[0]
+    assert not guard("   ", _model())[0]

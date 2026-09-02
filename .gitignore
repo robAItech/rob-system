@@ -105,6 +105,7 @@ legacy/testna/
 # Self-signed TLS cert (lokalno generiran — NE commitaj privatnega ključa)
 certs/
 .rob_ai/research/
+.rob_ai/chief/
 
 # Claude Code lokalni state (settings, worktrees) — ne commitaj.
 # Projektni settings.json je izjema (shared allowlist); settings.local.json je osebni.
