@@ -8,10 +8,15 @@ from chief.chief_of_staff import (
     append_correction,
     audit_activity,
     build_digest,
+    fold_corrections,
     guard,
+    load_lessons,
     load_model,
     propose_next,
+    read_history,
+    record_history,
     ventures_missing_next,
+    week_summary,
     write_digest,
 )
 
@@ -105,6 +110,46 @@ def test_correction_se_shrani(tmp_path):
 
 def test_correction_prazna_ne_pise(tmp_path):
     assert append_correction(tmp_path, text="   ") is None
+
+
+# --- učenje in zgodovina ------------------------------------------------ #
+def test_fold_corrections_v_lekcije(tmp_path):
+    cdir = tmp_path / "corrections"
+    cdir.mkdir(parents=True)
+    (cdir / "2026-09-02.md").write_text(
+        "- 2026-09-02T10:00:00: To ni bilo prav.\n- 2026-09-02T11:00:00: Druga lekcija.\n",
+        encoding="utf-8")
+    assert fold_corrections(tmp_path) == 2
+    lessons = load_lessons(tmp_path)
+    assert len(lessons) == 2
+    # Idempotentno — ponovni fold ne doda duplikatov.
+    assert fold_corrections(tmp_path) == 0
+    assert len(load_lessons(tmp_path)) == 2
+
+
+def test_fold_brez_corrections_dir(tmp_path):
+    assert fold_corrections(tmp_path) == 0
+
+
+def test_digest_pokaže_naučene_lekcije():
+    lessons = [{"date": "2026-09-02", "lesson": "Upoštevaj rollback."}]
+    txt = build_digest(_model(), date="2026-09-02", lessons=lessons)
+    assert "Naučeno do zdaj" in txt
+    assert "Upoštevaj rollback." in txt
+
+
+def test_history_in_week_summary(tmp_path):
+    assert record_history(tmp_path, date="2026-09-01", model=_model(),
+                          activity={"ok": 5, "failed": 1,
+                                    "failed_projects": ["p"]})
+    assert record_history(tmp_path, date="2026-09-02", model=_model(),
+                          activity={"ok": 3, "failed": 0,
+                                    "failed_projects": []})
+    rows = read_history(tmp_path)
+    assert len(rows) == 2
+    s = week_summary(tmp_path, days=7)
+    assert "8 ok" in s and "1 failed" in s
+    assert week_summary(tmp_path / "ni").startswith("(ni še zgodovine")
 
 
 # --- varovalka ------------------------------------------------------------ #

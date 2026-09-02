@@ -157,10 +157,12 @@ def propose_next(model: dict, activity: Optional[dict] = None) -> List[str]:
 
 
 def build_digest(model: dict, date: Optional[str] = None,
-                 activity: Optional[dict] = None) -> str:
+                 activity: Optional[dict] = None,
+                 lessons: Optional[List[dict]] = None) -> str:
     """Sestavi dnevno poročilo (markdown). Ne piše na disk."""
     date = date or datetime.now().strftime("%Y-%m-%d")
     act = activity or {}
+    lessons = lessons or []
     L: List[str] = [f"# {_DIGEST_TITLE} — {date}", ""]
 
     # 1) Zgodilo se je danes.
@@ -209,7 +211,18 @@ def build_digest(model: dict, date: Optional[str] = None,
                  "dopolni `next_action` v chief/model.yaml ali odgovori na to poročilo.")
     L.append("")
 
-    # 4) Od tebe rabim.
+    # 4) Naučeno do zdaj (iz popravkov) — učenje, ki vpliva na naprej.
+    L.append("## Naučeno do zdaj")
+    if lessons:
+        for le in lessons[:3]:
+            L.append(f"- ({le.get('date')}) {str(le.get('lesson'))[:200]}")
+        if len(lessons) > 3:
+            L.append(f"… + {len(lessons) - 3} več (skupaj {len(lessons)} lekcij).")
+    else:
+        L.append("Ni še lekcij — tvoji popravki poročil postanejo učenje.")
+    L.append("")
+
+    # 5) Od tebe rabim.
     L.append("## Od tebe rabim")
     missing = ventures_missing_next(model)
     if missing:
@@ -248,6 +261,134 @@ def write_digest(digest_dir: Optional[Path] = None, date: Optional[str] = None,
         return target
     except OSError:
         return None
+
+
+# --------------------------------------------------------------------------- #
+#  Učenje: popravki → lekcije, zgodovina poročil
+# --------------------------------------------------------------------------- #
+def _lessons_file(digest_dir: Path) -> Path:
+    return digest_dir / "lessons.jsonl"
+
+
+def _history_file(digest_dir: Path) -> Path:
+    return digest_dir / "history.jsonl"
+
+
+def load_lessons(digest_dir: Optional[Path] = None, limit: int = 50) -> List[dict]:
+    """Lekcije (učni signal) iz .rob_ai/chief/lessons.jsonl, novejše prve."""
+    d = Path(digest_dir) if digest_dir else DIGEST_DIR
+    out: List[dict] = []
+    f = _lessons_file(d)
+    if f.exists():
+        try:
+            for ln in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                if not ln.strip():
+                    continue
+                try:
+                    out.append(json.loads(ln))
+                except Exception:
+                    continue
+        except OSError:
+            pass
+    out.sort(key=lambda x: str(x.get("date", "")), reverse=True)
+    return out[:limit]
+
+
+def fold_corrections(digest_dir: Optional[Path] = None) -> int:
+    """Popravke iz corrections/*.md strni v lessons.jsonl (idempotentno).
+
+    Vsaka vrstica '— <iso>: <besedilo>' postane lekcija {date, lesson}.
+    Vrne število na novo dodanih lekcij. Nikoli ne dvigne.
+    """
+    d = Path(digest_dir) if digest_dir else DIGEST_DIR
+    cdir = d / "corrections"
+    if not cdir.exists():
+        return 0
+    existing = load_lessons(d, limit=10 ** 6)
+    have = {(str(x.get("date")), str(x.get("lesson"))) for x in existing}
+    added = 0
+    new_rows: List[dict] = []
+    try:
+        for mdf in sorted(cdir.glob("*.md")):
+            date = mdf.stem
+            for ln in mdf.read_text(encoding="utf-8", errors="replace").splitlines():
+                s = ln.strip()
+                if not s.startswith("- "):
+                    continue
+                rest = s[2:].strip()
+                # Format: "- <iso>: <besedilo>" → ločilo je ": " (presledek za
+                # dvopičjem), da se minuta v iso-času ne prilepi na lekcijo.
+                idx = rest.find(": ")
+                if idx < 0:
+                    continue
+                text = rest[idx + 2:].strip()
+                if not text:
+                    continue
+                key = (date, text)
+                if key in have:
+                    continue
+                have.add(key)
+                new_rows.append({"date": date, "lesson": text,
+                                 "ts": int(time.time())})
+                added += 1
+        if new_rows:
+            with _lessons_file(d).open("a", encoding="utf-8") as fh:
+                for r in new_rows:
+                    fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+    except OSError:
+        return 0
+    return added
+
+
+def record_history(digest_dir: Optional[Path] = None, date: Optional[str] = None,
+                   model: Optional[dict] = None,
+                   activity: Optional[dict] = None) -> bool:
+    """Zgodovina poročil (za 7-dnevno meritev): datum, ok/failed, predlogi."""
+    d = Path(digest_dir) if digest_dir else DIGEST_DIR
+    date = date or datetime.now().strftime("%Y-%m-%d")
+    model = model if model is not None else load_model()
+    act = activity or {}
+    predlogi = propose_next(model, act)
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        row = {"date": date, "ok": act.get("ok", 0), "failed": act.get("failed", 0),
+               "proposals": predlogi[:5], "ts": int(time.time())}
+        with _history_file(d).open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+        return True
+    except OSError:
+        return False
+
+
+def read_history(digest_dir: Optional[Path] = None, limit: int = 14) -> List[dict]:
+    d = Path(digest_dir) if digest_dir else DIGEST_DIR
+    out: List[dict] = []
+    f = _history_file(d)
+    if f.exists():
+        try:
+            for ln in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                if not ln.strip():
+                    continue
+                try:
+                    out.append(json.loads(ln))
+                except Exception:
+                    continue
+        except OSError:
+            pass
+    return out[-limit:]
+
+
+def week_summary(digest_dir: Optional[Path] = None, days: int = 7) -> str:
+    """Kratek povzetek zadnjih `days` dni (za oceno po prvem tednu)."""
+    rows = read_history(digest_dir)
+    if not rows:
+        return "(ni še zgodovine poročil — zaženi `python -m chief --report` vsak dan)"
+    recent = rows[-days:]
+    ok = sum(int(r.get("ok", 0)) for r in recent)
+    failed = sum(int(r.get("failed", 0)) for r in recent)
+    days_run = len(recent)
+    return (f"Zadnjih {days_run} dni: {ok} ok / {failed} failed dogodkov. "
+            f"Dnevi: {', '.join(str(r.get('date')) for r in recent)}")
 
 
 def append_correction(digest_dir: Optional[Path] = None, date: Optional[str] = None,
@@ -311,6 +452,12 @@ def main(argv=None) -> int:
                     help="Preveri varovalko za pot (npr. core/daemon.py).")
     ap.add_argument("--correct", metavar="BESEDILO", default=None,
                     help="Shrani lastnikov popravek (učni signal).")
+    ap.add_argument("--lessons", action="store_true",
+                    help="Prikaži naučene lekcije (iz popravkov).")
+    ap.add_argument("--history", action="store_true",
+                    help="Prikaži zgodovino poročil.")
+    ap.add_argument("--week", action="store_true",
+                    help="Povzetek zadnjih 7 dni (meritev prvega tedna).")
     args = ap.parse_args(argv)
 
     if args.model:
@@ -323,13 +470,31 @@ def main(argv=None) -> int:
     if args.correct:
         f = append_correction(date=args.date, text=args.correct)
         print(f"popravek shranjen: {f}" if f else "(popravek ni bil shranjen)")
+    if args.lessons:
+        for le in load_lessons():
+            print(f"- ({le.get('date')}) {le.get('lesson')}")
+        if not load_lessons():
+            print("(ni še lekcij — popravki poročil postanejo lekcije)")
+    if args.history:
+        for r in read_history():
+            print(f"- {r.get('date')}: ok={r.get('ok')} failed={r.get('failed')} "
+                  f"| predlogi: {len(r.get('proposals', []))}")
+        if not read_history():
+            print("(ni še zgodovine poročil)")
+    if args.week:
+        print(week_summary())
     if args.report:
+        added = fold_corrections()          # popravki → lekcije (idempotentno)
+        if added:
+            print(f"(v model vključenih {added} novih lekcij iz popravkov)")
         model = load_model()
         act = audit_activity(date=args.date)
         f = write_digest(date=args.date, model=model, activity=act)
-        print(build_digest(model, args.date, act))
+        record_history(date=args.date, model=model, activity=act)
+        print(build_digest(model, args.date, act, load_lessons()))
         print("\n" + ("zapisano: " + str(f) if f else "(zapis ni uspel)"))
-    if not (args.report or args.model or args.guard or args.correct):
+    if not (args.report or args.model or args.guard or args.correct
+            or args.lessons or args.history or args.week):
         ap.print_help()
     return 0
 

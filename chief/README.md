@@ -21,9 +21,16 @@ Zaprt učni krog:
   (`.rob_ai/audit.jsonl`) + modela, zapiše v `.rob_ai/chief/<datum>.md` in
   `latest.md`, izpiše ga.
 - **`python -m chief --correct "besedilo"`** — shrani tvoj popravek (učni signal)
-  v `.rob_ai/chief/corrections/<datum>.md`.
+  v `.rob_ai/chief/corrections/<datum>.md`; ob naslednjem `--report` se strne v lekcije.
+- **`python -m chief --lessons`** — prikaži naučene lekcije (iz popravkov).
+- **`python -m chief --history` / `--week`** — zgodovina poročil / povzetek 7 dni.
 - **`python -m chief --guard core/daemon.py`** — preveri varovalko prvega tedna.
 - **`python -m chief --model`** — izpiše model.
+
+## Učenje
+
+Zaprt krog: poročilo → tvoj popravek (`--correct`) → lekcija (`lessons.jsonl`) →
+prikazano v naslednjem poročilu in zgodovini (meritev po prvem tednu: `--week`).
 
 ## Varovalka prvega tedna
 

@@ -15,6 +15,11 @@ from chief.chief_of_staff import (
     propose_next,
     guard,
     append_correction,
+    load_lessons,
+    fold_corrections,
+    record_history,
+    read_history,
+    week_summary,
     MODEL_FILE,
     DIGEST_DIR,
     AUDIT_FILE,
@@ -23,5 +28,7 @@ from chief.chief_of_staff import (
 __all__ = [
     "load_model", "audit_activity", "build_digest", "write_digest",
     "propose_next", "guard", "append_correction",
+    "load_lessons", "fold_corrections", "record_history", "read_history",
+    "week_summary",
     "MODEL_FILE", "DIGEST_DIR", "AUDIT_FILE",
 ]
