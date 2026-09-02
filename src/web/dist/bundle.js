@@ -639,6 +639,31 @@ function initAgenda() {
 function escapeHtml2(s) {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
+function summarize(digest) {
+  let ok = null;
+  let failed = 0;
+  let proposal = "";
+  let section = "";
+  for (const raw of digest.split(`
+`)) {
+    const t = raw.trim();
+    if (t.startsWith("## ")) {
+      section = t.slice(3).trim();
+      continue;
+    }
+    if (section === "Zgodilo se je danes") {
+      const mo = t.match(/ok=(\d+)/);
+      if (mo)
+        ok = parseInt(mo[1], 10);
+      const mf = t.match(/failed=(\d+)/);
+      if (mf)
+        failed = parseInt(mf[1], 10);
+    } else if (section === "Predlog za jutri" && t.startsWith("- ") && !proposal) {
+      proposal = t.slice(2).replace(/\*\*/g, "").trim();
+    }
+  }
+  return { ok, failed, proposal };
+}
 function mdToSafeHtml(md) {
   const out = [];
   for (const raw of md.split(`
@@ -669,17 +694,36 @@ function mdToSafeHtml(md) {
 }
 function initChief() {
   const digestEl = document.getElementById("chief-digest");
+  const summaryEl = document.getElementById("chief-summary");
   const metaEl = document.getElementById("chief-meta");
   const input = document.getElementById("chief-input");
   const sendBtn = document.getElementById("chief-send");
   const msgEl = document.getElementById("chief-msg");
   if (!digestEl)
     return;
+  const renderSummary = (r) => {
+    if (!summaryEl)
+      return;
+    if (!r.digest) {
+      summaryEl.innerHTML = "";
+      return;
+    }
+    const s = summarize(r.digest);
+    const chips = [];
+    if (s.ok !== null)
+      chips.push(`<span class="chip chip-ok">✓ ${s.ok} ok</span>`);
+    if (s.failed)
+      chips.push(`<span class="chip chip-bad">✗ ${s.failed} padlih</span>`);
+    chips.push(`<span class="chip chip-n">\uD83D\uDCDA ${(r.lessons || []).length} lekcij</span>`);
+    const callout = s.proposal ? `<div class="chief-proposal"><span class="plabel">Priporočam naprej</span><span>${escapeHtml2(s.proposal)}</span></div>` : "";
+    summaryEl.innerHTML = `<div class="chief-chips">${chips.join("")}</div>${callout}`;
+  };
   const render = (r) => {
     if (metaEl) {
       const n = (r.lessons || []).length;
       metaEl.textContent = n ? `naučeno: ${n} lekcij` : "dnevno poročilo";
     }
+    renderSummary(r);
     if (!r.digest) {
       digestEl.innerHTML = '<div class="muted">Ni še poročila — zaženi <code>python -m chief --report</code> ali počakaj na dnevni beat.</div>';
       return;
@@ -694,12 +738,14 @@ function initChief() {
   };
   const send = () => {
     const text = input?.value.trim() ?? "";
-    if (!text)
+    if (!text || !sendBtn)
       return;
     if (msgEl) {
-      msgEl.textContent = "…";
+      msgEl.textContent = "…shranjujem";
       msgEl.className = "chief-msg";
     }
+    sendBtn.disabled = true;
+    sendBtn.textContent = "…";
     fetch("/api/chief/correct", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -716,6 +762,11 @@ function initChief() {
       if (msgEl) {
         msgEl.textContent = "❌ Napaka pri pošiljanju.";
         msgEl.className = "chief-msg err";
+      }
+    }).finally(() => {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = "Pošlji";
       }
     });
   };
