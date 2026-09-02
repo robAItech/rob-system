@@ -210,38 +210,9 @@ class SystemSettings(BaseSettings):
         },
         alias="NIS2_SCOPE_THRESHOLDS",
     )
-    # Sektorji po prilogah ZInfV-1 (vseh 19: Priloga 1 = 11 visoko kritičnih,
-    # Priloga 2 = 8 drugih kritičnih). Runtime vir: rules/zinfv1_priloge.json.
-    nis2_priloga_sectors: dict = Field(
-        default={
-            "priloga1": [
-                "energija",
-                "promet",
-                "bancnistvo",
-                "infrastruktura_financnega_trga",
-                "zdravje",
-                "pitna_voda",
-                "odpadna_voda",
-                "digitalna_infrastruktura",
-                "upravljanje_storitev_ikt",
-                "javna_uprava",
-                "vesolje",
-            ],
-            "priloga2": [
-                "postne_storitve",
-                "ravnanje_z_odpadki",
-                "izdelava_kemikalij",
-                "pridelava_hrane",
-                "proizvodnja",
-                "digitalni_ponudniki",
-                "raziskave",
-                "javna_uprava_lokalna",
-            ],
-        },
-        alias="NIS2_PRILOGA_SECTORS",
-    )
     # LLM opis tveganja (child #3): true = LLM-draft za človeško potrditev,
     # sicer generičen opis. Register ostaja determinističen v obeh primerih.
+    # (Sektorji Prilog so v rules/zinfv1_priloge.json — single source of truth.)
     nis2_risk_llm_desc: bool = Field(default=True, alias="NIS2_RISK_LLM_DESC")
     # Rok za skladnost (ZInfV-1): 19. 12. 2026.
     nis2_deadline: str = Field(default="2026-12-19", alias="NIS2_DEADLINE")

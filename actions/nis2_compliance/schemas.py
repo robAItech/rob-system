@@ -97,7 +97,7 @@ class Category(BaseModel):
 
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    id: int = Field(ge=1, le=10)
+    id: int = Field(ge=1, le=8)
     name: StrictText
 
 
@@ -122,7 +122,7 @@ class Obligation(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     obligation_id: StrictText
-    category: int = Field(ge=1, le=10)       # reference na categories[].id
+    category: int = Field(ge=1, le=8)       # reference na categories[].id
     legal_ref: LegalRef                       # strukturiran pravni vir (obvezen)
     annex_ref: str = ""                       # izpeljan iz legal_ref (human-readable)
     title: StrictText
@@ -205,8 +205,8 @@ class ScopeInput(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     zaposleni: int                    # ≥ 0 (negativen → InvalidScopeInputError)
-    promet_mio: float                 # ≥ 0, EUR v mio
-    bilancna_vsota_mio: float = 0.0   # ≥ 0, EUR v mio (NOVO: 43M bistveni / 10M pomembni OR)
+    promet_mio: float = Field(ge=0, allow_inf_nan=False, default=0.0)   # ≥ 0, EUR v mio (NaN/Inf → reject)
+    bilancna_vsota_mio: float = Field(ge=0, allow_inf_nan=False, default=0.0)   # ≥ 0, EUR v mio (NaN/Inf → reject)
     sektor: StrictText                # normaliziran sektor (Priloga 1/2 ali "drug")
     kategorija: Literal["splosno", "posebna"] = "splosno"
 
@@ -266,7 +266,7 @@ class RiskItem(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     risk_id: StrictText            # npr. "RISK-01"
-    category: int = Field(ge=1, le=10)   # iz rules categories
+    category: int = Field(ge=1, le=8)   # iz rules categories
     description: str               # LLM-draft za prosti tekst, sicer generičen
     likelihood: int = Field(ge=1, le=5)  # ISO 27005 skala
     impact: int = Field(ge=1, le=5)
@@ -315,8 +315,8 @@ class CreateFirmRequest(BaseModel):
     naziv: StrictText
     sektor: StrictText
     zaposleni: int                 # negativen → InvalidScopeInputError (400)
-    promet_mio: float
-    bilancna_vsota_mio: float = 0.0   # EUR v mio (scope 43M bistveni / 10M pomembni OR)
+    promet_mio: float = Field(ge=0, allow_inf_nan=False, default=0.0)   # ≥ 0, EUR v mio (NaN/Inf → reject)
+    bilancna_vsota_mio: float = Field(ge=0, allow_inf_nan=False, default=0.0)   # ≥ 0, EUR v mio (NaN/Inf → reject)
     kategorija: Literal["splosno", "posebna"] = "splosno"
     kontakt: str = Field(default="", max_length=200)
     answers: list[IntakeAnswer] = Field(default_factory=list)

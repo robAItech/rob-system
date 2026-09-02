@@ -144,13 +144,15 @@ def test_negativen_vhod_zaposleni():
 
 
 def test_negativen_vhod_promet():
-    with pytest.raises(InvalidScopeInputError):
-        determine_scope(_input(promet=-5.0), THRESHOLDS, PRILOGA)
+    """Field ge=0 na ScopeInput zavrne negativen promet na robu (Pydantic)."""
+    with pytest.raises(Exception):
+        ScopeInput(zaposleni=60, promet_mio=-5.0, sektor="x")
 
 
 def test_negativna_bilancna_vsota():
-    with pytest.raises(InvalidScopeInputError):
-        determine_scope(_input(bilancna=-1.0), THRESHOLDS, PRILOGA)
+    """Field ge=0 na ScopeInput zavrne negativno bilančno vsoto na robu."""
+    with pytest.raises(Exception):
+        ScopeInput(zaposleni=60, promet_mio=10.0, bilancna_vsota_mio=-1.0, sektor="x")
 
 
 def test_sektor_normaliziran():
@@ -220,3 +222,26 @@ def test_unknown_sector_uses_generic_size_logic():
     assert determine_scope(_input(zaposleni=300, sektor="storitve"), THRESHOLDS, PRILOGA).tier == "bistveni"
     assert determine_scope(_input(zaposleni=60, promet=12.0, sektor="storitve"), THRESHOLDS, PRILOGA).tier == "pomembni"
     assert determine_scope(_input(zaposleni=10, sektor="storitve"), THRESHOLDS, PRILOGA).tier == "izven"
+
+
+# ── NaN/Inf zaščita (security CRITICAL fix, ship audit) ───────────────
+def test_scope_input_rejects_nan():
+    """NaN bilančna/promet → Pydantic zavrne (allow_inf_nan=False)."""
+    with pytest.raises(Exception):
+        ScopeInput(zaposleni=60, promet_mio=float("nan"), bilancna_vsota_mio=10.0, sektor="x")
+    with pytest.raises(Exception):
+        ScopeInput(zaposleni=60, promet_mio=10.0, bilancna_vsota_mio=float("inf"), sektor="x")
+
+
+def test_scope_real_priloga_dict_form():
+    """Realna priloga data (dict form {'sectors':[...]}) → sektorski izid."""
+    priloge = load_priloge()  # realna rules/zinfv1_priloge.json
+    # 'energija' v realni Prilogi 1 + 300/60 → bistveni.
+    res = determine_scope(_input(zaposleni=300, promet=60.0, sektor="energija"), THRESHOLDS, priloge)
+    assert res.tier == "bistveni"
+    # 'energija' v realni Prilogi 1, a pod pragom (40/8) → NI avto-bistveni.
+    res2 = determine_scope(_input(zaposleni=40, promet=8.0, sektor="energija"), THRESHOLDS, priloge)
+    assert res2.tier == "izven"
+    # 'proizvodnja' v realni Prilogi 2 + 60/12 → pomembni.
+    res3 = determine_scope(_input(zaposleni=60, promet=12.0, sektor="proizvodnja"), THRESHOLDS, priloge)
+    assert res3.tier == "pomembni"

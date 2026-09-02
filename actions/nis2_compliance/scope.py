@@ -78,11 +78,6 @@ def _sector_list(priloga: dict, key: str) -> set[str]:
     return {str(s).strip().lower() for s in raw}
 
 
-def _meets(zaposleni: int, promet: float, bilancna: float, z: int, p: float, b: float) -> bool:
-    """Velikostna meja (OR znotraj kriterija): zaposleni/promet/bilančna."""
-    return zaposleni >= z or promet >= p or bilancna >= b
-
-
 def _za_zavezanec(zaposleni: int, promet: float, bilancna: float, z_p: int, p_p: float, b_p: float) -> bool:
     """Prag zavezanca (pomembni): 50 zap. IN (promet ALI bilančna ≥ 10M)."""
     return zaposleni >= z_p and (promet >= p_p or bilancna >= b_p)
