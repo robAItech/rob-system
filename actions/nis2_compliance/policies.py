@@ -1,12 +1,13 @@
-"""nis2_compliance — varnostne politike: predloge + placeholder substitucija.
+"""nis2_compliance — varnostna dokumentacija 21. člena (predloge + placeholderji).
 
-DETERMINISTIČNO (D1): politike NISO LLM-generirane — so predloge iz
+DETERMINISTIČNO (D1): dokumentacija NISO LLM-generirane — so predloge iz
 URSIV/ENISA smernic (``rules/policies/*.md``) z zapolnjenimi placeholderji.
 LLM halucinacija nima mesta v pravnem dokumentu.
 
-Oba tier-ja dobita vseh 7 politik ("iste kategorije, mehkejši pragovi") —
-vsebina je tier-parametrizirana (bistveni: poln BCP + formalna supply chain;
-pomembni: mehkejši roki, lažji pragovi).
+Child #7 realignment: ``rules/policies/`` vsebuje 8 predlog, ki zrcalijo
+8 dokumentov 21(1) (politike → ``legal_ref`` na 21. člen (1) N. točko).
+Oba tier-ja dobita vseh 8 dokumentov (ZInfV-1 21(1) velja za oba); vsebina je
+tier-parametrizirana (bistveni: poln BCP + strožji pragovi; pomembni: mehkejši).
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from core.config import settings  # noqa: E402
 from actions.nis2_compliance.schemas import (  # noqa: E402
     FirmProfile,
+    LegalRef,
     PolicyDoc,
     PolicyNotFoundError,
     PolicyRenderError,
@@ -44,15 +46,28 @@ class PolicyTemplate:
         self.source = self.path.read_text(encoding="utf-8")
 
 
-#: policy_id (ime datoteke brez .md) → človeški naslov dokumenta.
+#: policy_id (ime datoteke brez .md) → človeški naslov dokumenta (21. člen).
 POLICY_TITLES: dict[str, str] = {
     "informacijska-varnostna-politika": "Informacijska varnostna politika",
-    "upravljanje-tveganj": "Politika upravljanja tveganj",
-    "incident-handling": "Politika obvladovanja incidentov",
-    "bcp": "Politika neprekinjenosti poslovanja",
-    "access-control": "Politika nadzora dostopa",
-    "hr-security": "Politika varnosti kadrov",
-    "supply-chain": "Politika varnosti dobavne verige",
+    "popis-sredstev": "Popis informacijskih sredstev in upravljavcev",
+    "upravljanje-tveganj": "Analiza obvladovanja tveganj",
+    "bcp": "Politika in načrt neprekinjenega poslovanja",
+    "nacrt-obnovitve": "Načrt obnovitve in ponovne vzpostavitve delovanja",
+    "incident-handling": "Načrt odzivanja na incidente",
+    "nacrt-varnostnih-ukrepov": "Načrt varnostnih ukrepov (CIA)",
+    "presoja-ucinkovitosti": "Politika presoje učinkovitosti varnostnih ukrepov",
+}
+
+#: policy_id → 21. člen (1) N. točka (8 dokumentov). Single source za legal_ref.
+POLICY_DOC_TOCKA: dict[str, int] = {
+    "informacijska-varnostna-politika": 1,
+    "popis-sredstev": 2,
+    "upravljanje-tveganj": 3,
+    "bcp": 4,
+    "nacrt-obnovitve": 5,
+    "incident-handling": 6,
+    "nacrt-varnostnih-ukrepov": 7,
+    "presoja-ucinkovitosti": 8,
 }
 
 
@@ -61,7 +76,7 @@ def _now() -> int:
 
 
 def _tier_substitutions(scope: ScopeResult) -> dict[str, str]:
-    """Tier-prilagojena vsebina: bistveni = poln BCP + formalna supply chain."""
+    """Tier-prilagojena vsebina: bistveni = poln BCP + strožji pragovi."""
     if scope.tier == "bistveni":
         return {
             "bcp_scope": (
@@ -139,6 +154,7 @@ def render_policy(
 
     DETERMINISTIČNO: isti vhod → isti output. Ne-substituiran placeholder →
     PolicyRenderError (output nikoli nima nedorečenih placeholderjev).
+    ``legal_ref`` se izpelje iz ``POLICY_DOC_TOCKA`` (21. člen (1) N. točka).
     """
     if not Path(template).is_file():
         raise PolicyNotFoundError(f"Predloga ne obstaja: {template}")
@@ -147,10 +163,16 @@ def render_policy(
     remaining = _ANY_PLACEHOLDER_RE.findall(body)
     if remaining:
         raise PolicyRenderError(f"ne-substituiran placeholder: {remaining[0]}")
+    tocka = POLICY_DOC_TOCKA.get(tpl.policy_id)
+    if tocka is None:
+        raise PolicyNotFoundError(
+            f"Predloga ni mapirana na 21. člen (1) dokumentacijo: {tpl.policy_id}"
+        )
     title = POLICY_TITLES.get(tpl.policy_id, tpl.policy_id)
     return PolicyDoc(
         policy_id=tpl.policy_id,
         title=title,
+        legal_ref=LegalRef(clen=21, odstavek=1, tocka=tocka),
         body_markdown=body,
         rendered_at=int(rendered_at) if rendered_at is not None else _now(),
     )
@@ -162,8 +184,45 @@ def render_all_policies(
     scope: ScopeResult,
     rendered_at: int | None = None,
 ) -> list[PolicyDoc]:
-    """Renderira vse predloge (*.md) v imeniku — OBA tier-ja dobita vseh 7."""
+    """Renderira vse predloge (*.md) v imeniku — OBA tier-ja dobita vseh 8."""
     docs: list[PolicyDoc] = []
     for tpl_path in sorted(Path(templates_dir).glob("*.md")):
         docs.append(render_policy(tpl_path, firm, scope, rendered_at))
     return docs
+
+
+def build_user_notice(
+    firm: FirmProfile,
+    scope: ScopeResult,
+    incident_opis: str = "Pomemben varnostni incident",
+    rendered_at: int | None = None,
+) -> PolicyDoc:
+    """Predloga obvestila uporabnikom storitev (ZInfV-1 29(6)) z ukrepi (29(7)).
+
+    Ko pomemben incident verjetno negativno vpliva na zagotavljanje storitev,
+    mora subjekt uporabnike nemudoma obvestiti (29(6)) in jim sporočiti ukrepe,
+    ki jih lahko sprejmejo v odziv na grožnjo (29(7)).
+    """
+    m = _substitution_map(firm, scope)
+    body = (
+        "# Obvestilo uporabnikom storitev (ZInfV-1 29(6))\n\n"
+        f"**Organizacija:** {m['firma_naziv']}\n"
+        f"**Kontakt:** {m['kontakt']}\n\n"
+        "## 1. Obvestilo o pomembnem incidentu\n"
+        f"Organizacija {m['firma_naziv']} vas obvešča o pomembnem incidentu, ki "
+        f"verjetno negativno vpliva na zagotavljanje naših storitev:\n\n"
+        f"> {incident_opis}\n\n"
+        "## 2. Ukrepi, ki jih lahko uporabniki sprejmejo (ZInfV-1 29(7))\n"
+        "- Spremljajte uradna obvestila organizacije za nadaljnje informacije.\n"
+        "- Ob morebitni zlorabi poverilnic jih takoj zamenjajte.\n"
+        "- Bodite pozorni na lažna (phishing) sporočila, ki se sklicujejo na ta incident.\n"
+        "- O sumljivih aktivnostih obvestite kontakt: " + m["kontakt"] + ".\n\n"
+        "_Predloga obvestila uporabnikom storitev — ZInfV-1 29(6) in (7)._\n"
+    )
+    return PolicyDoc(
+        policy_id="obvestilo-uporabnikom",
+        title="Obvestilo uporabnikom storitev (ZInfV-1 29(6))",
+        legal_ref=LegalRef(clen=29, odstavek=6, tocka=None),
+        body_markdown=body,
+        rendered_at=int(rendered_at) if rendered_at is not None else _now(),
+    )

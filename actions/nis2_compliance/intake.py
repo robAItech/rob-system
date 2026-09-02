@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
+from functools import lru_cache
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -23,8 +25,11 @@ if str(PROJECT_ROOT) not in sys.path:
 from actions.nis2_compliance.rules_engine import get_obligations  # noqa: E402
 from actions.nis2_compliance.schemas import (  # noqa: E402
     EvidenceDraft,
+    FirmProfile,
     IntakeAnswer,
     RulesBundle,
+    SamoregistracijaInput,
+    SamoregistracijaPaket,
     ScopeResult,
 )
 
@@ -38,8 +43,12 @@ def _default_rules_dir() -> Path:
     return Path(__file__).resolve().parent / "rules"
 
 
+@lru_cache(maxsize=1)
 def load_question_map(path: Path | None = None) -> dict[str, str]:
-    """Naloži ``intake_questions.json`` → ``{question_id: item_id}``."""
+    """Naloži ``intake_questions.json`` → ``{question_id: item_id}``.
+
+    lru_cache (performance specialist): static data, ne per-request re-read.
+    """
     questions_path = (
         Path(path) if path is not None else _default_rules_dir()
     ) / QUESTION_MAP_FILENAME
@@ -98,3 +107,27 @@ def intake_to_draft_evidence(
                     )
                 )
     return drafts
+
+
+def build_samoregistracija_paket(
+    firm: FirmProfile,
+    scope_result: ScopeResult,
+    reg: SamoregistracijaInput,
+    now: int | None = None,
+) -> SamoregistracijaPaket:
+    """Sestavi samoregistracijski paket za URSIV portal (ZInfV-1 8. člen).
+
+    Modul pripravi podatkovni paket (8(2) 1., 5.–8. točka) — ne avtomatizira
+    pošiljanja (portal izvedba je out of scope). Rok registracije: 30 dni.
+    """
+    ts = int(now) if now is not None else int(time.time())
+    tier = scope_result.tier if scope_result.tier in ("bistveni", "pomembni") else None
+    return SamoregistracijaPaket(
+        firm_id=firm.firm_id,
+        naziv=firm.naziv,
+        sektor=firm.sektor,
+        tier=tier,
+        registracijski_rok_dni=30,
+        podatki=reg,
+        generated_at=ts,
+    )

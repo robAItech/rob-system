@@ -13,12 +13,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from actions.nis2_compliance.intake import (  # noqa: E402
+    build_samoregistracija_paket,
     intake_to_draft_evidence,
     load_question_map,
 )
 from actions.nis2_compliance.rules_engine import load_rules  # noqa: E402
 from actions.nis2_compliance.schemas import (  # noqa: E402
+    FirmProfile,
     IntakeAnswer,
+    SamoregistracijaInput,
     ScopeResult,
 )
 
@@ -69,9 +72,9 @@ def test_deterministic_mapping():
     drafts2 = intake_to_draft_evidence(_answers(), bundle, _scope("bistveni"), qmap)
     assert [d.item_id for d in drafts] == [d.item_id for d in drafts2]
     by_item = {d.item_id: d for d in drafts}
-    assert by_item["OBL-16-01"].status == "dokazano"      # register_sredstev
-    assert by_item["OBL-17-02"].status == "dokazano"      # mfa_aktiviran
-    assert by_item["OBL-17-02"].evidence_ref == "da"
+    assert by_item["OBL-06-01"].status == "dokazano"      # register_sredstev (21(1)(2))
+    assert by_item["OBL-27-02"].status == "dokazano"      # mfa_aktiviran (22(2)(15))
+    assert by_item["OBL-27-02"].evidence_ref == "da"
     assert by_item["OBL-01-01"].status == "v delu"        # ni mapiran
 
 
@@ -86,15 +89,15 @@ def test_unmapped_questions_are_v_delu():
 def test_item_outside_tier_skipped():
     """AC6: item izven tier-ja → izpuščen."""
     bundle = _bundle()
-    # OBL-06 je samo bistveni; pri pomembni tier-ju mora biti izpuščen.
+    # OBL-32 (25(1) revizija) je samo bistveni; pri pomembni tier-ju izpuščen.
     drafts_p = intake_to_draft_evidence(
         [], bundle, _scope("pomembni"), _real_map()
     )
     item_ids_p = {d.item_id for d in drafts_p}
-    assert not any(i.startswith("OBL-06-") for i in item_ids_p)
+    assert not any(i.startswith("OBL-32-") for i in item_ids_p)
     drafts_b = intake_to_draft_evidence([], bundle, _scope("bistveni"), _real_map())
     item_ids_b = {d.item_id for d in drafts_b}
-    assert any(i.startswith("OBL-06-") for i in item_ids_b)
+    assert any(i.startswith("OBL-32-") for i in item_ids_b)
 
 
 def test_izven_tier_empty():
@@ -124,8 +127,8 @@ def test_intake_save_get_evidence_roundtrip(tmp_path):
     store.save_evidence_draft("firma-a", drafts, now=NOW)
     got = store.get_evidence_draft("firma-a")
     by_item = {d.item_id: d for d in got}
-    assert by_item["OBL-16-01"].status == "dokazano"
-    assert by_item["OBL-16-01"].evidence_ref == "Inventar.xlsx"
+    assert by_item["OBL-06-01"].status == "dokazano"
+    assert by_item["OBL-06-01"].evidence_ref == "Inventar.xlsx"
     assert by_item["OBL-01-01"].status == "v delu"
 
 
@@ -151,3 +154,31 @@ def test_load_question_map_missing_file():
     import pytest as _pytest
     with _pytest.raises(FileNotFoundError):
         load_question_map(RULES_DIR / "ne-obstaja.json")
+
+
+def test_samoregistracija_paket_fields():
+    """AC10: samoregistracija polja — kontakt + namestnik + matična + IP + domene."""
+    reg = SamoregistracijaInput(
+        kontaktna_oseba_iv="Ana Novak",
+        kontaktna_oseba_namestnik="Bojan Kovač",
+        elektronski_naslov="info@acme.si",
+        maticna_stevilka="12345678",
+        ip_bloki=["193.2.1.0/24"],
+        domene=["acme.si"],
+        as_stevilke=["AS12345"],
+        drzave_clanice_eu=["Slovenija", "Hrvaška"],
+    )
+    firm = FirmProfile(
+        firm_id="firma-a", naziv="Acme d.o.o.", sektor="proizvodnja",
+        zaposleni=60, promet_mio=12.0, kontakt="", created_at=NOW,
+    )
+    paket = build_samoregistracija_paket(firm, _scope("pomembni"), reg, now=NOW)
+    assert paket.firm_id == "firma-a"
+    assert paket.tier == "pomembni"
+    assert paket.registracijski_rok_dni == 30  # 8(2): 30 dni
+    assert paket.podatki.kontaktna_oseba_iv == "Ana Novak"
+    assert paket.podatki.kontaktna_oseba_namestnik == "Bojan Kovač"
+    assert paket.podatki.maticna_stevilka == "12345678"
+    assert paket.podatki.ip_bloki == ["193.2.1.0/24"]
+    assert paket.podatki.domene == ["acme.si"]
+    assert paket.generated_at == NOW

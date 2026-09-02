@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "priloga1": {
+    "title": "Visoko kritični sektorji",
+    "sectors": [
+      "energija",
+      "promet",
+      "bancnistvo",
+      "infrastruktura_financnega_trga",
+      "zdravje",
+      "pitna_voda",
+      "odpadna_voda",
+      "digitalna_infrastruktura",
+      "upravljanje_storitev_ikt",
+      "javna_uprava",
+      "vesolje"
+    ]
+  },
+  "priloga2": {
+    "title": "Drugi kritični sektorji",
+    "sectors": [
+      "postne_storitve",
+      "ravnanje_z_odpadki",
+      "izdelava_kemikalij",
+      "pridelava_hrane",
+      "proizvodnja",
+      "digitalni_ponudniki",
+      "raziskave",
+      "javna_uprava_lokalna"
+    ]
+  }
+}

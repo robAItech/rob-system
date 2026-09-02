@@ -1,5 +1,11 @@
 {
   "schema_version": "1.0",
+  "scope_thresholds": {
+    "note": "Pragovi obsega (ZInfV-1 6./7. člen). Vir v runtime: NIS2_SCOPE_THRESHOLDS (core/config.py). Bistveni (Priloga 1): 250 zap. ALI 50M€ prometa ALI 43M€ bilančne vsote. Pomembni (Priloga 2): 50 zap. IN (10M€ prometa ALI 10M€ bilančne vsote).",
+    "zaposleni": {"pomembni": 50, "bistveni": 250},
+    "promet_mio": {"pomembni": 10, "bistveni": 50},
+    "bilancna_vsota_mio": {"pomembni": 10, "bistveni": 43}
+  },
   "tiers": {
     "bistveni": {
       "incident_reporting": {"early_warning_h": 24, "assessment_h": 72, "final_report_d": 30},

@@ -201,40 +201,18 @@ class SystemSettings(BaseSettings):
     # Per-firm SQLite root: vsaka firma svoja DB datoteka (C4 tenant izolacija).
     nis2_db_root: str = Field(default=".rob_ai/nis2_compliance", alias="NIS2_DB_ROOT")
     # Meje za obseg determinacijo (ZInfV-1 6./7. člen), config-driven brez kode.
+    # Child #7: dodana bilančna vsota (bistveni 43M€ / pomembni 10M€ OR).
     nis2_scope_thresholds: dict = Field(
         default={
             "zaposleni": {"pomembni": 50, "bistveni": 250},
             "promet_mio": {"pomembni": 10, "bistveni": 50},
+            "bilancna_vsota_mio": {"pomembni": 10, "bistveni": 43},
         },
         alias="NIS2_SCOPE_THRESHOLDS",
     )
-    # Sektorji po prilogah ZInfV-1 (Priloga 1 → bistveni, Priloga 2 → pomembni).
-    nis2_priloga_sectors: dict = Field(
-        default={
-            "priloga1": [
-                "energetika",
-                "transport",
-                "bančništvo",
-                "finančna infrastruktura",
-                "zdravstvo",
-                "vodna oskrba",
-                "digitalna infrastruktura",
-                "javna uprava",
-                "vesolje",
-            ],
-            "priloga2": [
-                "poštne storitve",
-                "kemikalije",
-                "hrana",
-                "proizvodnja",
-                "odpadki",
-                "raziskave",
-            ],
-        },
-        alias="NIS2_PRILOGA_SECTORS",
-    )
     # LLM opis tveganja (child #3): true = LLM-draft za človeško potrditev,
     # sicer generičen opis. Register ostaja determinističen v obeh primerih.
+    # (Sektorji Prilog so v rules/zinfv1_priloge.json — single source of truth.)
     nis2_risk_llm_desc: bool = Field(default=True, alias="NIS2_RISK_LLM_DESC")
     # Rok za skladnost (ZInfV-1): 19. 12. 2026.
     nis2_deadline: str = Field(default="2026-12-19", alias="NIS2_DEADLINE")

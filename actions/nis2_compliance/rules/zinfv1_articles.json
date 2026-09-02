@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "articles": {
+    "20": {
+      "title": "Upravljanje",
+      "note": "20(2) vodstvo odobri ukrepe; 20(3) menedžerski trening vsaka 4 leta; 20(4) trening zaposlenih; 20(5) skrbniki IKT letno; 20(6) URSIV organizira; 20(7) URSIV vodi seznam",
+      "paragraph_tocke": {}
+    },
+    "21": {
+      "title": "Varnostna dokumentacija",
+      "documents": [1, 2, 3, 4, 5, 6, 7, 8],
+      "note": "8 dokumentov ISMS/BCM (21(1) 1..8)",
+      "paragraph_tocke": {
+        "1": [1, 2, 3, 4, 5, 6, 7, 8]
+      }
+    },
+    "22": {
+      "title": "Ukrepi za obvladovanje tveganj",
+      "measures": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+      "note": "17 ukrepov v 22(2)",
+      "paragraph_tocke": {
+        "2": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+      }
+    },
+    "23": {
+      "title": "Preverjanje preteklosti",
+      "note": "kadrovski screening za zadnjih 5 let (23(1)); soglasje + kazenske evidence (23(2))",
+      "paragraph_tocke": {}
+    },
+    "24": {
+      "title": "Dnevniški zapisi",
+      "note": "10 vrst logov (24(2)); hramba najmanj 6 mesecev (24(4))",
+      "paragraph_tocke": {
+        "2": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      }
+    },
+    "25": {
+      "title": "Ocena in samoocena skladnosti",
+      "declarations": ["skladnosti", "neskladnosti"],
+      "note": "bistveni: revizija vsaki 2 leti (25(1)); pomembni: samoocena vsaki 2 leti (25(3)); izjava o skladnosti (25(4)) / izjava o ugotavljanju neskladnosti z načrtom odprave in roki (25(5))",
+      "paragraph_tocke": {}
+    },
+    "29": {
+      "title": "Priglasitev pomembnih incidentov in obveščanje",
+      "user_notice": true,
+      "note": "priglasitev CSIRT (29(1)); obvestilo uporabnikom storitev (29(6)) z ukrepi za odziv (29(7))",
+      "paragraph_tocke": {}
+    },
+    "30": {
+      "title": "Postopek priglasitve pomembnih incidentov",
+      "deadlines": {"early_warning_h": 24, "assessment_h": 72, "final_report_d": 30},
+      "note": "24h zgodnje opozorilo → 72h priglasitev → 1 mesec končno poročilo (30(1))",
+      "paragraph_tocke": {}
+    }
+  }
+}
