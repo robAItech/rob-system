@@ -36,17 +36,16 @@ from actions.nis2_compliance.schemas import (  # noqa: E402
 )
 
 #: Privzeti ukrep po kategoriji (iz pravila — deterministično, ne LLM).
+#: Kategorije zrcalijo člene ZInfV-1 (child #7 realignment).
 CATEGORY_MITIGATIONS: dict[int, str] = {
-    1: "Vzpostaviti in izvajati varnostne politike ter redno analizo tveganj",
-    2: "Vzpostaviti postopek obvladovanja in poročanja incidentov",
-    3: "Vzpostaviti načrt neprekinjenosti poslovanja in varnostno kopiranje",
-    4: "Vzpostaviti obvladovanje varnosti dobavne verige",
-    5: "Uvesti varnostne zahteve pri nabavi in razvoju",
-    6: "Vzpostaviti politiko kriptografije in upravljanja ključev",
-    7: "Uvesti program varnostne ozaveščenosti in usposabljanja kadrov",
-    8: "Vzpostaviti nadzor dostopa in upravljanje identitet",
-    9: "Vzpostaviti monitoring in beleženje varnostnih dogodkov",
-    10: "Vzpostaviti upravljanje ranljivosti in popravkov",
+    1: "Vzpostaviti upravljanje in usposabljanje odgovornih oseb ter zaposlenih (20. člen)",
+    2: "Vzpostaviti varnostno dokumentacijo ISMS/BCM (21. člen, 8 dokumentov)",
+    3: "Vzpostaviti in izvajati ukrepe za obvladovanje tveganj (22. člen, 17 ukrepov)",
+    4: "Vzpostaviti preverjanje preteklosti kadrov (23. člen)",
+    5: "Vzpostaviti dnevniške zapise in hrambo (24. člen)",
+    6: "Izvesti oceno/samooceno skladnosti (25. člen)",
+    7: "Vzpostaviti priglasitev incidentov in obveščanje uporabnikov (29. člen)",
+    8: "Vzpostaviti postopek priglasitve 24h/72h/1 mesec (30. člen)",
 }
 
 DEFAULT_MITIGATION = "Uvesti ustrezne varnostne ukrepe po ZInfV-1"

@@ -80,7 +80,7 @@ def test_get_firm_full_package(client):
     assert data["firm_id"] == firm_id
     assert data["profile"]["naziv"] == "Acme d.o.o."
     assert data["scope"]["tier"] == "bistveni"
-    assert len(data["policies"]) == 7
+    assert len(data["policies"]) == 8  # 21(1) 8 dokumentov
     assert "{{" not in data["policies"][0]["body_markdown"]
     assert len(data["risk"]["items"]) > 0
 
@@ -91,7 +91,7 @@ def test_generate_policies(client):
     resp = client.post(f"/api/nis2-compliance/firms/{firm_id}/policies")
     assert resp.status_code == 200, resp.text
     policies = resp.json()["policies"]
-    assert len(policies) == 7
+    assert len(policies) == 8  # 21(1) 8 dokumentov
     assert all("{{" not in p["body_markdown"] for p in policies)
 
 
@@ -148,6 +148,54 @@ def test_runtime_visible_via_load_module_app():
         resp = client.get("/api/nis2-compliance/health")
         assert resp.status_code == 200
         assert resp.json()["status"] == "ok"
+
+
+def test_samoocena_endpoint_pomembni_declaration(client):
+    """Child #7: POST /samoocena — pomembni subjekt dobi samooceno + izjavo."""
+    resp = client.post("/api/nis2-compliance/firms", json=_firm_payload(zaposleni=60, promet_mio=12.0))
+    assert resp.status_code == 200, resp.text
+    fid = resp.json()["firm_id"]
+    resp2 = client.post(f"/api/nis2-compliance/firms/{fid}/samoocena")
+    assert resp2.status_code == 200, resp2.text
+    report = resp2.json()
+    assert report["tier"] == "pomembni"
+    assert report["vrsta"] == "samoocena"
+    assert report["izjava"]["vrsta"] in ("skladnosti", "ugotavljanje_neskladnosti")
+
+
+def test_samoocena_endpoint_bistveni_revizijski_paket(client):
+    """Child #7: bistveni subjekt → revizijski paket (25(1), ni generativno)."""
+    fid = _create_firm(client)["firm_id"]
+    resp = client.post(f"/api/nis2-compliance/firms/{fid}/samoocena")
+    assert resp.status_code == 200, resp.text
+    report = resp.json()
+    assert report["tier"] == "bistveni"
+    assert report["vrsta"] == "revizijski_paket"
+    assert report["izjava"] is None
+
+
+def test_samoregistracija_endpoint_paket(client):
+    """Child #7: POST /samoregistracija → paket z vsemi polji 8(2)."""
+    fid = _create_firm(client)["firm_id"]
+    body = {
+        "kontaktna_oseba_iv": "Ana Novak",
+        "kontaktna_oseba_namestnik": "Bojan Kovač",
+        "elektronski_naslov": "info@acme.si",
+        "maticna_stevilka": "12345678",
+        "ip_bloki": ["193.2.1.0/24"],
+        "domene": ["acme.si"],
+        "as_stevilke": ["AS12345"],
+        "drzave_clanice_eu": ["Slovenija"],
+    }
+    resp = client.post(f"/api/nis2-compliance/firms/{fid}/samoregistracija", json=body)
+    assert resp.status_code == 200, resp.text
+    paket = resp.json()
+    assert paket["firm_id"] == fid
+    assert paket["registracijski_rok_dni"] == 30
+    assert paket["podatki"]["kontaktna_oseba_iv"] == "Ana Novak"
+    assert paket["podatki"]["kontaktna_oseba_namestnik"] == "Bojan Kovač"
+    assert paket["podatki"]["maticna_stevilka"] == "12345678"
+    assert paket["podatki"]["ip_bloki"] == ["193.2.1.0/24"]
 
 
 def test_build_runtime_app_mounts_nis2():

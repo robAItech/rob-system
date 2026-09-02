@@ -11,7 +11,8 @@
 ## 1. Namen
 Ta politika določa okvir informacijske varnosti v organizaciji {{firma_naziv}}.
 Namen je zagotoviti zaupnost, celovitost in razpoložljivost informacij ter
-izpolniti obveznosti po ZInfV-1 (prenos direktive NIS2).
+izpolniti obveznosti po ZInfV-1 21. člen (1) 1. točka (politika ali področne
+politike o varnosti omrežnih in informacijskih sistemov).
 
 ## 2. Obseg
 Politika velja za vse zaposlene, pogodbenike, zunanje izvajalce in

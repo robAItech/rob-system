@@ -9,7 +9,7 @@
 ## 1. Namen
 Ta politika določa pristop organizacije {{firma_naziv}} k analizi, oceni in
 obvladovanju tveganj informacijske varnosti v skladu z ISO/IEC 27005
-(SME-priredba) in ZInfV-1 Art 21(2)(a).
+(SME-priredba) in ZInfV-1 21. člen (1) 3. točka (analiza obvladovanja tveganj).
 
 ## 2. Postopek ocene tveganj
 - Inventar informacijskih sredstev in nosilcev podatkov.

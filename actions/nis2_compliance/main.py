@@ -29,17 +29,21 @@ from core.config import settings  # noqa: E402
 from core.llm_client import DeepSeekLLMClient  # noqa: E402
 
 from actions.nis2_compliance.intake import (  # noqa: E402
+    build_samoregistracija_paket,
     intake_to_draft_evidence,
     load_question_map,
 )
 from actions.nis2_compliance.policies import render_all_policies  # noqa: E402
 from actions.nis2_compliance.risk import build_risk_register  # noqa: E402
 from actions.nis2_compliance.rules_engine import load_rules  # noqa: E402
-from actions.nis2_compliance.scope import determine_scope  # noqa: E402
+from actions.nis2_compliance.samoocena import prepare_samoocena  # noqa: E402
+from actions.nis2_compliance.scope import determine_scope, load_priloge  # noqa: E402
 from actions.nis2_compliance.schemas import (  # noqa: E402
     CreateFirmRequest,
     FirmProfile,
     InvalidScopeInputError,
+    SamoocenaError,
+    SamoregistracijaInput,
     ScopeInput,
     ScopeNotDeterminedError,
     UnknownFirmError,
@@ -109,6 +113,12 @@ def _rules_bundle():
     return load_rules()
 
 
+@lru_cache(maxsize=1)
+def _priloge_data():
+    """Prilogi 1/2 (zinfv1_priloge.json) — statičen data, cache-iran."""
+    return load_priloge()
+
+
 async def _llm_desc_fn(prompt: str) -> str:
     """LLM-draft opisa tveganja (DeepSeekLLMClient, fallback na prazen string)."""
     client = DeepSeekLLMClient()
@@ -135,13 +145,15 @@ async def create_firm(payload: CreateFirmRequest) -> JSONResponse:
         scope_input = ScopeInput(
             zaposleni=payload.zaposleni,
             promet_mio=payload.promet_mio,
+            bilancna_vsota_mio=payload.bilancna_vsota_mio,
             sektor=payload.sektor,
+            kategorija=payload.kategorija,
         )
         scope_result = await run_in_threadpool(
             determine_scope,
             scope_input,
             settings.nis2_scope_thresholds,
-            settings.nis2_priloga_sectors,
+            _priloge_data(),
         )
         profile = FirmProfile(
             firm_id=firm_id,
@@ -167,16 +179,17 @@ async def create_firm(payload: CreateFirmRequest) -> JSONResponse:
             question_map,
         )
         await run_in_threadpool(store.save_evidence_draft, firm_id, drafts, now)
+        content: dict = {
+            "firm_id": firm_id,
+            "profile": profile.model_dump(),
+            "scope": scope_result.model_dump(),
+            "evidence_count": len(drafts),
+        }
+        if payload.samoregistracija is not None:
+            paket = build_samoregistracija_paket(profile, scope_result, payload.samoregistracija, now=now)
+            content["samoregistracija"] = paket.model_dump()
         _audit_http("POST", "/firms", "ok", firm_id)
-        return JSONResponse(
-            status_code=200,
-            content={
-                "firm_id": firm_id,
-                "profile": profile.model_dump(),
-                "scope": scope_result.model_dump(),
-                "evidence_count": len(drafts),
-            },
-        )
+        return JSONResponse(status_code=200, content=content)
     except InvalidScopeInputError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
     except Exception as e:  # noqa: BLE001
@@ -301,6 +314,73 @@ async def assess_risk(firm_id: str) -> JSONResponse:
         return JSONResponse(status_code=400, content={"error": str(e)})
     except Exception as e:  # noqa: BLE001
         _audit_http("POST", f"/firms/{firm_id}/risk", "failed", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/firms/{firm_id}/samoocena")
+async def generate_samoocena(firm_id: str) -> JSONResponse:
+    """25. člen: samoocena (pomembni) / revizijski paket (bistveni)."""
+    try:
+        _validate_firm_id(firm_id)
+        if not _firm_db_exists(firm_id):
+            raise UnknownFirmError(f"Firma ne obstaja: {firm_id}")
+        store = _get_store(firm_id)
+        profile = await run_in_threadpool(store.get_firm, firm_id)
+        if profile is None:
+            raise UnknownFirmError(f"Firma ne obstaja: {firm_id}")
+        scope = await run_in_threadpool(store.get_scope_result, firm_id)
+        if scope is None:
+            raise ScopeNotDeterminedError(f"Obseg ni določen za firmo: {firm_id}")
+        evidence = await run_in_threadpool(store.get_evidence_draft, firm_id)
+        report = await run_in_threadpool(
+            prepare_samoocena, profile, scope, evidence, _rules_bundle(), _now()
+        )
+        _audit_http(
+            "POST", f"/firms/{firm_id}/samoocena", "ok",
+            f"vrsta={report.vrsta} skladnost={report.skladnost}",
+        )
+        return JSONResponse(status_code=200, content=report.model_dump())
+    except UnknownFirmError as e:
+        _audit_http("POST", f"/firms/{firm_id}/samoocena", "failed", str(e))
+        return JSONResponse(status_code=404, content={"error": str(e)})
+    except ScopeNotDeterminedError as e:
+        _audit_http("POST", f"/firms/{firm_id}/samoocena", "failed", str(e))
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    except SamoocenaError as e:
+        _audit_http("POST", f"/firms/{firm_id}/samoocena", "failed", str(e))
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    except Exception as e:  # noqa: BLE001
+        _audit_http("POST", f"/firms/{firm_id}/samoocena", "failed", str(e))
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/firms/{firm_id}/samoregistracija")
+async def generate_samoregistracija(
+    firm_id: str, payload: SamoregistracijaInput
+) -> JSONResponse:
+    """8. člen: paket samoregistracijskih podatkov za URSIV portal (30 dni)."""
+    try:
+        _validate_firm_id(firm_id)
+        if not _firm_db_exists(firm_id):
+            raise UnknownFirmError(f"Firma ne obstaja: {firm_id}")
+        store = _get_store(firm_id)
+        profile = await run_in_threadpool(store.get_firm, firm_id)
+        if profile is None:
+            raise UnknownFirmError(f"Firma ne obstaja: {firm_id}")
+        scope = await run_in_threadpool(store.get_scope_result, firm_id)
+        if scope is None:
+            raise ScopeNotDeterminedError(f"Obseg ni določen za firmo: {firm_id}")
+        paket = build_samoregistracija_paket(profile, scope, payload, now=_now())
+        _audit_http("POST", f"/firms/{firm_id}/samoregistracija", "ok", firm_id)
+        return JSONResponse(status_code=200, content=paket.model_dump())
+    except UnknownFirmError as e:
+        _audit_http("POST", f"/firms/{firm_id}/samoregistracija", "failed", str(e))
+        return JSONResponse(status_code=404, content={"error": str(e)})
+    except ScopeNotDeterminedError as e:
+        _audit_http("POST", f"/firms/{firm_id}/samoregistracija", "failed", str(e))
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    except Exception as e:  # noqa: BLE001
+        _audit_http("POST", f"/firms/{firm_id}/samoregistracija", "failed", str(e))
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 

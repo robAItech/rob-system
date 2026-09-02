@@ -1,246 +1,415 @@
 {
   "schema_version": "1.0",
   "categories": [
-    {"id": 1, "name": "Analiza tveganj in varnostne politike"},
-    {"id": 2, "name": "Obvladovanje incidentov"},
-    {"id": 3, "name": "BCP / neprekinjenost poslovanja"},
-    {"id": 4, "name": "Varnost dobavne verige"},
-    {"id": 5, "name": "Varnost nabave in razvoja"},
-    {"id": 6, "name": "Kriptografija"},
-    {"id": 7, "name": "Varnost kadrov"},
-    {"id": 8, "name": "Nadzor dostopa in identitet"},
-    {"id": 9, "name": "Monitoring in beleženje"},
-    {"id": 10, "name": "Upravljanje ranljivosti"}
+    {"id": 1, "name": "Upravljanje in odgovorne osebe (20. člen)"},
+    {"id": 2, "name": "Varnostna dokumentacija (21. člen)"},
+    {"id": 3, "name": "Ukrepi za obvladovanje tveganj (22. člen)"},
+    {"id": 4, "name": "Kadri in preverjanje preteklosti (23. člen)"},
+    {"id": 5, "name": "Dnevniški zapisi (24. člen)"},
+    {"id": 6, "name": "Ocena in samoocena skladnosti (25. člen)"},
+    {"id": 7, "name": "Priglasitev pomembnih incidentov (29. člen)"},
+    {"id": 8, "name": "Postopek priglasitve (30. člen)"}
   ],
   "obligations": [
     {
       "obligation_id": "OBL-01",
       "category": 1,
-      "annex_ref": "ZInfV-1 Art 21(2)(a); Art 22",
-      "title": "Vzpostavitev varnostnih politik",
+      "legal_ref": {"clen": 20, "odstavek": 2, "tocka": null},
+      "title": "Odobritev in nadzor varnostnih ukrepov s strani vodstva",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-01-01", "description": "Informacijska varnostna politika", "evidence_tip": "dokument"},
-        {"item_id": "OBL-01-02", "description": "Politika upravljanja tveganj", "evidence_tip": "dokument"}
+        {"item_id": "OBL-01-01", "description": "Dokazilo o odobritvi ukrepov za obvladovanje tveganj s strani odgovornih oseb", "evidence_tip": "dokument"},
+        {"item_id": "OBL-01-02", "description": "Evidenca nadzora nad izvajanjem odobrenih ukrepov", "evidence_tip": "izpis"}
       ]
     },
     {
       "obligation_id": "OBL-02",
       "category": 1,
-      "annex_ref": "ZInfV-1 Art 21(2)(a)",
-      "title": "Analiza in ocena tveganj",
+      "legal_ref": {"clen": 20, "odstavek": 3, "tocka": null},
+      "title": "Menedžerski trening odgovornih oseb (vsaka 4 leta)",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-02-01", "description": "Register tveganj informacijskih sredstev", "evidence_tip": "dokument"},
-        {"item_id": "OBL-02-02", "description": "Letna ponovna ocena tveganj", "evidence_tip": "izpis"}
+        {"item_id": "OBL-02-01", "description": "Usposabljanje odgovornih oseb na področju obvladovanja tveganj IV vsaj vsaka štiri leta", "evidence_tip": "izpis"},
+        {"item_id": "OBL-02-02", "description": "Dokazilo o opravljenem menedžerskem treningu (seznam URSIV, 20(6))", "evidence_tip": "dokument"}
       ]
     },
     {
       "obligation_id": "OBL-03",
       "category": 1,
-      "annex_ref": "ZInfV-1 Art 21(2)(f)",
-      "title": "Ocena učinkovitosti varnostnih ukrepov",
+      "legal_ref": {"clen": 20, "odstavek": 4, "tocka": null},
+      "title": "Redno usposabljanje zaposlenih",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-03-01", "description": "Redni pregled učinkovitosti ukrepov", "evidence_tip": "izpis"}
+        {"item_id": "OBL-03-01", "description": "Program rednega usposabljanja zaposlenih za prepoznavanje tveganj IV", "evidence_tip": "dokument"},
+        {"item_id": "OBL-03-02", "description": "Evidenca opravljenih usposabljanj zaposlenih", "evidence_tip": "log"}
       ]
     },
     {
       "obligation_id": "OBL-04",
-      "category": 2,
-      "annex_ref": "ZInfV-1 Art 21(2)(b)",
-      "title": "Postopek obvladovanja incidentov",
+      "category": 1,
+      "legal_ref": {"clen": 20, "odstavek": 5, "tocka": null},
+      "title": "Letno usposabljanje skrbnikov IKT",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-04-01", "description": "Pisni postopek obvladovanja varnostnih incidentov", "evidence_tip": "dokument"},
-        {"item_id": "OBL-04-02", "description": "Dokumentiranje in analiza incidentov", "evidence_tip": "log"}
+        {"item_id": "OBL-04-01", "description": "Redno letno usposabljanje skrbnikov informacijsko-komunikacijskih sistemov", "evidence_tip": "izpis"},
+        {"item_id": "OBL-04-02", "description": "Evidenca opravljenih usposabljanj skrbnikov IKT", "evidence_tip": "log"}
       ]
     },
     {
       "obligation_id": "OBL-05",
       "category": 2,
-      "annex_ref": "ZInfV-1 Art 21(2)(b); Art 23",
-      "title": "Poročanje incidentov pristojnemu organu",
+      "legal_ref": {"clen": 21, "odstavek": 1, "tocka": 1},
+      "title": "Politika varnosti omrežnih in informacijskih sistemov",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-05-01", "description": "Postopek poročanja (zgodnje opozorilo, vmesna ocena, končno poročilo)", "evidence_tip": "dokument"},
-        {"item_id": "OBL-05-02", "description": "Evidenca prijavljenih incidentov", "evidence_tip": "log"}
+        {"item_id": "OBL-05-01", "description": "Informacijska varnostna politika (politika ali področne politike o varnosti OIS)", "evidence_tip": "dokument"},
+        {"item_id": "OBL-05-02", "description": "Področne politike varnosti omrežnih in informacijskih sistemov", "evidence_tip": "dokument"}
       ]
     },
     {
       "obligation_id": "OBL-06",
-      "category": 3,
-      "annex_ref": "ZInfV-1 Art 21(2)(c)",
-      "title": "Načrt neprekinjenosti poslovanja (BCP)",
-      "tier": ["bistveni"],
+      "category": 2,
+      "legal_ref": {"clen": 21, "odstavek": 1, "tocka": 2},
+      "title": "Popis informacijskih sredstev in upravljavcev",
+      "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-06-01", "description": "Poln BCP z obnovitvenimi cilji (RTO/RPO)", "evidence_tip": "dokument"},
-        {"item_id": "OBL-06-02", "description": "Krizno upravljanje in komunikacijski načrt", "evidence_tip": "dokument"}
+        {"item_id": "OBL-06-01", "description": "Natančen in posodobljen popis informacijskih in drugih sredstev ter podatkov", "evidence_tip": "izpis"},
+        {"item_id": "OBL-06-02", "description": "Seznam upravljavcev sredstev, potrebnih za nemoteno delovanje", "evidence_tip": "izpis"}
       ]
     },
     {
       "obligation_id": "OBL-07",
-      "category": 3,
-      "annex_ref": "ZInfV-1 Art 21(2)(c)",
-      "title": "Varnostno kopiranje in obnova",
+      "category": 2,
+      "legal_ref": {"clen": 21, "odstavek": 1, "tocka": 3},
+      "title": "Analiza obvladovanja tveganj",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-07-01", "description": "Politika varnostnega kopiranja", "evidence_tip": "dokument"},
-        {"item_id": "OBL-07-02", "description": "Redni testi obnove iz varnostnih kopij", "evidence_tip": "izpis"}
+        {"item_id": "OBL-07-01", "description": "Analiza obvladovanja tveganj z določitvijo sprejemljive ravni tveganja", "evidence_tip": "dokument"},
+        {"item_id": "OBL-07-02", "description": "Opis uporabljene metodologije ocene tveganj", "evidence_tip": "dokument"}
       ]
     },
     {
       "obligation_id": "OBL-08",
-      "category": 4,
-      "annex_ref": "ZInfV-1 Art 21(2)(d)",
-      "title": "Obvladovanje varnosti dobavne verige",
+      "category": 2,
+      "legal_ref": {"clen": 21, "odstavek": 1, "tocka": 4},
+      "title": "Politika in načrt neprekinjenega poslovanja (z oceno vpliva)",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-08-01", "description": "Varnostne zahteve v pogodbah z dobavitelji", "evidence_tip": "dokument"},
-        {"item_id": "OBL-08-02", "description": "Seznam ključnih dobaviteljev in ocena izpostavljenosti", "evidence_tip": "izpis"}
+        {"item_id": "OBL-08-01", "description": "Politika in načrt neprekinjenega poslovanja", "evidence_tip": "dokument"},
+        {"item_id": "OBL-08-02", "description": "Ocena vpliva na poslovanje (BIA) z minimalno ravnjo poslovanja", "evidence_tip": "dokument"},
+        {"item_id": "OBL-08-03", "description": "Vloge in odgovornosti ter upravljanje varnostnih kopij v načrtu BCP", "evidence_tip": "dokument"}
       ]
     },
     {
       "obligation_id": "OBL-09",
-      "category": 4,
-      "annex_ref": "ZInfV-1 Art 21(2)(d)",
-      "title": "Ocena varnosti ključnih dobaviteljev",
-      "tier": ["bistveni"],
+      "category": 2,
+      "legal_ref": {"clen": 21, "odstavek": 1, "tocka": 5},
+      "title": "Načrt obnovitve in ponovne vzpostavitve delovanja",
+      "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-09-01", "description": "Formalna ocena varnosti ključnih dobaviteljev", "evidence_tip": "dokument"},
-        {"item_id": "OBL-09-02", "description": "Redne revizije dobavne verige", "evidence_tip": "izpis"}
+        {"item_id": "OBL-09-01", "description": "Načrt obnovitve OIS po prekinitvi z opisi odgovornosti in postopkov", "evidence_tip": "dokument"},
+        {"item_id": "OBL-09-02", "description": "Redni testi obnovitve delovanja sistemov", "evidence_tip": "izpis"}
       ]
     },
     {
       "obligation_id": "OBL-10",
-      "category": 5,
-      "annex_ref": "ZInfV-1 Art 21(2)(e)",
-      "title": "Varnostne zahteve pri nabavi",
+      "category": 2,
+      "legal_ref": {"clen": 21, "odstavek": 1, "tocka": 6},
+      "title": "Načrt odzivanja na incidente s protokolom obveščanja CSIRT",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-10-01", "description": "Varnostni kriteriji pri nabavi strojne/programske opreme", "evidence_tip": "dokument"},
-        {"item_id": "OBL-10-02", "description": "Pregled varnostnih funkcij pred uporabo", "evidence_tip": "izpis"}
+        {"item_id": "OBL-10-01", "description": "Načrt odzivanja na incidente z vlogami in odgovornostmi", "evidence_tip": "dokument"},
+        {"item_id": "OBL-10-02", "description": "Opis sistema za zaznavo in odziv na incidente", "evidence_tip": "dokument"},
+        {"item_id": "OBL-10-03", "description": "Protokol obveščanja pristojne skupine CSIRT", "evidence_tip": "dokument"}
       ]
     },
     {
       "obligation_id": "OBL-11",
-      "category": 5,
-      "annex_ref": "ZInfV-1 Art 21(2)(e)",
-      "title": "Varnost razvojnega cikla",
-      "tier": ["bistveni"],
+      "category": 2,
+      "legal_ref": {"clen": 21, "odstavek": 1, "tocka": 7},
+      "title": "Načrt varnostnih ukrepov (CIA)",
+      "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-11-01", "description": "Varna razvojna metodologija (secure development)", "evidence_tip": "dokument"},
-        {"item_id": "OBL-11-02", "description": "Testiranje varnosti pred izdajo (SAST/DAST)", "evidence_tip": "izpis"}
+        {"item_id": "OBL-11-01", "description": "Načrt varnostnih ukrepov za celovitost, avtenticnost, zaupnost in razpoložljivost OIS", "evidence_tip": "dokument"}
       ]
     },
     {
       "obligation_id": "OBL-12",
-      "category": 6,
-      "annex_ref": "ZInfV-1 Art 21(2)(g)",
-      "title": "Politika kriptografije in šifriranja",
+      "category": 2,
+      "legal_ref": {"clen": 21, "odstavek": 1, "tocka": 8},
+      "title": "Politika presoje učinkovitosti varnostnih ukrepov (KPI)",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-12-01", "description": "Politika kriptografske zaščite podatkov", "evidence_tip": "dokument"},
-        {"item_id": "OBL-12-02", "description": "Šifriranje prenosnih naprav in medijev", "evidence_tip": "izpis"}
+        {"item_id": "OBL-12-01", "description": "Politika s postopki za presojo učinkovitosti varnostnih ukrepov", "evidence_tip": "dokument"},
+        {"item_id": "OBL-12-02", "description": "Določitev kazalnikov učinkovitosti (KPI)", "evidence_tip": "dokument"},
+        {"item_id": "OBL-12-03", "description": "Izvedena analiza zbranih podatkov o učinkovitosti ukrepov", "evidence_tip": "izpis"}
       ]
     },
     {
       "obligation_id": "OBL-13",
-      "category": 6,
-      "annex_ref": "ZInfV-1 Art 21(2)(g)",
-      "title": "Upravljanje kriptografskih ključev",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 1},
+      "title": "Podpora vodstva in vključitev v letni načrt",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-13-01", "description": "Postopek upravljanja ključev in certifikatov", "evidence_tip": "dokument"},
-        {"item_id": "OBL-13-02", "description": "Evidenca izdanih in preklicanih certifikatov", "evidence_tip": "log"}
+        {"item_id": "OBL-13-01", "description": "Dokazilo o podpori vodstva pri zagotavljanju informacijske in kibernetske varnosti", "evidence_tip": "dokument"},
+        {"item_id": "OBL-13-02", "description": "Vključitev področja IV v letni načrt poslovanja ali letni program dela", "evidence_tip": "dokument"}
       ]
     },
     {
       "obligation_id": "OBL-14",
-      "category": 7,
-      "annex_ref": "ZInfV-1 Art 21(2)(g)",
-      "title": "Varnostna ozaveščenost in usposabljanje",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 2},
+      "title": "Zagotavljanje integritete kadrov",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-14-01", "description": "Program rednega usposabljanja zaposlenih", "evidence_tip": "izpis"},
-        {"item_id": "OBL-14-02", "description": "Evidenca opravljenih usposabljanj", "evidence_tip": "log"}
+        {"item_id": "OBL-14-01", "description": "Postopki zagotavljanja integritete kadrov pred zaposlitvijo, med njo in ob prenehanju", "evidence_tip": "dokument"},
+        {"item_id": "OBL-14-02", "description": "Usklajenost s preverjanjem preteklosti po 23. členu", "evidence_tip": "izpis"}
       ]
     },
     {
       "obligation_id": "OBL-15",
-      "category": 7,
-      "annex_ref": "ZInfV-1 Art 20(2)",
-      "title": "Menedžerski trening kibernetske varnosti",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 3},
+      "title": "Osnovne prakse kibernetske higiene in usposabljanje",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-15-01", "description": "Usposabljanje vodstva in organov upravljanja", "evidence_tip": "izpis"},
-        {"item_id": "OBL-15-02", "description": "Dokazilo o opravljenem menedžerskem treningu", "evidence_tip": "dokument"}
+        {"item_id": "OBL-15-01", "description": "Uvedene osnovne prakse kibernetske higiene", "evidence_tip": "dokument"},
+        {"item_id": "OBL-15-02", "description": "Usposabljanje zaposlenih o kibernetski higieni", "evidence_tip": "izpis"}
       ]
     },
     {
       "obligation_id": "OBL-16",
-      "category": 8,
-      "annex_ref": "ZInfV-1 Art 21(2)(h)",
-      "title": "Politika nadzora dostopa in identitet",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 4},
+      "title": "Varnost človeških virov in upravljanje dostopa",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-16-01", "description": "Register informacijskih sredstev (inventar)", "evidence_tip": "izpis"},
-        {"item_id": "OBL-16-02", "description": "Politika nadzora dostopa z najmanjšimi pravicami", "evidence_tip": "dokument"}
+        {"item_id": "OBL-16-01", "description": "Preverjanje identitete uporabnikov in zagotavljanje ravni dostopnosti informacij", "evidence_tip": "izpis"},
+        {"item_id": "OBL-16-02", "description": "Politika upravljanja pooblastil za dostop", "evidence_tip": "dokument"}
       ]
     },
     {
       "obligation_id": "OBL-17",
-      "category": 8,
-      "annex_ref": "ZInfV-1 Art 21(2)(j)",
-      "title": "Večfaktorska avtentikacija in varni komunikacijski kanali",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 5},
+      "title": "Izvajanje in upravljanje varnostnih kopij podatkov",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-17-01", "description": "Politika večfaktorske avtentikacije (MFA)", "evidence_tip": "dokument"},
-        {"item_id": "OBL-17-02", "description": "MFA aktiviran za oddaljeni dostop in privilegirane račune", "evidence_tip": "izpis"}
+        {"item_id": "OBL-17-01", "description": "Politika varnostnega kopiranja podatkov", "evidence_tip": "dokument"},
+        {"item_id": "OBL-17-02", "description": "Redni testi obnove iz varnostnih kopij", "evidence_tip": "izpis"}
       ]
     },
     {
       "obligation_id": "OBL-18",
-      "category": 9,
-      "annex_ref": "ZInfV-1 Art 21(2)(i)",
-      "title": "Monitoring varnostnih dogodkov",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 6},
+      "title": "Zagotavljanje in ohranjanje dnevniških zapisov",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-18-01", "description": "Sistem za odkrivanje varnostnih dogodkov", "evidence_tip": "izpis"},
-        {"item_id": "OBL-18-02", "description": "Postopek odzivanja na alarme", "evidence_tip": "dokument"}
+        {"item_id": "OBL-18-01", "description": "Vzpostavljeno zbiranje in ohranjanje dnevniških zapisov o delovanju OIS", "evidence_tip": "izpis"},
+        {"item_id": "OBL-18-02", "description": "Usklajenost obsega in hrambe s 24. členom", "evidence_tip": "dokument"}
       ]
     },
     {
       "obligation_id": "OBL-19",
-      "category": 9,
-      "annex_ref": "ZInfV-1 Art 21(2)(i)",
-      "title": "Beleženje in hramba logov",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 7},
+      "title": "Upravljanje omrežij in informacijskih sistemov",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-19-01", "description": "Centralno beleženje varnostnih dogodkov", "evidence_tip": "izpis"},
-        {"item_id": "OBL-19-02", "description": "Politika hrambe in zaščite logov", "evidence_tip": "dokument"}
+        {"item_id": "OBL-19-01", "description": "Urejeno upravljanje OIS z določitvijo ustrezne odgovornosti za njihovo zaščito", "evidence_tip": "dokument"},
+        {"item_id": "OBL-19-02", "description": "Seznam odgovornih za zaščito omrežij in sistemov", "evidence_tip": "izpis"}
       ]
     },
     {
       "obligation_id": "OBL-20",
-      "category": 10,
-      "annex_ref": "ZInfV-1 Art 21(2)(e)",
-      "title": "Upravljanje ranljivosti",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 8},
+      "title": "Politike uporabe kriptografije in šifriranja",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-20-01", "description": "Redno pregledovanje ranljivosti (skeniranje)", "evidence_tip": "izpis"},
-        {"item_id": "OBL-20-02", "description": "Načrt odpravljanja ugotovljenih ranljivosti", "evidence_tip": "dokument"}
+        {"item_id": "OBL-20-01", "description": "Politika uporabe kriptografije in po potrebi šifriranja", "evidence_tip": "dokument"},
+        {"item_id": "OBL-20-02", "description": "Šifriranje prenosnih naprav in medijev", "evidence_tip": "izpis"}
       ]
     },
     {
       "obligation_id": "OBL-21",
-      "category": 10,
-      "annex_ref": "ZInfV-1 Art 21(2)(e)",
-      "title": "Ravnanje z ranljivostmi in popravki",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 9},
+      "title": "Upravljanje prometa in komunikacij",
       "tier": ["bistveni", "pomembni"],
       "checklist": [
-        {"item_id": "OBL-21-01", "description": "Postopek upravljanja popravkov (patch management)", "evidence_tip": "dokument"},
-        {"item_id": "OBL-21-02", "description": "Evidenca nameščenih varnostnih popravkov", "evidence_tip": "log"}
+        {"item_id": "OBL-21-01", "description": "Varno upravljanje omrežnega prometa in komunikacijskih tokov", "evidence_tip": "dokument"},
+        {"item_id": "OBL-21-02", "description": "Segmentacija in nadzor komunikacij", "evidence_tip": "izpis"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-22",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 10},
+      "title": "Varnost dobavne verige",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-22-01", "description": "Minimalne varnostne zahteve za ključne dobavitelje in ponudnike storitev v pogodbah", "evidence_tip": "dokument"},
+        {"item_id": "OBL-22-02", "description": "Ocena varnosti ključnih dobaviteljev in ponudnikov storitev", "evidence_tip": "izpis"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-23",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 11},
+      "title": "Fizično in tehnično varovanje prostorov",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-23-01", "description": "Ukrepi fizičnega in tehničnega varovanja prostorov s ključnimi deli OIS", "evidence_tip": "dokument"},
+        {"item_id": "OBL-23-02", "description": "Nadzor fizičnega dostopa v prostore", "evidence_tip": "izpis"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-24",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 12},
+      "title": "Varnostni mehanizmi v aplikativni programski opremi",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-24-01", "description": "Varnostni mehanizmi v aplikativni opremi za izvajanje dejavnosti", "evidence_tip": "dokument"},
+        {"item_id": "OBL-24-02", "description": "Varnost pri pridobivanju, razvoju in vzdrževanju sistemov", "evidence_tip": "dokument"},
+        {"item_id": "OBL-24-03", "description": "Postopek obravnavanja in razkrivanja ranljivosti", "evidence_tip": "dokument"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-25",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 13},
+      "title": "Upravljanje in preprečevanje izrab tehničnih ranljivosti",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-25-01", "description": "Redno pregledovanje tehničnih ranljivosti", "evidence_tip": "izpis"},
+        {"item_id": "OBL-25-02", "description": "Upravljanje popravkov (patch management)", "evidence_tip": "dokument"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-26",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 14},
+      "title": "Zaščita pred zlonamerno programsko kodo in vdori",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-26-01", "description": "Uvedena zaščita pred zlonamerno programsko kodo", "evidence_tip": "izpis"},
+        {"item_id": "OBL-26-02", "description": "Zaznavanje poskusov vdorov in preprečevanje incidentov", "evidence_tip": "izpis"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-27",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 15},
+      "title": "Večfaktorska avtentikacija",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-27-01", "description": "Politika večfaktorske avtentikacije ali neprekinjene avtentikacije", "evidence_tip": "dokument"},
+        {"item_id": "OBL-27-02", "description": "MFA ali neprekinjena avtentikacija aktivirana, kjer je potrebna glede na tveganja", "evidence_tip": "izpis"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-28",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 16},
+      "title": "Varovane komunikacije in komunikacije v sili",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-28-01", "description": "Uporaba varovanih glasovnih, video in besedilnih komunikacij", "evidence_tip": "dokument"},
+        {"item_id": "OBL-28-02", "description": "Varni sistemi za komunikacije v sili (kadar je glede na dejavnost primerno)", "evidence_tip": "dokument"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-29",
+      "category": 3,
+      "legal_ref": {"clen": 22, "odstavek": 2, "tocka": 17},
+      "title": "Politike uporabe oblačnih storitev",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-29-01", "description": "Politika in postopki za uporabo oblačnih storitev", "evidence_tip": "dokument"},
+        {"item_id": "OBL-29-02", "description": "Register oblačnih storitev z oceno tveganj", "evidence_tip": "izpis"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-30",
+      "category": 4,
+      "legal_ref": {"clen": 23, "odstavek": 1, "tocka": null},
+      "title": "Preverjanje preteklosti kadrov",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-30-01", "description": "Postopek preverjanja preteklosti za delovna mesta s pooblastili za dostop do ključnih sistemov", "evidence_tip": "dokument"},
+        {"item_id": "OBL-30-02", "description": "Evidence soglasij in opravljenih preverjanj preteklosti (zadnjih 5 let)", "evidence_tip": "log"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-31",
+      "category": 5,
+      "legal_ref": {"clen": 24, "odstavek": 1, "tocka": null},
+      "title": "Dnevniški zapisi (spremljanje, beleženje, hramba)",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-31-01", "description": "Postopki in orodja za spremljanje in beleženje dogodkov v OIS", "evidence_tip": "dokument"},
+        {"item_id": "OBL-31-02", "description": "Zajem dnevniških zapisov (omrežni promet, uporabniki, dostopi, avtentikacija, privilegirani dostopi, konfiguracije, varnostna orodja, viri, omrežna oprema, storitve) za rekonstrukcijo incidentov", "evidence_tip": "log"},
+        {"item_id": "OBL-31-03", "description": "Hramba dnevniških zapisov najmanj 6 mesecev z zaščito avtenticnosti in celovitosti", "evidence_tip": "izpis"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-32",
+      "category": 6,
+      "legal_ref": {"clen": 25, "odstavek": 1, "tocka": null},
+      "title": "Ocena skladnosti (revizija) — bistveni subjekt",
+      "tier": ["bistveni"],
+      "checklist": [
+        {"item_id": "OBL-32-01", "description": "Izvedena ocena skladnosti kot revizija najmanj enkrat na dve leti", "evidence_tip": "dokument"},
+        {"item_id": "OBL-32-02", "description": "Poročilo revizorja informacijskih sistemov o oceni skladnosti", "evidence_tip": "dokument"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-33",
+      "category": 6,
+      "legal_ref": {"clen": 25, "odstavek": 3, "tocka": null},
+      "title": "Samoocena skladnosti in izjava — pomembni subjekt",
+      "tier": ["pomembni"],
+      "checklist": [
+        {"item_id": "OBL-33-01", "description": "Dokumentirana samoocena skladnosti z varnostno dokumentacijo in izvajanjem ukrepov", "evidence_tip": "dokument"},
+        {"item_id": "OBL-33-02", "description": "Izjava o skladnosti ali izjava o ugotavljanju neskladnosti z načrtom odprave in roki", "evidence_tip": "dokument"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-34",
+      "category": 7,
+      "legal_ref": {"clen": 29, "odstavek": 1, "tocka": null},
+      "title": "Priglasitev pomembnih incidentov pristojni skupini CSIRT",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-34-01", "description": "Postopek priglasitve pomembnih incidentov pristojni skupini CSIRT", "evidence_tip": "dokument"},
+        {"item_id": "OBL-34-02", "description": "Evidenca prijavljenih incidentov in ocena pomembnosti", "evidence_tip": "log"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-35",
+      "category": 7,
+      "legal_ref": {"clen": 29, "odstavek": 6, "tocka": null},
+      "title": "Obvestilo uporabnikom storitev ob pomembnih incidentih in grožnjah",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-35-01", "description": "Postopek nemudnega obveščanja uporabnikov storitev ob pomembnih incidentih (29(6))", "evidence_tip": "dokument"},
+        {"item_id": "OBL-35-02", "description": "Predloga obvestila uporabnikom z ukrepi za odziv na pomembno grožnjo (29(7))", "evidence_tip": "dokument"}
+      ]
+    },
+    {
+      "obligation_id": "OBL-36",
+      "category": 8,
+      "legal_ref": {"clen": 30, "odstavek": 1, "tocka": null},
+      "title": "Postopek priglasitve pomembnih incidentov (24h/72h/1 mesec)",
+      "tier": ["bistveni", "pomembni"],
+      "checklist": [
+        {"item_id": "OBL-36-01", "description": "Zgodnje opozorilo v 24 urah po zaznavi pomembnega incidenta", "evidence_tip": "log"},
+        {"item_id": "OBL-36-02", "description": "Priglasitev v 72 urah z začetno oceno resnosti in vpliva", "evidence_tip": "log"},
+        {"item_id": "OBL-36-03", "description": "Končno poročilo v enem mesecu (ali poročilo o napredku)", "evidence_tip": "log"}
       ]
     }
   ]

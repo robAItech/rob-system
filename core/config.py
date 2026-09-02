@@ -201,34 +201,41 @@ class SystemSettings(BaseSettings):
     # Per-firm SQLite root: vsaka firma svoja DB datoteka (C4 tenant izolacija).
     nis2_db_root: str = Field(default=".rob_ai/nis2_compliance", alias="NIS2_DB_ROOT")
     # Meje za obseg determinacijo (ZInfV-1 6./7. člen), config-driven brez kode.
+    # Child #7: dodana bilančna vsota (bistveni 43M€ / pomembni 10M€ OR).
     nis2_scope_thresholds: dict = Field(
         default={
             "zaposleni": {"pomembni": 50, "bistveni": 250},
             "promet_mio": {"pomembni": 10, "bistveni": 50},
+            "bilancna_vsota_mio": {"pomembni": 10, "bistveni": 43},
         },
         alias="NIS2_SCOPE_THRESHOLDS",
     )
-    # Sektorji po prilogah ZInfV-1 (Priloga 1 → bistveni, Priloga 2 → pomembni).
+    # Sektorji po prilogah ZInfV-1 (vseh 19: Priloga 1 = 11 visoko kritičnih,
+    # Priloga 2 = 8 drugih kritičnih). Runtime vir: rules/zinfv1_priloge.json.
     nis2_priloga_sectors: dict = Field(
         default={
             "priloga1": [
-                "energetika",
-                "transport",
-                "bančništvo",
-                "finančna infrastruktura",
-                "zdravstvo",
-                "vodna oskrba",
-                "digitalna infrastruktura",
-                "javna uprava",
+                "energija",
+                "promet",
+                "bancnistvo",
+                "infrastruktura_financnega_trga",
+                "zdravje",
+                "pitna_voda",
+                "odpadna_voda",
+                "digitalna_infrastruktura",
+                "upravljanje_storitev_ikt",
+                "javna_uprava",
                 "vesolje",
             ],
             "priloga2": [
-                "poštne storitve",
-                "kemikalije",
-                "hrana",
+                "postne_storitve",
+                "ravnanje_z_odpadki",
+                "izdelava_kemikalij",
+                "pridelava_hrane",
                 "proizvodnja",
-                "odpadki",
+                "digitalni_ponudniki",
                 "raziskave",
+                "javna_uprava_lokalna",
             ],
         },
         alias="NIS2_PRILOGA_SECTORS",

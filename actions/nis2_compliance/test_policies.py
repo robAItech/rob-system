@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from actions.nis2_compliance.policies import (  # noqa: E402
     POLICY_TITLES,
+    build_user_notice,
     render_all_policies,
     render_policy,
 )
@@ -70,23 +71,30 @@ def test_render_policy_tier_placeholder():
     assert "RTO/RPO" in doc.body_markdown  # poln BCP za bistveni
 
 
-def test_render_all_policies_both_tiers_7():
-    """AC2: OBA tier-ja dobita vseh 7 politik."""
+def test_render_all_policies_both_tiers_8():
+    """AC4: OBA tier-ja dobita vseh 8 dokumentov 21(1)."""
     bistveni = render_all_policies(POLICIES_DIR, _firm(), _scope("bistveni"))
     pomembni = render_all_policies(POLICIES_DIR, _firm(), _scope("pomembni"))
-    assert len(bistveni) == 7
-    assert len(pomembni) == 7
+    assert len(bistveni) == 8
+    assert len(pomembni) == 8
     assert {p.policy_id for p in bistveni} == {p.policy_id for p in pomembni}
 
 
+def test_policies_cover_all_8_documents_legal_ref():
+    """AC4: 8 politik pokriva vseh 8 dokumentov 21(1); legal_ref → 21(1) N. točka."""
+    docs = render_all_policies(POLICIES_DIR, _firm(), _scope("bistveni"))
+    tocke = sorted(p.legal_ref.tocka for p in docs)
+    assert tocke == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert all(p.legal_ref.clen == 21 and p.legal_ref.odstavek == 1 for p in docs)
+    assert all(p.legal_ref.tocka is not None for p in docs)
+
+
 def test_render_all_policies_tier_content_differs():
-    """AC2: tier prilagoditev — bistveni poln BCP + formalna supply chain."""
+    """AC4: tier prilagoditev — bistveni poln BCP (RTO/RPO), pomembni mehkejši."""
     bistveni = {p.policy_id: p for p in render_all_policies(POLICIES_DIR, _firm(), _scope("bistveni"))}
     pomembni = {p.policy_id: p for p in render_all_policies(POLICIES_DIR, _firm(), _scope("pomembni"))}
     assert "RTO/RPO" in bistveni["bcp"].body_markdown
     assert "RTO/RPO" not in pomembni["bcp"].body_markdown
-    assert "Formalna ocena" in bistveni["supply-chain"].body_markdown
-    assert "Formalna ocena" not in pomembni["supply-chain"].body_markdown
 
 
 def test_render_all_policies_deterministic_hash():
@@ -111,10 +119,22 @@ def test_render_policy_unknown_placeholder_error(tmp_path):
         render_policy(bad, _firm(), _scope("bistveni"))
 
 
+def test_build_user_notice_29_6():
+    """AC9: predloga obvestila uporabnikom (29(6)) + ukrepi (29(7)), brez '{{'."""
+    notice = build_user_notice(_firm(), _scope("bistveni"), incident_opis="Izpadi storitve", rendered_at=NOW)
+    assert notice.policy_id == "obvestilo-uporabnikom"
+    assert notice.legal_ref.clen == 29 and notice.legal_ref.odstavek == 6
+    assert "Acme d.o.o." in notice.body_markdown
+    assert "29(6)" in notice.body_markdown
+    assert "29(7)" in notice.body_markdown
+    assert "ukrepi, ki jih lahko uporabniki sprejmejo" in notice.body_markdown.lower()
+    assert "{{" not in notice.body_markdown
+
+
 def test_render_all_policies_izven_fallback():
-    """'izven' scope → fallback tier substitucije (mehkejši pragovi), vseh 7 politik."""
+    """'izven' scope → fallback tier substitucije (mehkejši pragovi), vseh 8 politik."""
     docs = render_all_policies(POLICIES_DIR, _firm(), _scope("izven"))
-    assert len(docs) == 7
+    assert len(docs) == 8
     # Noben output nima nedorečenega placeholderja.
     for d in docs:
         assert "{{" not in d.body_markdown

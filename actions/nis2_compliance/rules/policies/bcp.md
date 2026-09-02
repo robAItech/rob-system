@@ -9,7 +9,7 @@
 ## 1. Namen
 Ta politika zagotavlja, da organizacija {{firma_naziv}} ohrani delovanje
 ključnih procesov ob motnjah in izrednih dogodkih, v skladu z ZInfV-1
-Art 21(2)(c).
+21. člen (1) 4. točka (politika in načrt neprekinjenega poslovanja).
 
 ## 2. Obseg neprekinjenosti
 {{bcp_scope}}
