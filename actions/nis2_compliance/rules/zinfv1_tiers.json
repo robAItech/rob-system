@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "tiers": {
+    "bistveni": {
+      "incident_reporting": {"early_warning_h": 24, "assessment_h": 72, "final_report_d": 30},
+      "bcp_required": true,
+      "supply_chain_formal": true,
+      "risk_defaults": {"likelihood": 3, "impact": 3}
+    },
+    "pomembni": {
+      "incident_reporting": {"early_warning_h": 24, "assessment_h": 72, "final_report_d": 30},
+      "bcp_required": false,
+      "supply_chain_formal": false,
+      "risk_defaults": {"likelihood": 2, "impact": 2}
+    }
+  }
+}

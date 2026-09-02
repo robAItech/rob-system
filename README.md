@@ -97,7 +97,7 @@ cd "C:\Rob system"     # v repo koren
 | **Verifikacija + zdravljenje** | LoopX (`core/loopx_bridge.py`) | pytest → DeepSeek popravi → ≤5× → zelen / FAILED |
 | **LLM** | DeepSeek (`core/llm_client.py`, `deepseek-v4-flash`) | generira kodo in popravke |
 | **24/7 avtonomija** | Daemon (`core/daemon.py`) | prazni agendo, sam predlaga naloge, teče vzdrževalne jobe, piše heartbeat |
-| **Končni produkt** | 66 `actions/` modulov | delujoče API storitve s testi |
+| **Končni produkt** | 67 `actions/` modulov | delujoče API storitve s testi |
 
 ---
 
@@ -106,7 +106,7 @@ cd "C:\Rob system"     # v repo koren
 - **`actions/<modul>/`** — delujoči moduli: koda + Pydantic sheme + FastAPI + pytest testi (vsi zeleni).
 - **`out/*`** — produktni artefakti (dokumenti, UI, skripte) iz TS Hermes plasti.
 - **`.rob_ai/`** — trajno stanje: `memory.db` (GBRAIN spomin), `graph.json` (graf), `daemon.json` (heartbeat), `agenda.json` (čakalna vrsta).
-- **Enotna runtime app** (`core/actions_runtime.py`, port **:8788**) — **66 API modulov** pod eno verigo: `auth → rate-limit → audit → event-bus` (middleware).
+- **Enotna runtime app** (`core/actions_runtime.py`, port **:8788**) — **67 API modulov** pod eno verigo: `auth → rate-limit → audit → event-bus` (middleware).
 - **Enterprise API moduli** (arhitekturna revizija, 2026): `webhook_dispatcher` (HMAC + retry + DLQ), `api_version_manager` (SemVer + canary + BC-break), `secret_rotation` (double-buffer + audit), `identity_federation_router` (OAuth2/OIDC + PKCE + JWT), `pii_masking_sanitizer` (GDPR/HIPAA maskiranje), `usage_billing_aggregator` (tenant obračun + kvote).
 - **Konsolidirana jedra** (revizija 2026): `resilience_core` (retry + circuit + rate-limit), `telemetry_bus` (korelacijski dogodkovni vod), `data_format_utils` (csv + iso8601 + deep-merge).
 
@@ -222,7 +222,7 @@ rob-system/
 │   ├── hermes_bridge.py    #   ogrodje actions/<mod>/
 │   ├── llm_client.py       #   DeepSeek LLM
 │   └── ...                 #   agenda, run_review, meta_eval, embedder, skill_bridge ...
-├── actions/                # 66 produkcijskih modulov (koda + testi)
+├── actions/                # 67 produkcijskih modulov (koda + testi)
 ├── src/                    # TS Command-Center dashboard (server.ts, :8787)
 ├── bridges/litellm_config.yaml   # DeepSeek proxy routing (:4010)
 ├── scripts/                # setup_worker_24h7.ps1 + watchdog (24/7 daemon, self-heal)
@@ -233,13 +233,13 @@ rob-system/
 └── tests/                  # 45 test datotek, 447 testov
 ```
 
-### Action moduli (66)
+### Action moduli (67)
 
 - **Edge / varnost / identiteta:** `api_gateway`, `auth_vault`, `rate_limiter`, `circuit_breaker`, `feature_flag`, `api_version_manager`, `secret_rotation`, `identity_federation_router`, `pii_masking_sanitizer`
 - **Resilience / obračun:** `resilience_core`, `retry_wrapper`, `usage_billing_aggregator`
 - **Messaging / orkestracija / telemetrija:** `event_bus`, `task_queue`, `saga_orchestrator`, `webhook_dispatcher`, `telemetry_bus`
 - **Podatki / validacija:** `csv_parser`, `json_deep_merge`, `string_ops`, `iso8601_util`, `contract_schema_engine`, `data_format_utils`
-- **Domena:** `currency_converter`, `invoice_calc`, `isbn_validator`, `warehouse_inventory`, `rsi_engine`
+- **Domena:** `currency_converter`, `invoice_calc`, `isbn_validator`, `warehouse_inventory`, `rsi_engine`, `nis2_compliance`
 - **Observability:** `observability_metrics`, `audit_trail`, `report_builder`, `mailer`
 - **Infra:** `config_loader`, `deployment_manager`, `nexus_command_deck`, `cache_layer`
 
