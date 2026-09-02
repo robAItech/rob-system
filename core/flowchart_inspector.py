@@ -20,65 +20,99 @@ def inspect_flowchart():
             data = json.load(f)
             graph_nodes = len(data.get("nodes", {}))
 
-    actions = [d.name for d in Path("actions").iterdir() if d.is_dir() and not d.name.startswith("__")]
+    # Live-loop parametri (privzeto 5 poskusov; tuning jih lahko preglasi).
+    max_attempts = 5
+    if db_path.exists():
+        try:
+            from core.tuning import Tuning
+            max_attempts = int(Tuning(db_path).get("max_attempts", 5))
+        except Exception:
+            pass  # ob napaki ostanemo pri privzetem številu poskusov
 
-    # Uporaba raw formatted stringa (rf) prepreči DeprecationWarning pri backslashih
+    # actions/ = realizirani moduli (vsaj ena .py; `_`/prazne mape izvzete).
+    # To NI nujno "shipped", zato poštena oznaka "modulov s kodo".
+    actions = sorted(
+        d.name for d in Path("actions").iterdir()
+        if d.is_dir() and not d.name.startswith("_")
+        and list(d.glob("*.py"))
+    )
+
+    # Uporaba raw formatted stringa (rf) prepreči DeprecationWarning pri backslashih.
+    # Diagram = DEJANSKA veriga iz core/orchestrator._phase + core/loopx_bridge._heal_loop:
+    #   GBRAIN → GRAPHIFY → GSTACK → HERMES → LOOPX (verify↔heal, do max_attempts).
     flowchart = rf"""
 ================================================================================
           🤖 ROB AI STUDIO | HEADLESS SWARM FLOW CHART & LIVE STATE
 ================================================================================
 
-                   [ CLI / Terminal Input ]
-                              │
-                              ▼
-                +----------------------------+
-                │   GSTACK-Architect         │  [STATUS: ACTIVE]
-                │   (Task Decomposition)     │  Spec manifest: Ready
-                +--------------+-------------+
-                               │
-       +-----------------------+-----------------------+
-       │                                               │
-       ▼                                               ▼
-+--------------+                               +---------------+
-│   GRAPHIFY   │ [STATUS: INDEXED]             │    GBRAIN     │ [STATUS: PERSISTED]
-│ (Code Graph  │ Nodes: {graph_nodes:<23} │ (Memory DB &  │ Tasks: {gbrain_tasks:<15}
-│ & Impact)    │                               │ Context Vault)│ Blacklists: {gbrain_blacklists:<10}
-+------+-------+                               +-------+-------+
-       │                                               │
-       +-----------------------+-----------------------+
-                               │
-                               ▼
-                +----------------------------+
-                │   HERMES CODE BUILDER      │  [STATUS: ACTIVE]
-                │ (Generates Code & Pytest)  │  Modules Shipped: {len(actions):<10}
-                +--------------+-------------+
-                               │
-                               ▼ (Writes files to /actions/{{target}}/)
-                +----------------------------+
-                │   LOOPX ENGINE             │◄--+
-                │ (Runs Pytest Trace Loop)   │   │ Self-Healing Zanka
-                +--------------+-------------+   │ (Max 5 Retries)
-                               │                 │
-                      [ Pytest Passed? ]         │
-                         /          \            │
-                       No            Yes --------+
-                       │
-                       ▼
-         +---------------------------+
-         │ LoopX Auto-Patches Code   │
-         │ (Fixes Syntax/Logic/Pyd)  │
-         +---------------------------+
-                       │
-                       ▼
-        +-----------------------------+
-        │ GBRAIN Write & Consolidation│
-        │  - Status: COMPLETED GREEN  │
-        │  - Update graph.json        │
-        +--------------+--------------+
-                       │
-                       ▼
-            [ Terminal CLI Output: ]
-       "✅ 100% VERIFIED GREEN & SHIPPED"
+            [ CLI | --process-agenda | --item (daemon) | --business ]
+                                │
+                                ▼
+        +------------------------------------------+
+        │  ORCHESTRATOR (RobAIOrchestrator)        │
+        │  dispatch po kind: python · modify ·     │
+        │  team · fork · plan · autonomous ·       │
+        │  surgical (fix_loop)                     │
+        +-------------------+----------------------+
+                            │   (vsak RSI fazni tek)
+                            ▼
+        +------------------------------------------+
+        │  GBRAIN — Context Vault                  │
+        │  kontekst + blacklisti (naučene napake)  │
+        +-------------------+----------------------+
+                            │   blacklisti kot usmeritev
+                            ▼
+        +------------------------------------------+
+        │  GRAPHIFY — AST kodni graf               │
+        │  build_code_graph + dependency kontekst  │
+        +-------------------+----------------------+
+                            │   graf-kontekst v manifest
+                            ▼
+        +------------------------------------------+
+        │  GSTACK-Architect                        │
+        │  generate_manifest → spec_hint           │
+        +-------------------+----------------------+
+                            │
+                            ▼
+        +------------------------------------------+
+        │  HERMES — stubi, SAMO če manjkajo        │
+        │  (kodo in teste generira LoopX, ne Hermes)│
+        +-------------------+----------------------+
+                            │
+                            ▼
+   ┌───────────────────────────────────────────────────────┐
+   │  LOOPX ENGINE — RSI heal zanka                        │
+   │   ponavljaj (max {max_attempts}):                      │
+   │                                                       │
+   │    (1) verify: Ruff F821 → pytest  (Docker | host)    │
+   │         │                                             │
+   │         ├── zelen → izhod iz zanke (spodaj ▼)         │
+   │         │                                             │
+   │         └── rdeč → (2) LLM heal + učenje              │
+   │                    (Test-Locking, 3× ista → FAIL)     │
+   │                    └──── retry ────▶ ponovi (1)       │
+   └─────────┬─────────────────────────────────────────────┘
+             │  zelen (exit zanke)
+             ▼
+        +------------------------------------------+
+        │  GBRAIN Write & Consolidation            │
+        │  record_task VERIFIED GREEN +            │
+        │  graphify rebuild (svež graf)            │
+        +-------------------+----------------------+
+                            │
+                            ▼
+        [ Terminal CLI Output: ]
+   "✅ 100% VERIFIED GREEN & SHIPPED"
+
+   Ob FAIL: auto-rollback (.loopx/rollback) + post-run review →
+             C2 fix naloga v agendo (daemon pobere) →
+             CLI "❌ EXECUTION FAILED"
+
+  ── LIVE STATE ─────────────────────────────────────────────
+  GRAPHIFY : {graph_nodes} vozlišč  (.rob_ai/graph.json)
+  GBRAIN   : {gbrain_tasks} taskov · {gbrain_blacklists} blacklistov  (memory.db)
+  actions/ : {len(actions)} modulov s kodo  (≈ realiziranih, ne nujno shipped)
+  LOOPX    : max {max_attempts} poskusov na tek  (tuning: max_attempts)
 ================================================================================
 """
     print(flowchart)
