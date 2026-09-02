@@ -1,0 +1,49 @@
+# Chief of Staff — model lastnika (faza 1: prvi teden)
+# ============================================================
+# Ureja Robert. Chief to bere; tvoji popravki = učenje.
+# VENTURES = SAMO tisto, kar potrdi Robert. Ne domnevaj iz starih docov.
+# VASCo (2026-09-02): "nepomemben, samo ideja" — odstranjeno iz poslov.
+
+robert:
+  name: Robert Slavec
+  role: Arhitekt humanoidne robotike / embodied AI (Plan-net Robot, Pariz)
+  background_short: Unitree G1/H1, NVIDIA Jetson Orin, voice/embodied AI, YC Startup School 2017
+  languages: [slovenščina, angleščina, b/h/s]
+  author_credit: "Robert Slavec — avtor v vsej kodi"
+  style_note: "Jedrnato, konkretno, v slovenščini. Brez olepševanja."
+
+ventures:
+  rob_system:
+    name: ROB System
+    why: "Avtonomno AI podjetje (Company-as-Code). Edini posel (potrjeno 2026-09-02). Področje, kjer chief prvi teden vadi."
+    status: active
+    focus: "Prvi teden: chief se uči na ROB Systemu — zaprt krog poročilo → Robertov popravek → učenje. Jedro (daemon/orchestrator/agenda) zaklenjeno."
+    next_action: "Zapelji prvi teden: dnevno `python -m chief --report`, Robert popravi, popravek shrani kot učni signal; po 7 dneh oceni, ali so bile izbire prave, šele nato odpri več avtonomije (roke / daemon beat)."
+
+style_guardrails:
+  tone: "Jedrnato, konkretno, v slovenščini; brez olepševanja in hype."
+  learning_source: "Robertovi popravki poročil so glavni učni signal."
+  never_without_owner:
+    - "denar / prilivi"
+    - "zunanje zaveze / podpisi"
+    - "komunikacija s strankami navzven"
+    - "sprememba jedra sistema"
+
+first_week_lock:
+  # Pravilo prvega tedna: chief sme delovati SAMO na nenevarnih delih.
+  allowed_write:
+    - "actions/"
+    - "tests/"
+    - "docs/"
+    - "chief/"
+  locked:
+    - "core/daemon.py"
+    - "core/orchestrator.py"
+    - "core/agenda.py"
+    - "core/loopx_bridge.py"
+    - "core/plan_context.py"
+    - "core/config.py"
+    - "run_swarm.py"
+    - "rob"
+    - "fleet/"
+  note: "Jedro zaklenjeno prvi teden, dokler chief ne dokaže, da se odloča dobro."
