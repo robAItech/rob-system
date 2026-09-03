@@ -369,6 +369,12 @@ def _tick_fleet_git_sync(settings, cfg) -> dict:
             out += "\n" + r.stderr.strip()
         out = out[-500:]
         if r.returncode == 0:
+            # Git-model self-update: po pullu uvozi masterjev fleet/backup.json
+            # (spomin + agenda) — worker (in master) se tako posodablja sam.
+            try:
+                fleet._apply_backup()
+            except Exception as e:
+                _append_error(f"git sync restore: {e}")
             return {"git_sync": "ok", "branch": branch, "detail": out}
         _append_error(f"git sync (rc={r.returncode}): {out[-300:]}")
         return {"git_sync": f"napaka rc={r.returncode}", "branch": branch,
