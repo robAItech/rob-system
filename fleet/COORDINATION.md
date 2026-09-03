@@ -59,6 +59,12 @@ Na tem repoju delata **DVA (ali več) računalnikov hkrati** v načinu
 | **Backup spomina+agende+actions** | `rob fleet backup` → `fleet/backup.json` + `actions/` → git | ob zagonu / ročno |
 | **Heartbeat workerjev** | `/fleet/heartbeat` → `rob fleet status` | ~30 s |
 
+> **Git-model (velja od 2026-09-03):** za VSEBINO (koda, actions, spomin/agenda)
+> je edina prava sinhronizacija git — master pusha (`rob fleet backup` / commit),
+> worker potegne z **`rob fleet pull`** (= `git pull --rebase` + uvoz
+> `fleet/backup.json` v enem). HTTP `:8789` je SAMO za živo razporejanje nalog
+> daemon↔daemon; če worker ne poganja nalog v živo, mu HTTP ni potreben.
+
 ## Povezave med stroji (network promet) — KAJ JE NORMALNO
 
 Worker ↔ master komunicirata **stalno** prek HTTP-ja (master :8789). To NI

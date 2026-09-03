@@ -376,9 +376,8 @@ def commit_worker_actions(module: str) -> bool:
     return True
 
 
-def _cmd_restore() -> int:
-    """git pull + združi fleet/backup.json v lokalni spomin in agendo."""
-    subprocess.call(["git", "pull", "--rebase"], cwd=PROJECT_ROOT)
+def _apply_backup() -> int:
+    """Združi fleet/backup.json v lokalni spomin in agendo. Ne pulla gita."""
     if not BACKUP_FILE.exists():
         print("[fleet] ni fleet/backup.json (še ni bilo backupa na masterju).")
         return 1
@@ -387,6 +386,33 @@ def _cmd_restore() -> int:
     agenda_n = agenda.restore_pending(payload.get("agenda") or [])
     print(f"[fleet] restore OK — spomin dodano: {mem_stats}; agenda uvoženih: {agenda_n}")
     return 0
+
+
+def _cmd_restore() -> int:
+    """git pull + združi fleet/backup.json v lokalni spomin in agendo."""
+    subprocess.call(["git", "pull", "--rebase"], cwd=PROJECT_ROOT)
+    return _apply_backup()
+
+
+def _cmd_pull() -> int:
+    """pull + restore v enem: `git pull --rebase --autostash origin <branch>`
+    (kot avtomatski git_sync tick), nato uvozi masterjev fleet/backup.json.
+
+    To je glavni način sinhronizacije workerja z masterjem (git-model):
+    master pusha, worker potegne — HTTP fleet ni potreben za vsebino.
+    """
+    branch = subprocess.run(
+        ["git", "symbolic-ref", "--short", "HEAD"],
+        capture_output=True, text=True, cwd=PROJECT_ROOT, check=False,
+    ).stdout.strip() or "master"
+    r = subprocess.run(
+        ["git", "pull", "--rebase", "--autostash", "origin", branch],
+        capture_output=True, text=True, cwd=PROJECT_ROOT, timeout=180,
+    )
+    out = (r.stdout or "").strip()
+    err = (r.stderr or "").strip()
+    print("[fleet] git pull:", (out + ("\n" + err if err else ""))[:800] or "(brez izpisa)")
+    return _apply_backup()
 
 
 # ── CLI (rob fleet ...) ───────────────────────────────────────────────────
@@ -402,6 +428,7 @@ def main(argv: Optional[list] = None) -> int:
     sub.add_parser("memory", help="prikaži lokalni spomin (števila po učnih tabelah)")
     sub.add_parser("backup", help="master: izvoz spomina+agende v fleet/backup.json, commit+push v git")
     sub.add_parser("restore", help="katerikoli stroj: git pull + združi fleet/backup.json v lokalni spomin/agendo")
+    sub.add_parser("pull", help="glavni način: git pull --rebase (origin) + uvoz fleet/backup.json v enem")
     _p = sub.add_parser("sync-actions", help="(worker) ročno commit+push zgrajenega modula (npr. sync-actions fleet_sync_test)")
     _p.add_argument("module", nargs="?", default="")
     _p = sub.add_parser("push-actions", help="(worker) ročno pošlji zgrajeni modul masterju prek HTTP (npr. push-actions fleet_sync_test)")
@@ -427,6 +454,8 @@ def main(argv: Optional[list] = None) -> int:
         return _cmd_backup()
     if args.cmd == "restore":
         return _cmd_restore()
+    if args.cmd == "pull":
+        return _cmd_pull()
     if args.cmd == "sync-actions":
         module = getattr(args, "module", "")
         ok = commit_worker_actions(module)
